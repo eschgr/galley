@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
@@ -6,6 +6,23 @@ import started from 'electron-squirrel-startup';
 if (started) {
   app.quit();
 }
+
+// R4: open a preview link in the system default browser. Renderer requests go
+// through here (via the preload bridge) so the renderer never navigates itself.
+// Only web/mail schemes are honored; anything else (file:, javascript:, …) is
+// refused, so a crafted href cannot launch an arbitrary handler.
+ipcMain.handle('shell:openExternal', (_event, url: unknown) => {
+  if (typeof url !== 'string') return;
+  let scheme: string;
+  try {
+    scheme = new URL(url).protocol;
+  } catch {
+    return;
+  }
+  if (scheme === 'http:' || scheme === 'https:' || scheme === 'mailto:') {
+    void shell.openExternal(url);
+  }
+});
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({

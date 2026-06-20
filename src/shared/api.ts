@@ -13,6 +13,11 @@ export interface MdtoolApi {
   readonly platform: NodeJS.Platform;
   /** App version, for the Help window (PRD R48). */
   readonly version: string;
+  /**
+   * Open a URL in the system default browser (PRD R4). Only http/https/mailto
+   * are honored by the main process; other schemes are silently ignored.
+   */
+  openExternal(url: string): Promise<void>;
 }
 
 declare global {

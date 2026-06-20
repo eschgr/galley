@@ -43,6 +43,24 @@ const katexOptions = {
   strict: false as const, // tolerate the looser LaTeX an LLM may emit
 };
 
+/**
+ * Annotate top-of-block elements with `data-source-line` (the 0-based source
+ * line they start at), so the preview can be scroll-anchored to the editor
+ * (PRD R18). Mirrors VS Code's markdown-preview technique. Invisible in output;
+ * fenced code blocks are rendered by the custom highlighter and are not
+ * annotated, but their neighbours are, which is enough to interpolate.
+ */
+function injectSourceLines(md: MarkdownIt): void {
+  md.core.ruler.push('source_line', (state) => {
+    for (const token of state.tokens) {
+      if (!token.map || !token.block) continue;
+      if (token.type.endsWith('_open') || token.nesting === 0) {
+        token.attrSet('data-source-line', String(token.map[0]));
+      }
+    }
+  });
+}
+
 function highlightToHtml(code: string, lang: string, md: MarkdownIt): string {
   const escaped = (s: string) => md.utils.escapeHtml(s);
   if (lang && hljs.getLanguage(lang)) {
@@ -72,6 +90,8 @@ export function createRenderer(): MarkdownIt {
     delimiters: ['dollars', 'brackets'],
     katexOptions,
   });
+
+  injectSourceLines(md);
 
   return md;
 }

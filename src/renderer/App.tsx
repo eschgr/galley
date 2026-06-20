@@ -1,21 +1,22 @@
 /**
- * Root component — skeleton only.
+ * Root component. Hosts the split editor/preview view (PRD R45).
  *
- * This is a placeholder shell to prove the Electron + React + preload-bridge
- * wiring runs end to end (`npm start` opens a window showing this). No product
- * features (editor, preview, tabs, split view) are built yet; the first real
- * work is the R5 rendering spike.
+ * File opening, tabs, and saving are not built yet, so the view is seeded with a
+ * built-in welcome document. Once the channel listener / file dialog land, this
+ * shell grows a tab strip and the seed is replaced by opened files.
  */
+import './app.css';
+import welcome from './welcome.md?raw';
+import { SplitView } from './components/SplitView';
+
 export function App() {
   return (
-    <main className="app-skeleton">
-      <h1>mdtool</h1>
-      <p>Local markdown viewer &amp; editor — skeleton.</p>
-      <p className="env">
-        platform <code>{window.mdtool?.platform ?? 'unknown'}</code> · version{' '}
-        <code>{window.mdtool?.version ?? '?'}</code>
-      </p>
-      <p className="next">Next build step: the R5 rendering spike (PRD §5.1a).</p>
-    </main>
+    <div className="app">
+      <header className="app-titlebar">
+        <span className="app-title">mdtool</span>
+        <span className="app-subtitle">welcome.md — sample (unsaved)</span>
+      </header>
+      <SplitView initialDoc={welcome} />
+    </div>
   );
 }

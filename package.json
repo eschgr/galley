@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron-forge start",
     "spike": "vite --config vite.spike.config.ts",
+    "devapp": "vite --config vite.devapp.config.ts",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
