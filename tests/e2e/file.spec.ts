@@ -14,8 +14,10 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       openCb: ((f: MockFile) => void) | null;
       saveCb: (() => void) | null;
       extCb: ((f: MockFile) => void) | null;
-      saveCalls: { path: string; content: string }[];
-    } = { openCb: null, saveCb: null, extCb: null, saveCalls: [] };
+      saveCalls: { path: string; content: string; force: boolean }[];
+      // When set, the next non-force save returns this as a write-path conflict.
+      nextSaveConflict: MockFile | null;
+    } = { openCb: null, saveCb: null, extCb: null, saveCalls: [], nextSaveConflict: null };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { mdtool: unknown }).mdtool = {
       platform: 'win32',
@@ -23,9 +25,14 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       openExternal: async () => {},
       setSourceVisible: async () => {},
       getStartupFile: async () => startupFile,
-      saveFile: async (path: string, content: string) => {
-        harness.saveCalls.push({ path, content });
-        return { path, content, hash: 'mock-hash' };
+      saveFile: async (path: string, content: string, force?: boolean) => {
+        harness.saveCalls.push({ path, content, force: !!force });
+        if (!force && harness.nextSaveConflict) {
+          const disk = harness.nextSaveConflict;
+          harness.nextSaveConflict = null;
+          return { conflict: true, disk };
+        }
+        return { conflict: false, file: { path, content, hash: 'mock-hash' } };
       },
       onOpenFile: (cb: (f: MockFile) => void) => {
         harness.openCb = cb;
@@ -171,4 +178,61 @@ test('conflict → Keep my changes overwrites the disk version (R35)', async ({ 
   );
   expect(calls[calls.length - 1].path).toBe('C:\\docs\\c.md');
   expect(calls[calls.length - 1].content).toContain('MINE');
+});
+
+const menuSave = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __mock: { saveCb: () => void } }).__mock.saveCb());
+
+test('a save that finds disk diverged prompts (write-path guard, R34)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\w.md', content: 'orig\n', hash: 'h' }, ' EDIT');
+
+  // Arm a write-path conflict for the next checked (non-force) save, then save.
+  await page.evaluate(() => {
+    (window as unknown as { __mock: { nextSaveConflict: MockFile } }).__mock.nextSaveConflict = {
+      path: 'C:\\docs\\w.md',
+      content: 'changed underneath\n',
+      hash: 'h2',
+    };
+  });
+  await menuSave(page);
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.modal')).toContainText('w.md');
+});
+
+test('Keep editing makes the decision sticky — later changes are ignored (R34)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\s.md', content: 'orig\n', hash: 'h' }, ' MINE');
+
+  await fire(page, 'extCb', { path: 'C:\\docs\\s.md', content: 'theirs one\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep editing/ }).click();
+  await expect(overlay(page)).toBeHidden();
+  await expect(subtitle(page)).toContainText('keeping your version');
+
+  // A second external change must NOT prompt, and must not replace my version.
+  await fire(page, 'extCb', { path: 'C:\\docs\\s.md', content: 'theirs two\n', hash: 'h3' });
+  await page.waitForTimeout(150);
+  await expect(overlay(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).not.toContainText('theirs two');
+});
+
+test('a manual save ends the episode; a later change prompts again (R34)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\e.md', content: 'orig\n', hash: 'h' }, ' MINE');
+
+  await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep editing/ }).click();
+  await expect(subtitle(page)).toContainText('keeping your version');
+
+  await menuSave(page); // Ctrl+S ends the mine episode
+  await expect(subtitle(page)).not.toContainText('keeping your version');
+
+  // Editing again + a fresh external change prompts once more.
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' MORE');
+  await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs again\n', hash: 'h4' });
+  await expect(overlay(page)).toBeVisible();
 });
