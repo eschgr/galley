@@ -334,6 +334,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 - Diff view for conflict resolution (deferred enhancement).
 - Clipboard-URL prefill in the link dialog (R27 nice-to-have).
 - Possible future: directory view, drag-and-drop, recently-opened list, tab reordering, bulk tab operations.
+- Possible future: **smart list-item selection** — extending a selection (or `Home`) to the start of a list line stops at the item's *content*, skipping the marker (`-` / `1.`), as most modern editors do. New behavior, not a correctness fix; out of scope this version.
 - Possible future: a **dynamic in-app control to swap the editor/preview pane order** (the fixed default is rendered view left, source right) — nice-to-have, gated behind the internationalization/RTL and accessibility work that is out of scope this version (§3).
 - Possible future: internationalization/localization (incl. RTL) and a dedicated accessibility pass (§3).
 - Possible future: migrate shell to Tauri if footprint warrants (§9).
