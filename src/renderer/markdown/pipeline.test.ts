@@ -88,9 +88,84 @@ describe('security: raw HTML is not passed through (§3/§7, html:false)', () =>
 });
 
 describe('source-line anchors for scroll sync (R18)', () => {
-  it('annotates block elements with their 0-based source line', () => {
+  it('annotates a heading and paragraph with their 0-based source line', () => {
     const html = renderMarkdown('# Title\n\nA paragraph.\n');
     expect(html).toMatch(/<h1[^>]*data-source-line="0"/);
     expect(html).toMatch(/<p[^>]*data-source-line="2"/);
+  });
+
+  it('annotates tables, lists, list items, and blockquotes at their start line', () => {
+    const doc = [
+      '# Heading', // 0
+      '', // 1
+      'A paragraph.', // 2
+      '', // 3
+      '- item one', // 4
+      '- item two', // 5
+      '', // 6
+      '> a quote', // 7
+      '', // 8
+      '| A | B |', // 9
+      '|---|---|', // 10
+      '| 1 | 2 |', // 11
+    ].join('\n');
+    const html = renderMarkdown(doc);
+    expect(html).toMatch(/<h1[^>]*data-source-line="0"/);
+    expect(html).toMatch(/<p[^>]*data-source-line="2"/);
+    expect(html).toMatch(/<ul[^>]*data-source-line="4"/);
+    expect(html).toMatch(/<li[^>]*data-source-line="4"/);
+    expect(html).toMatch(/<li[^>]*data-source-line="5"/);
+    expect(html).toMatch(/<blockquote[^>]*data-source-line="7"/);
+    expect(html).toMatch(/<table[^>]*data-source-line="9"/);
+  });
+
+  it('annotates nested blocks (e.g. a paragraph inside a blockquote)', () => {
+    // The blockquote starts at line 0 and its inner paragraph also at line 0.
+    const html = renderMarkdown('> quoted line one\n> quoted line two\n');
+    expect(html).toMatch(/<blockquote[^>]*data-source-line="0"/);
+    // the nested paragraph is annotated too (rule doesn't filter on nesting depth)
+    expect(html).toMatch(/<p[^>]*data-source-line="0"/);
+  });
+
+  it('does not anchor fenced code blocks, but anchors their neighbours', () => {
+    const doc = [
+      'Intro paragraph.', // 0
+      '', // 1
+      '```js', // 2
+      'const x = 1;', // 3
+      '```', // 4
+      '', // 5
+      'After paragraph.', // 6
+    ].join('\n');
+    const html = renderMarkdown(doc);
+    expect(html).toMatch(/<p[^>]*data-source-line="0"/);
+    expect(html).toMatch(/<p[^>]*data-source-line="6"/);
+    // The <pre> comes from the custom highlighter and carries no source line.
+    expect(html).not.toMatch(/<pre[^>]*data-source-line/);
+  });
+
+  it('emits source lines 0-based and non-decreasing in document order', () => {
+    const doc = [
+      '# H', // 0
+      '', // 1
+      'para', // 2
+      '', // 3
+      '- a', // 4
+      '- b', // 5
+      '', // 6
+      '> quote', // 7
+      '', // 8
+      '## H2', // 9
+      '', // 10
+      'last para', // 11
+    ].join('\n');
+    const html = renderMarkdown(doc);
+    const lines = [...html.matchAll(/data-source-line="(\d+)"/g)].map((m) => Number(m[1]));
+    expect(lines.length).toBeGreaterThan(5);
+    expect(lines[0]).toBe(0); // first block starts at line 0
+    expect(Math.max(...lines)).toBe(11); // last block at the last content line
+    for (let i = 1; i < lines.length; i++) {
+      expect(lines[i]).toBeGreaterThanOrEqual(lines[i - 1]);
+    }
   });
 });
