@@ -10,9 +10,12 @@
   color: #1f2328;
 }
 
-/* Single toolbar row: tabs on the left, source toggle on the right. */
+/* Single toolbar row: tabs on the left, source toggle on the right. A fixed
+   min-height keeps the bar the same size whether or not any tabs are open. */
 .toolbar {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: 32px;
   display: flex;
   align-items: stretch;
   gap: 8px;

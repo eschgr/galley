@@ -344,6 +344,16 @@ test('auto-save does not let an external change silently discard edits (R36)', a
 
 const tabByName = (page: Page, name: string) => page.locator('.tab', { hasText: name });
 
+test('the toolbar is the same height with or without open tabs', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  const toolbarHeight = () =>
+    page.evaluate(() => Math.round(document.querySelector('.toolbar')!.getBoundingClientRect().height));
+  const empty = await toolbarHeight();
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'x\n', hash: 'h' });
+  expect(await toolbarHeight()).toBe(empty);
+});
+
 test('opens multiple files in tabs and switches between them (R39)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
