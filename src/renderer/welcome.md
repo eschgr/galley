@@ -1,17 +1,26 @@
 # Welcome to mdtool
 
-This is a **live split view**. Edit the markdown on the left and the preview on
-the right updates as you type. Scroll one pane and the other follows.
+You're looking at the **rendered view** — how a markdown file actually reads.
+
+Use the **Split** / **View** switch in the top-right corner to choose your
+layout:
+
+- **View** — the rendered document only, for reading (this is the default).
+- **Split** — the markdown **source editor on the left** and this live preview
+  on the right, side by side. Edit the source and the preview updates as you
+  type; scroll one pane and the other follows.
 
 > File opening isn't wired up yet — this is a built-in sample so you can try the
-> editor and preview. Tabs, opening files, and saving come next.
+> view modes, editor, and preview. Tabs, opening files, and saving come next.
 
 ## Try it
 
-1. Type in the left pane and watch this update.
-2. Drag the divider in the middle to resize the panes.
-3. Press `Ctrl+F` (or `Cmd+F`) to open the editor's find panel.
-4. Scroll — the panes stay roughly aligned by source line.
+1. Click **Split** (top-right) to bring up the source editor beside this view.
+2. Type in the left pane and watch the preview update live.
+3. Drag the divider in the middle to resize the two panes.
+4. Press `Ctrl+F` (or `Cmd+F`) in the editor to open the find panel.
+5. Scroll either pane — they stay aligned by source line.
+6. Click **View** to go back to full-window reading.
 
 ## Markdown it renders
 

@@ -32,8 +32,13 @@ ipcMain.handle('shell:openExternal', (_event, url: unknown) => {
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    // Portrait-ish by default — most documents read better tall than wide.
+    // Resizable, so widening for side-by-side editing is one drag away.
+    width: 850,
+    height: 1000,
+    minWidth: 480,
+    minHeight: 480,
+    center: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       // Security hardening (PRD §7 architecture notes):
