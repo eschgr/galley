@@ -44,6 +44,12 @@ export interface MdtoolApi {
   onOpenFile(callback: (file: OpenedFile) => void): () => void;
   /** Subscribe to the File → Save menu/accelerator (R30). Returns unsubscribe. */
   onMenuSave(callback: () => void): () => void;
+  /**
+   * Subscribe to a genuine external change to the open file (R32/R33) — the
+   * watcher's own saves are already filtered out. Payload is the new on-disk
+   * snapshot. Returns an unsubscribe function.
+   */
+  onExternalChange(callback: (file: OpenedFile) => void): () => void;
 }
 
 declare global {

@@ -11,10 +11,11 @@
  * well-defined keeps that migration cheap; everything above it — React,
  * CodeMirror, markdown-it/KaTeX, scroll-sync, tabs — ports as-is.
  *
- * This file defines the contract; the Node file-IO implementation lives in
- * ./fileIo (the watcher and channel listener are still deferred).
+ * This file defines the contract; the Node file-IO lives in ./fileIo and the
+ * watcher uses chokidar here (the channel listener is still deferred).
  */
 import * as fileIo from './fileIo';
+import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
 
 /** A file's content plus the baseline hash captured at read/write time (PRD §5.6). */
 export interface FileSnapshot {
@@ -24,9 +25,11 @@ export interface FileSnapshot {
   readonly hash: string;
 }
 
-/** An external-change event the watcher forwards to the renderer (R32–R33). */
+/** A genuine external change the watcher forwards to the renderer (R32–R33). */
 export interface ExternalChangeEvent {
   readonly path: string;
+  /** The new on-disk content, so the renderer can reload without a round-trip. */
+  readonly content: string;
   /** Hash of the new on-disk content, for the renderer's conflict logic. */
   readonly hash: string;
 }
@@ -63,22 +66,60 @@ export interface PlatformBridge {
 }
 
 /**
- * The Node-backed bridge. File IO + CLI parsing are implemented (this phase);
- * the watcher (R32–R38) and the per-project channel listener (R11–R15) are
- * deferred to later phases and throw if called early, so accidental use fails
- * loudly rather than silently no-op'ing.
+ * The Node-backed bridge. File IO, CLI parsing, and file watching are
+ * implemented; the per-project channel listener (R11–R15) is still deferred and
+ * throws if called early, so accidental use fails loudly rather than silently
+ * no-op'ing.
  */
 export function createPlatformBridge(): PlatformBridge {
+  // Self-write detection (R33): the hash of the content we last wrote, per path.
+  // A watcher event whose on-disk hash matches is our own save → ignored.
+  const lastWrittenHash = new Map<string, string>();
+  const watchers = new Map<string, FSWatcher>();
+
+  const closeWatcher = (absPath: string): void => {
+    const watcher = watchers.get(absPath);
+    if (watcher) {
+      void watcher.close();
+      watchers.delete(absPath);
+    }
+  };
+
   return {
     parseCliFileArg: fileIo.parseCliFileArg,
     readFile: fileIo.readFile,
-    writeFile: fileIo.writeFile,
-    watch() {
-      throw new Error('watch() not implemented yet (deferred phase — PRD §5.6).');
+
+    async writeFile(absPath, content) {
+      const snapshot = await fileIo.writeFile(absPath, content);
+      lastWrittenHash.set(absPath, snapshot.hash);
+      return snapshot;
     },
-    unwatch() {
-      throw new Error('unwatch() not implemented yet (deferred phase — PRD §5.6).');
+
+    watch(absPath, onChange) {
+      closeWatcher(absPath); // one watcher per path
+      const watcher = chokidarWatch(absPath, {
+        ignoreInitial: true,
+        // Coalesce rapid/partial external writes into one stable event (R37).
+        awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 40 },
+      });
+      const handle = async (): Promise<void> => {
+        try {
+          const snapshot = await fileIo.readFile(absPath);
+          if (snapshot.hash === lastWrittenHash.get(absPath)) return; // R33: our own save
+          onChange({ path: absPath, content: snapshot.content, hash: snapshot.hash });
+        } catch {
+          // File vanished or was unreadable mid-change — ignore (delete handling TBD).
+        }
+      };
+      watcher.on('change', handle);
+      watcher.on('add', handle); // some tools replace via rename → add
+      watchers.set(absPath, watcher);
     },
+
+    unwatch(absPath) {
+      closeWatcher(absPath);
+    },
+
     listenOnChannel() {
       throw new Error('listenOnChannel() not implemented yet (deferred phase — PRD §5.3).');
     },
