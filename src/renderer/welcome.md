@@ -1,13 +1,19 @@
 # Welcome to Galley
 
-A sandbox for trying the editor and seeing how Galley renders Markdown. Nothing
-here is saved — experiment freely. Opening a file replaces this screen.
+Galley is an app for viewing and editing Markdown files. It's intended to be used
+in conjunction with LLM tools, to make communication between people and the LLMs
+easier. Its specific purpose is to intentionally avoid the challenges of setting
+up a build environment. Think of it like a simple text editor that can show what
+the file actually looks like.
+
+## Try it out!
+
+This is a sandbox for trying the editor and seeing how Galley renders Markdown.
+Nothing here is saved — experiment freely. Opening a file replaces this screen.
 
 You're looking at the **rendered view**. Click **Show Source** (top-right) to
 open the Markdown editor alongside it: edits update the view as you type, and
 scrolling one pane keeps the other aligned.
-
-## Things to try
 
 1. Click **Show Source**, then type in the editor and watch this update live.
 2. Select a word and press **Ctrl/Cmd+B** for **bold**, **Ctrl/Cmd+I** for _italic_.
