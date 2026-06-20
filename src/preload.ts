@@ -25,6 +25,11 @@ const api: MdtoolApi = {
     ipcRenderer.on('menu:save', listener);
     return () => ipcRenderer.removeListener('menu:save', listener);
   },
+  onExternalChange: (callback: (file: OpenedFile) => void) => {
+    const listener = (_event: unknown, file: OpenedFile) => callback(file);
+    ipcRenderer.on('file:externalChange', listener);
+    return () => ipcRenderer.removeListener('file:externalChange', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('mdtool', api);

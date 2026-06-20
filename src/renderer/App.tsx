@@ -2,16 +2,19 @@
  * Root component. Owns the open document and the view-mode switch, and hosts the
  * split editor/preview view (PRD R45).
  *
- * Document lifecycle (this phase): a file arrives via the command line (R7,
- * pulled on mount) or File → Open (R8); edits mark the doc dirty and trigger a
- * debounced auto-save (R29); Ctrl/Cmd+S force-saves (R30). External-change
- * watching/conflict (R32–R38) and tabs (R39+) are later phases. Until a file is
- * opened, the editor shows a built-in welcome sample (no path → not savable).
+ * Document lifecycle: a file arrives via the command line (R7, pulled on mount)
+ * or File → Open (R8); edits mark the doc dirty and trigger a debounced
+ * auto-save (R29); Ctrl/Cmd+S force-saves (R30). The open file is watched for
+ * external changes (R32): a clean buffer refreshes silently, a dirty buffer
+ * prompts (R35), and auto-save is suspended while that prompt is open (R36).
+ * Tabs (R39+) and the write-path divergence guard (R34) are later phases. Until
+ * a file is opened, the editor shows a built-in welcome sample (not savable).
  */
 import './app.css';
 import { useEffect, useRef, useState } from 'react';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
+import { ConflictDialog } from './components/ConflictDialog';
 import type { EditorHandle } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 
@@ -31,12 +34,19 @@ export function App() {
   const [path, setPath] = useState<string | null>(null);
   const [text, setText] = useState(welcome);
   const [dirty, setDirty] = useState(false);
+  const [conflict, setConflict] = useState<OpenedFile | null>(null);
 
   // Refs mirror state for the once-registered IPC handlers / the autosave timer.
   const pathRef = useRef<string | null>(null);
   const textRef = useRef(welcome);
   const savedTextRef = useRef(welcome);
+  const conflictRef = useRef<OpenedFile | null>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setConflictState = (next: OpenedFile | null) => {
+    conflictRef.current = next;
+    setConflict(next);
+  };
 
   const clearAutosave = () => {
     if (autosaveTimer.current) {
@@ -46,6 +56,7 @@ export function App() {
   };
 
   const save = async () => {
+    if (conflictRef.current) return; // R36: not while a conflict prompt is open
     const p = pathRef.current;
     if (!p) return; // welcome sample has nowhere to save (Save As is a later phase)
     const content = textRef.current;
@@ -56,12 +67,13 @@ export function App() {
       savedTextRef.current = content;
       setDirty(false);
     } catch (err) {
-      console.error('[mdtool] save failed', err);
+      console.error('[Galley] save failed', err);
     }
   };
 
   const loadFile = (file: OpenedFile) => {
     clearAutosave();
+    setConflictState(null);
     pathRef.current = file.path;
     savedTextRef.current = file.content;
     textRef.current = file.content;
@@ -77,19 +89,42 @@ export function App() {
     const isDirty = pathRef.current !== null && next !== savedTextRef.current;
     setDirty(isDirty);
     clearAutosave();
-    if (isDirty) autosaveTimer.current = setTimeout(() => void save(), AUTOSAVE_MS);
+    if (isDirty && !conflictRef.current) {
+      autosaveTimer.current = setTimeout(() => void save(), AUTOSAVE_MS);
+    }
   };
 
-  // Pull a command-line file (R7) and subscribe to subsequent opens / save.
+  // Conflict resolutions (R35).
+  const resolveKeepMine = () => {
+    setConflictState(null);
+    void save(); // overwrite the disk version with ours
+  };
+  const resolveLoadFromDisk = () => {
+    if (conflictRef.current) loadFile(conflictRef.current); // discard our edits
+  };
+  const resolveKeepEditing = () => {
+    setConflictState(null); // dismiss; keep editing, decide later
+  };
+
+  // Pull a command-line file (R7) and subscribe to opens / save / external change.
   useEffect(() => {
     void window.mdtool?.getStartupFile().then((file) => {
       if (file) loadFile(file);
     });
     const offOpen = window.mdtool?.onOpenFile((file) => loadFile(file));
     const offSave = window.mdtool?.onMenuSave(() => void save());
+    const offExternal = window.mdtool?.onExternalChange((diskFile) => {
+      if (textRef.current === savedTextRef.current) {
+        loadFile(diskFile); // clean buffer → refresh silently (R35)
+      } else {
+        clearAutosave(); // R36: suspend auto-save while prompting
+        setConflictState(diskFile); // dirty buffer → prompt (R35)
+      }
+    });
     return () => {
       offOpen?.();
       offSave?.();
+      offExternal?.();
       clearAutosave();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,6 +164,14 @@ export function App() {
         editorRef={editorRef}
         viewMode={viewMode}
       />
+      {conflict && (
+        <ConflictDialog
+          fileName={basename(conflict.path)}
+          onKeepMine={resolveKeepMine}
+          onLoadFromDisk={resolveLoadFromDisk}
+          onCancel={resolveKeepEditing}
+        />
+      )}
     </div>
   );
 }

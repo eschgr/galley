@@ -21,12 +21,25 @@ function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-// Read a file and hand it to the renderer to open (R7/R8). Errors surface as a
-// dialog rather than crashing the open.
+// The file currently watched for external changes (single window/file for now).
+let watchedPath: string | null = null;
+
+// Watch a file and forward genuine external changes to the renderer (R32/R33).
+function watchFile(win: BrowserWindow, absPath: string): void {
+  if (watchedPath && watchedPath !== absPath) platform.unwatch(watchedPath);
+  watchedPath = absPath;
+  platform.watch(absPath, (event) => {
+    if (!win.isDestroyed()) win.webContents.send('file:externalChange', event);
+  });
+}
+
+// Read a file, hand it to the renderer to open (R7/R8), and watch it. Errors
+// surface as a dialog rather than crashing the open.
 async function openPath(win: BrowserWindow, absPath: string): Promise<void> {
   try {
     const snapshot = await platform.readFile(absPath);
     win.webContents.send('file:opened', snapshot);
+    watchFile(win, absPath);
   } catch (err) {
     dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
   }
@@ -69,12 +82,15 @@ ipcMain.handle('file:write', (_event, args: unknown) => {
 });
 
 // R7: the renderer pulls the command-line file (if any) once on mount.
-ipcMain.handle('file:getStartup', async () => {
+ipcMain.handle('file:getStartup', async (event) => {
   if (!startupFilePath) return null;
   const absPath = startupFilePath;
   startupFilePath = null;
   try {
-    return await platform.readFile(absPath);
+    const snapshot = await platform.readFile(absPath);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) watchFile(win, absPath);
+    return snapshot;
   } catch (err) {
     dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
     return null;
@@ -150,6 +166,14 @@ const createWindow = () => {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  // Stop watching the open file when the window closes.
+  mainWindow.on('closed', () => {
+    if (watchedPath) {
+      platform.unwatch(watchedPath);
+      watchedPath = null;
+    }
   });
 
   // R4 / §7 security: links and window.open() from the preview must open in the
