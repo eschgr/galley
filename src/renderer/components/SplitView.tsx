@@ -2,11 +2,10 @@
  * Split view (PRD R45): source editor and live preview side by side with a
  * draggable divider, and synchronized scrolling (R18).
  *
- * Supports three view modes — 'source', 'split', 'preview' — so either pane can
- * take the whole window (reading mode hides the editor). Both panes stay mounted
- * across mode switches (hidden with display:none, not unmounted) so edits, undo
- * history, and scroll position survive; the editor is re-measured when it
- * becomes visible again.
+ * Two view modes — 'split' (editor + view side by side) and 'preview' (the
+ * rendered view fills the window, for reading). The editor stays mounted across
+ * switches (hidden with display:none, not unmounted) so edits, undo history, and
+ * scroll position survive; it is re-measured when it becomes visible again.
  *
  * Scroll sync uses an "active pane" lead: only the pane the user is interacting
  * with (hover / focus) drives the other. This avoids the feedback loop a naive
@@ -17,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
 
-export type ViewMode = 'source' | 'split' | 'preview';
+export type ViewMode = 'split' | 'preview';
 
 interface SplitViewProps {
   initialDoc: string;
@@ -37,8 +36,8 @@ export function SplitView({ initialDoc, viewMode }: SplitViewProps) {
   const [source, setSource] = useState(initialDoc);
   const [leftPct, setLeftPct] = useState(50);
 
-  const showEditor = viewMode !== 'preview';
-  const showPreview = viewMode !== 'source';
+  const showEditor = viewMode === 'split';
+  const showPreview = true; // the rendered view is shown in both modes
   const showDivider = viewMode === 'split';
 
   // Re-measure the editor when it returns to view (display:none hides resize).

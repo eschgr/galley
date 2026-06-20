@@ -13,13 +13,12 @@ import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
 
 const MODES: { id: ViewMode; label: string; title: string }[] = [
-  { id: 'source', label: 'Source', title: 'Editor only' },
-  { id: 'split', label: 'Split', title: 'Editor and preview' },
-  { id: 'preview', label: 'Preview', title: 'Preview only (reading)' },
+  { id: 'split', label: 'Split', title: 'Editor and rendered view side by side' },
+  { id: 'preview', label: 'View', title: 'Rendered view only (reading)' },
 ];
 
 export function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [viewMode, setViewMode] = useState<ViewMode>('preview');
 
   return (
     <div className="app">
