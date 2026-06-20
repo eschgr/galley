@@ -201,7 +201,7 @@ test('a save that finds disk diverged prompts (write-path guard, R34)', async ({
   await expect(page.locator('.modal')).toContainText('w.md');
 });
 
-test('Keep editing makes the decision sticky — later changes are ignored (R34)', async ({ page }) => {
+test('Keep editing collapses the modal to a passive flag; later changes do not re-pop it (R36)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
   await openAndDirty(page, { path: 'C:\\docs\\s.md', content: 'orig\n', hash: 'h' }, ' MINE');
@@ -209,32 +209,64 @@ test('Keep editing makes the decision sticky — later changes are ignored (R34)
   await fire(page, 'extCb', { path: 'C:\\docs\\s.md', content: 'theirs one\n', hash: 'h2' });
   await page.getByRole('button', { name: /Keep editing/ }).click();
   await expect(overlay(page)).toBeHidden();
-  await expect(subtitle(page)).toContainText('keeping your version');
+  await expect(subtitle(page)).toContainText('out of sync');
+  await expect(page.locator('.sync-flag')).toBeVisible(); // passive flag remains
 
-  // A second external change must NOT prompt, and must not replace my version.
+  // A second external change must NOT re-pop the modal, and must not replace my version.
   await fire(page, 'extCb', { path: 'C:\\docs\\s.md', content: 'theirs two\n', hash: 'h3' });
   await page.waitForTimeout(150);
   await expect(overlay(page)).toBeHidden();
+  await expect(page.locator('.sync-flag')).toBeVisible();
   await expect(page.locator('.markdown-preview')).not.toContainText('theirs two');
 });
 
-test('a manual save ends the episode; a later change prompts again (R34)', async ({ page }) => {
+test('Ctrl+S while flagged keeps mine and clears the flag; a later change pops again (R36)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
   await openAndDirty(page, { path: 'C:\\docs\\e.md', content: 'orig\n', hash: 'h' }, ' MINE');
 
   await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs\n', hash: 'h2' });
   await page.getByRole('button', { name: /Keep editing/ }).click();
-  await expect(subtitle(page)).toContainText('keeping your version');
+  await expect(subtitle(page)).toContainText('out of sync');
 
-  await menuSave(page); // Ctrl+S ends the mine episode
-  await expect(subtitle(page)).not.toContainText('keeping your version');
+  await menuSave(page); // Ctrl+S while flagged = keep mine; clears the flag
+  await expect(page.locator('.sync-flag')).toBeHidden();
+  await expect(subtitle(page)).not.toContainText('out of sync');
 
-  // Editing again + a fresh external change prompts once more.
+  // Editing again + a fresh external change pops the notice once more.
   await page.locator('.cm-content').click();
   await page.keyboard.type(' MORE');
   await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs again\n', hash: 'h4' });
   await expect(overlay(page)).toBeVisible();
+});
+
+test('auto-save is suspended while out of sync (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.addInitScript(() => {
+    (window as unknown as { __galleyAutosaveMs: number }).__galleyAutosaveMs = 120;
+  });
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\p.md', content: 'orig\n', hash: 'h' });
+
+  await page.locator('.source-toggle').click();
+  await expect(page.locator('.pane-editor')).toBeVisible();
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' FIRST');
+  await expect(dirtyDot(page)).toBeHidden(); // first auto-save fired
+
+  // Go out of sync, then keep editing — auto-save must not write again.
+  await fire(page, 'extCb', { path: 'C:\\docs\\p.md', content: 'theirs\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep editing/ }).click();
+  const before = await page.evaluate(
+    () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls.length,
+  );
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' MORE WORK');
+  await page.waitForTimeout(300); // well past the 120ms debounce
+  const after = await page.evaluate(
+    () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls.length,
+  );
+  expect(after).toBe(before); // no auto-save while flagged
 });
 
 test('auto-save does not let an external change silently discard edits (R36)', async ({ page }) => {

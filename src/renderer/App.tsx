@@ -7,15 +7,19 @@
  * auto-save (R29); Ctrl/Cmd+S force-saves (R30). The open file is watched for
  * external changes (R32).
  *
- * Conflict reconciliation (R34/R35/R36) — "decide once, mine wins until save or
- * reload":
+ * Conflict handling (R34/R35/R36) — Galley is for turn-based work, not
+ * collaborative editing: the LLM writes the file and pauses, you read and tweak
+ * it, you tell the LLM, it re-reads. Divergence (the file changing on disk while
+ * you have unsaved edits) is the rare exception, so the app's only job is to say
+ * so clearly and stay out of the way:
  *  - clean buffer + external change → refresh silently;
- *  - dirty buffer + external change, or a save that finds disk diverged → prompt
- *    once (Keep my changes / Keep editing / Load from disk);
- *  - "Keep editing" starts a `mine` episode: further external changes are
- *    ignored and auto-save force-overwrites — no repeat prompts (R36). The
- *    episode ends on a deliberate Ctrl+S or a reload, after which a genuinely
- *    new change can prompt again.
+ *  - the first time disk diverges while you have edits (an external change, or a
+ *    save that finds disk moved) → a modal pops once, loud enough to catch, and
+ *    auto-save pauses so nothing is silently overwritten;
+ *  - dismissing the modal ("decide later") collapses it to a passive status-bar
+ *    flag (Reload / Keep mine) that does not re-pop on further external changes;
+ *  - Reload takes disk, Keep mine overwrites — either clears the flag and resumes
+ *    the normal flow. No locks, no sticky episodes.
  *
  * Tabs (R39+) are a later phase. Until a file is opened, the editor shows a
  * built-in welcome sample (not savable).
@@ -32,9 +36,6 @@ import type { OpenedFile } from '../shared/api';
 const AUTOSAVE_MS =
   Number((window as unknown as { __galleyAutosaveMs?: number }).__galleyAutosaveMs) || 5000;
 
-/** 'mine' = a conflict was resolved in favour of the editor for this episode. */
-type Decision = 'none' | 'mine';
-
 function basename(p: string): string {
   const parts = p.split(/[\\/]/);
   return parts[parts.length - 1] || p;
@@ -49,18 +50,19 @@ export function App() {
   const [path, setPath] = useState<string | null>(null);
   const [text, setText] = useState(welcome);
   const [dirty, setDirty] = useState(false);
+  // The on-disk version that diverged from our buffer (null = in sync). Drives
+  // the one-shot modal (until acknowledged) and the persistent status-bar flag.
   const [conflict, setConflict] = useState<OpenedFile | null>(null);
-  const [decision, setDecision] = useState<Decision>('none');
+  const [acknowledged, setAcknowledged] = useState(false);
 
   // Refs mirror state for the once-registered IPC handlers / the autosave timer.
   const pathRef = useRef<string | null>(null);
   const textRef = useRef(welcome);
   const savedTextRef = useRef(welcome);
   const conflictRef = useRef<OpenedFile | null>(null);
-  const decisionRef = useRef<Decision>('none');
   // True once the user has edited since the last reconcile (load/reload or a
   // deliberate save). Auto-save can momentarily clear `dirty`, but while this is
-  // set an external change still raises a conflict instead of silently
+  // set an external change still flags divergence instead of silently
   // refreshing — so an in-progress edit is never silently overwritten.
   const editedRef = useRef(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,10 +70,6 @@ export function App() {
   const setConflictState = (next: OpenedFile | null) => {
     conflictRef.current = next;
     setConflict(next);
-  };
-  const setDecisionState = (next: Decision) => {
-    decisionRef.current = next;
-    setDecision(next);
   };
 
   const clearAutosave = () => {
@@ -81,31 +79,35 @@ export function App() {
     }
   };
 
-  // Save the current buffer. `force` overwrites disk ("keep mine"); otherwise a
+  // Flag that disk diverged from our buffer. The first time (in sync → diverged)
+  // we leave it un-acknowledged so the modal pops; later disk changes only
+  // refresh the stashed version, keeping the flag passive (R36 no re-nag).
+  const flagDiverged = (disk: OpenedFile) => {
+    clearAutosave(); // R36: pause auto-save while out of sync
+    if (!conflictRef.current) setAcknowledged(false); // first divergence → noisy modal
+    setConflictState(disk); // always track the newest disk version
+  };
+
+  // Save the current buffer. `force` overwrites disk ("keep mine"); a normal
   // checked save can come back as a conflict if disk diverged (R34). `manual`
-  // (Ctrl+S) ends a `mine` episode.
+  // (Ctrl+S) records the reconcile so a clean buffer refreshes silently again.
   const save = async (opts?: { manual?: boolean; force?: boolean }) => {
-    if (conflictRef.current) return; // R36: not while a conflict prompt is open
+    const force = opts?.force ?? false;
+    if (conflictRef.current && !force) return; // out of sync: only a "keep mine" save writes
     const p = pathRef.current;
     if (!p) return; // welcome sample has nowhere to save (Save As is a later phase)
     const content = textRef.current;
-    const force = opts?.force ?? decisionRef.current === 'mine';
-    // A force/"keep mine" save always writes (disk may diverge while the buffer
-    // matches our last save); a normal save skips when there's nothing new.
-    if (!force && content === savedTextRef.current) return;
+    if (!force && content === savedTextRef.current) return; // nothing new
     clearAutosave();
     try {
       const outcome = await window.mdtool.saveFile(p, content, force);
       if (outcome.conflict) {
-        setConflictState(outcome.disk); // write-path divergence (R34) → prompt
+        flagDiverged(outcome.disk); // write-path divergence (R34)
         return;
       }
       savedTextRef.current = content;
       setDirty(false);
-      if (opts?.manual) {
-        editedRef.current = false; // a deliberate save reconciles with disk
-        if (decisionRef.current === 'mine') setDecisionState('none'); // Ctrl+S ends the episode
-      }
+      if (opts?.manual) editedRef.current = false; // a deliberate save reconciles with disk
     } catch (err) {
       console.error('[Galley] save failed', err);
     }
@@ -114,7 +116,7 @@ export function App() {
   const loadFile = (file: OpenedFile) => {
     clearAutosave();
     setConflictState(null);
-    setDecisionState('none'); // reconciled with disk
+    setAcknowledged(false);
     editedRef.current = false;
     pathRef.current = file.path;
     savedTextRef.current = file.content;
@@ -140,15 +142,14 @@ export function App() {
   // Conflict resolutions (R34/R35).
   const resolveKeepMine = () => {
     setConflictState(null);
-    setDecisionState('none'); // committing mine reconciles → episode ends
+    setAcknowledged(false);
     void save({ manual: true, force: true }); // overwrite the diverged disk
-  };
-  const resolveKeepEditing = () => {
-    setConflictState(null);
-    setDecisionState('mine'); // persist: ignore external changes, auto-save overwrites
   };
   const resolveLoadFromDisk = () => {
     if (conflictRef.current) loadFile(conflictRef.current); // take theirs
+  };
+  const resolveDecideLater = () => {
+    setAcknowledged(true); // collapse the modal to a passive flag; keep the warning
   };
 
   // Pull a command-line file (R7) and subscribe to opens / save / external change.
@@ -157,17 +158,15 @@ export function App() {
       if (file) loadFile(file);
     });
     const offOpen = window.mdtool?.onOpenFile((file) => loadFile(file));
-    const offSave = window.mdtool?.onMenuSave(() => void save({ manual: true }));
+    const offSave = window.mdtool?.onMenuSave(() => {
+      if (conflictRef.current) resolveKeepMine(); // Ctrl+S while out of sync = keep mine
+      else void save({ manual: true });
+    });
     const offExternal = window.mdtool?.onExternalChange((diskFile) => {
-      if (conflictRef.current) return; // a prompt is already open
-      if (decisionRef.current === 'mine') return; // mine wins this episode — ignore (R34)
-      if (!editedRef.current) {
-        loadFile(diskFile); // untouched since load → refresh silently (R35)
+      if (!conflictRef.current && !editedRef.current) {
+        loadFile(diskFile); // in sync & untouched → refresh silently (R35)
       } else {
-        // The user has work in progress (even if auto-save momentarily cleared
-        // `dirty`) — prompt rather than silently overwrite their edits.
-        clearAutosave(); // R36: suspend auto-save while prompting
-        setConflictState(diskFile);
+        flagDiverged(diskFile); // edits in progress, or already flagged → surface it
       }
     });
     return () => {
@@ -188,8 +187,8 @@ export function App() {
   const name = path ? basename(path) : 'welcome.md';
   const status = !path
     ? 'sample (unsaved)'
-    : decision === 'mine'
-      ? 'keeping your version'
+    : conflict
+      ? 'out of sync — disk changed'
       : dirty
         ? 'unsaved changes'
         : 'saved';
@@ -202,6 +201,18 @@ export function App() {
           {dirty && <span className="dirty-dot" aria-label="Unsaved changes">●</span>}
           {name} — {status}
         </span>
+        {conflict && (
+          <span className="sync-flag" role="status">
+            <span className="sync-flag-dot" aria-hidden="true">●</span>
+            out of sync
+            <button type="button" className="sync-flag-btn" onClick={resolveLoadFromDisk}>
+              Reload
+            </button>
+            <button type="button" className="sync-flag-btn" onClick={resolveKeepMine}>
+              Keep mine
+            </button>
+          </span>
+        )}
         <button
           type="button"
           className={`source-toggle${showingSource ? ' is-active' : ''}`}
@@ -219,12 +230,12 @@ export function App() {
         editorRef={editorRef}
         viewMode={viewMode}
       />
-      {conflict && (
+      {conflict && !acknowledged && (
         <ConflictDialog
           fileName={basename(conflict.path)}
           onKeepMine={resolveKeepMine}
           onLoadFromDisk={resolveLoadFromDisk}
-          onCancel={resolveKeepEditing}
+          onCancel={resolveDecideLater}
         />
       )}
     </div>
