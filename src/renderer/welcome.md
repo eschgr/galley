@@ -1,12 +1,11 @@
-# Welcome to Galley!
+# Welcome to Galley
 
-This is your **sandbox** — a friendly place to see how Galley renders Markdown
-and to play with the editor. Nothing here is a real file; poke at it all you
-like. When you open a document, this screen steps aside.
+A sandbox for trying the editor and seeing how Galley renders Markdown. Nothing
+here is saved — experiment freely. Opening a file replaces this screen.
 
 You're looking at the **rendered view**. Click **Show Source** (top-right) to
-bring up the Markdown **editor on the right**, side by side. Edit the source and
-this view updates as you type; scroll one pane and the other follows along.
+open the Markdown editor alongside it: edits update the view as you type, and
+scrolling one pane keeps the other aligned.
 
 ## Things to try
 
