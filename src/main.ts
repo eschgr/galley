@@ -1,11 +1,17 @@
 import { app, BrowserWindow, shell, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { buildAppMenu } from './main/menu';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
+
+// DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,
+// or `mdtool --devtools`) to open them on launch; otherwise use View → Toggle
+// Developer Tools (or F12 / Ctrl+Shift+I) in the menu.
+const OPEN_DEVTOOLS = process.argv.includes('--devtools');
 
 // R4: open a preview link in the system default browser. Renderer requests go
 // through here (via the preload bridge) so the renderer never navigates itself.
@@ -72,15 +78,19 @@ const createWindow = () => {
     );
   }
 
-  // Open the DevTools in development.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  // DevTools are opt-in (--devtools flag) — not auto-opened on a normal launch.
+  if (OPEN_DEVTOOLS) {
+    console.log('[mdtool] --devtools set: opening DevTools');
     mainWindow.webContents.openDevTools();
   }
 };
 
 // This method will be called when Electron has finished initialization and is
 // ready to create browser windows. Some APIs can only be used after this event.
-app.on('ready', createWindow);
+app.on('ready', () => {
+  buildAppMenu();
+  createWindow();
+});
 
 // PRD R46: closing the last tab keeps the app open. Quitting the whole app is a
 // separate, explicit action. The skeleton keeps the default platform behavior
