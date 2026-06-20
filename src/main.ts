@@ -66,6 +66,15 @@ function requestSave(): void {
   targetWindow()?.webContents.send('menu:save');
 }
 
+// View → Reload File (Ctrl/Cmd+R): re-read the open file from disk and hand it
+// to the renderer to load fresh (same path as opening it). Reloads only the
+// document — the renderer keeps its view layout. No-op when nothing is open.
+async function reloadCurrentFile(): Promise<void> {
+  const win = targetWindow();
+  if (!win || !watchedPath) return;
+  await openPath(win, watchedPath);
+}
+
 // Save path (R29/R30/R34): the renderer sends content. A `force` write
 // overwrites unconditionally ("keep mine"); otherwise it is a checked save that
 // refuses to write if disk diverged since we last knew (the write-path guard),
@@ -232,7 +241,11 @@ const createWindow = () => {
 // This method will be called when Electron has finished initialization and is
 // ready to create browser windows. Some APIs can only be used after this event.
 app.on('ready', () => {
-  buildAppMenu({ openFile: openFileViaDialog, saveFile: requestSave });
+  buildAppMenu({
+    openFile: openFileViaDialog,
+    saveFile: requestSave,
+    reloadFile: reloadCurrentFile,
+  });
   createWindow();
 });
 

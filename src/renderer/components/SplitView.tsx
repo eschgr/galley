@@ -32,12 +32,14 @@ interface SplitViewProps {
   /** Editor handle, owned by App so it can load files / drive the editor. */
   editorRef: RefObject<EditorHandle>;
   viewMode: ViewMode;
+  /** Cmd/Ctrl+K in the editor — host opens the link dialog (R27). */
+  onLink?: () => void;
 }
 
 const MIN_PCT = 20;
 const MAX_PCT = 80;
 
-export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode }: SplitViewProps) {
+export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode, onLink }: SplitViewProps) {
   const previewRef = useRef<PreviewHandle>(null);
   const active = useRef<'editor' | 'preview' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -142,6 +144,7 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
           initialDoc={initialDoc}
           onChange={onSourceChange}
           onScroll={onEditorScroll}
+          onLink={onLink}
         />
       </div>
     </div>

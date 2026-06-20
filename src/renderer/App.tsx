@@ -29,7 +29,8 @@ import { useEffect, useRef, useState } from 'react';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
 import { ConflictDialog } from './components/ConflictDialog';
-import type { EditorHandle } from './components/Editor';
+import { LinkDialog } from './components/LinkDialog';
+import type { EditorHandle, LinkContext } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 
 // R29: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
@@ -54,6 +55,7 @@ export function App() {
   // the loud modal (first divergence) and the passive flag (recurrences).
   const [conflict, setConflict] = useState<OpenedFile | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
 
   // Refs mirror state for the once-registered IPC handlers / the autosave timer.
   const pathRef = useRef<string | null>(null);
@@ -189,6 +191,13 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Cmd/Ctrl+K (R27): snapshot the link context at the cursor, then open the
+  // dialog. Resolving applies/removes via the editor handle's stashed range.
+  const openLinkDialog = () => {
+    const ctx = editorRef.current?.requestLink();
+    if (ctx) setLinkCtx(ctx);
+  };
+
   const toggleSource = () => {
     const next: ViewMode = showingSource ? 'preview' : 'split';
     setViewMode(next);
@@ -240,12 +249,27 @@ export function App() {
         onSourceChange={onSourceChange}
         editorRef={editorRef}
         viewMode={viewMode}
+        onLink={openLinkDialog}
       />
       {conflict && showModal && (
         <ConflictDialog
           fileName={basename(conflict.path)}
           onKeepMine={resolveKeepMine}
           onLoadFromDisk={resolveLoadFromDisk}
+        />
+      )}
+      {linkCtx && (
+        <LinkDialog
+          initial={linkCtx}
+          onConfirm={(t, u) => {
+            editorRef.current?.applyLink(t, u);
+            setLinkCtx(null);
+          }}
+          onRemove={() => {
+            editorRef.current?.removeLink();
+            setLinkCtx(null);
+          }}
+          onCancel={() => setLinkCtx(null)}
         />
       )}
     </div>

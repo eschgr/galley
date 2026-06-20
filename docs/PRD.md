@@ -148,6 +148,8 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
 
 - **R28. Indentation setting.** The editor indents with **spaces**, default width **2**. (Applies to R26 list nesting and general `Tab` indentation.)
 
+> Status (2026-06-20): R23–R28 implemented. The wrap/heading/fence rules live in the pure, unit-tested `src/renderer/components/editorCommands.ts`; the keymap is registered at **highest precedence** so it wins over CodeMirror defaults (no clash found on `Cmd/Ctrl+E` or `K`). The link dialog reads/writes through the editor handle, using the Lezer syntax tree to detect an existing link at the cursor. Clipboard-URL prefill (R27 nice-to-have) remains future.
+
 > Implementation note: CodeMirror 6 exposes keybindings via its keymap system, and wrap/toggle logic operates on selection ranges; existing markdown-command helpers cover much of R24–R25. The link dialog (R27) is a small renderer-side popover reading/writing the editor selection; detecting "cursor within a link" uses the markdown syntax tree (Lezer) CodeMirror already maintains.
 
 ### 5.5 Saving
@@ -155,6 +157,7 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
 - **R29.** **Auto-save**, debounced: save **5 seconds after the last keystroke**.
 - **R30.** **Force-save** via `Ctrl/Cmd+S`, which saves immediately and bypasses the debounce. *(Auto-save makes this usually a no-op; it is retained intentionally as an explicit, reassuring user action.)*
 - **R31.** Accepted tradeoff: an in-flight crash may lose up to ~5 seconds of un-debounced edits. This is acceptable for this tool.
+- **R31a. Manual reload (`Ctrl/Cmd+R`).** View → Reload File re-reads the open file from disk and loads it fresh, **keeping the current view layout** (split/preview mode, window size, etc.). It reloads only the *document*, never the app. *(Decided 2026-06-20: the webContents reload / force-reload menu roles are removed and renderer HMR is disabled, so code changes are picked up only by restarting the app — keeping "the file changed" and "the software changed" unambiguously distinct.)*
 
 ### 5.6 Auto-refresh & conflict handling
 
@@ -338,6 +341,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Preview link clicks | Open in system default browser, never in-app (R4) |
 | Rendering spike | **Done.** Validated GFM + math + highlighting on representative Claude output before building UI; settled the math engine (R5/R6) |
 | Save model | Auto-save, 5s debounce; force-save retained as reassurance |
+| Reload model | `Ctrl/Cmd+R` re-reads the open file from disk, keeps the view layout; reloads the document only, not the app (R31a). HMR off + reload roles removed so code changes need a restart |
 | Conflict — write path | Save checks disk vs. baseline; if diverged, raise the out-of-sync notice, no silent overwrite (R34) |
 | Conflict — read path | Reload silent if buffer in sync; else raise the out-of-sync notice (R35) |
 | Conflict — notice | Two choices (Load from disk / Keep mine); loud modal on the first divergence per run, then a passive status-bar flag; auto-save suspended until resolved (R36) |
