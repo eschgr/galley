@@ -1,0 +1,120 @@
+/* Shared rendered-markdown styling for the preview pane (PRD R1–R3).
+   Imported by the app Preview component and the spike harness so both show
+   identical output. GitHub-like. Scoped to .markdown-preview. */
+
+.markdown-preview {
+  line-height: 1.6;
+  font-size: 15px;
+  word-wrap: break-word;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  line-height: 1.25;
+  margin: 24px 0 12px;
+  font-weight: 600;
+}
+.markdown-preview h1 {
+  font-size: 1.7em;
+  border-bottom: 1px solid var(--md-border, #d8dee4);
+  padding-bottom: 0.3em;
+}
+.markdown-preview h2 {
+  font-size: 1.35em;
+  border-bottom: 1px solid var(--md-border-light, #eaeef2);
+  padding-bottom: 0.3em;
+}
+.markdown-preview h3 {
+  font-size: 1.1em;
+}
+.markdown-preview > :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview p,
+.markdown-preview ul,
+.markdown-preview ol,
+.markdown-preview blockquote,
+.markdown-preview table,
+.markdown-preview pre {
+  margin: 0 0 16px;
+}
+
+.markdown-preview a {
+  color: var(--md-link, #0969da);
+  text-decoration: none;
+}
+.markdown-preview a:hover {
+  text-decoration: underline;
+}
+
+.markdown-preview blockquote {
+  padding: 0 1em;
+  color: var(--md-muted, #57606a);
+  border-left: 0.25em solid var(--md-border, #d0d7de);
+}
+
+.markdown-preview table {
+  border-collapse: collapse;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+}
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid var(--md-border, #d0d7de);
+  padding: 6px 13px;
+}
+.markdown-preview tr:nth-child(2n) {
+  background: var(--md-zebra, #f6f8fa);
+}
+
+.markdown-preview code {
+  background: var(--md-code-bg, rgba(175, 184, 193, 0.2));
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  font-size: 85%;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+.markdown-preview pre.hljs,
+.markdown-preview pre {
+  background: var(--md-pre-bg, #f6f8fa);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow: auto;
+}
+.markdown-preview pre code {
+  background: none;
+  padding: 0;
+  font-size: 90%;
+}
+
+.markdown-preview hr {
+  border: 0;
+  border-top: 1px solid var(--md-border, #d0d7de);
+  margin: 24px 0;
+}
+
+.markdown-preview .task-list-item {
+  list-style: none;
+}
+.markdown-preview .task-list-item input {
+  margin: 0 0.5em 0.25em -1.4em;
+  vertical-align: middle;
+}
+.markdown-preview ul.contains-task-list {
+  padding-left: 1.4em;
+}
+
+.markdown-preview .md-render-error {
+  border: 1px solid #d11;
+  background: #fff0f0;
+  color: #861d1d;
+  padding: 8px 12px;
+  border-radius: 6px;
+}

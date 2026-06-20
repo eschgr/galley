@@ -13,6 +13,17 @@ export interface MdtoolApi {
   readonly platform: NodeJS.Platform;
   /** App version, for the Help window (PRD R48). */
   readonly version: string;
+  /**
+   * Open a URL in the system default browser (PRD R4). Only http/https/mailto
+   * are honored by the main process; other schemes are silently ignored.
+   */
+  openExternal(url: string): Promise<void>;
+  /**
+   * Tell the main process whether the source pane is now visible, so it can
+   * widen the window for side-by-side editing or shrink it back for reading
+   * (PRD R45). A no-op effect when the window is maximized/fullscreen.
+   */
+  setSourceVisible(visible: boolean): Promise<void>;
 }
 
 declare global {

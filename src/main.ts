@@ -1,16 +1,73 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, screen } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { buildAppMenu } from './main/menu';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
 
+// DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,
+// or `mdtool --devtools`) to open them on launch; otherwise use View → Toggle
+// Developer Tools (or F12 / Ctrl+Shift+I) in the menu.
+const OPEN_DEVTOOLS = process.argv.includes('--devtools');
+
+// R4: open a preview link in the system default browser. Renderer requests go
+// through here (via the preload bridge) so the renderer never navigates itself.
+// Only web/mail schemes are honored; anything else (file:, javascript:, …) is
+// refused, so a crafted href cannot launch an arbitrary handler.
+ipcMain.handle('shell:openExternal', (_event, url: unknown) => {
+  if (typeof url !== 'string') return;
+  let scheme: string;
+  try {
+    scheme = new URL(url).protocol;
+  } catch {
+    return;
+  }
+  if (scheme === 'http:' || scheme === 'https:' || scheme === 'mailto:') {
+    void shell.openExternal(url);
+  }
+});
+
+// Auto-resize on the Show/Hide Source toggle (R45): showing the source roughly
+// doubles the window width to make room for the side-by-side editor; hiding it
+// restores the earlier (reading) width. The reading width is remembered per
+// window so a user's manual resize is respected. Width is clamped to the display
+// work area and the window is nudged to stay fully on-screen; height is kept.
+const readingWidth = new Map<number, number>();
+
+ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isFullScreen() || win.isMaximized()) return;
+  const [w, h] = win.getSize();
+  const area = screen.getDisplayMatching(win.getBounds()).workArea;
+
+  let target: number;
+  if (visible === true) {
+    readingWidth.set(win.id, w);
+    target = Math.min(w * 2, area.width);
+  } else {
+    target = readingWidth.get(win.id) ?? Math.round(w / 2);
+  }
+  target = Math.round(Math.max(480, Math.min(target, area.width)));
+
+  const [x, y] = win.getPosition();
+  let nx = x;
+  if (nx + target > area.x + area.width) nx = area.x + area.width - target;
+  if (nx < area.x) nx = area.x;
+  win.setBounds({ x: Math.round(nx), y, width: target, height: h });
+});
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    // Portrait-ish by default — most documents read better tall than wide.
+    // Resizable, so widening for side-by-side editing is one drag away.
+    width: 1000,
+    height: 1250,
+    minWidth: 480,
+    minHeight: 480,
+    center: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       // Security hardening (PRD §7 architecture notes):
@@ -55,15 +112,19 @@ const createWindow = () => {
     );
   }
 
-  // Open the DevTools in development.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  // DevTools are opt-in (--devtools flag) — not auto-opened on a normal launch.
+  if (OPEN_DEVTOOLS) {
+    console.log('[mdtool] --devtools set: opening DevTools');
     mainWindow.webContents.openDevTools();
   }
 };
 
 // This method will be called when Electron has finished initialization and is
 // ready to create browser windows. Some APIs can only be used after this event.
-app.on('ready', createWindow);
+app.on('ready', () => {
+  buildAppMenu();
+  createWindow();
+});
 
 // PRD R46: closing the last tab keeps the app open. Quitting the whole app is a
 // separate, explicit action. The skeleton keeps the default platform behavior
