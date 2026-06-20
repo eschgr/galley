@@ -10,6 +10,9 @@
     "start:devtools": "electron-forge start -- --devtools",
     "spike": "vite --config vite.spike.config.ts",
     "devapp": "vite --config vite.devapp.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
@@ -31,6 +34,7 @@
     "@electron-forge/plugin-fuses": "^7.11.2",
     "@electron-forge/plugin-vite": "^7.11.2",
     "@electron/fuses": "^1.8.0",
+    "@playwright/test": "^1.61.0",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^18.3.12",
@@ -42,7 +46,8 @@
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
     "typescript": "^5.4.5",
-    "vite": "^5.4.21"
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "@codemirror/commands": "^6.7.1",
