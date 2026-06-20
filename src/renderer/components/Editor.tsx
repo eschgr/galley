@@ -36,6 +36,8 @@ export interface EditorHandle {
   getTopLine(): number;
   /** Scroll so a 0-based fractional source line sits at the viewport top. */
   scrollToLine(line: number): void;
+  /** Re-measure layout — call after the editor is re-shown from display:none. */
+  refresh(): void;
 }
 
 interface EditorProps {
@@ -94,6 +96,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     scrollToLine: (line) => {
       if (viewRef.current) scrollToLine(viewRef.current, line);
     },
+    refresh: () => viewRef.current?.requestMeasure(),
   }));
 
   useEffect(() => {

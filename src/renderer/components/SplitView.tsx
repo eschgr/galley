@@ -2,23 +2,32 @@
  * Split view (PRD R45): source editor and live preview side by side with a
  * draggable divider, and synchronized scrolling (R18).
  *
+ * Supports three view modes — 'source', 'split', 'preview' — so either pane can
+ * take the whole window (reading mode hides the editor). Both panes stay mounted
+ * across mode switches (hidden with display:none, not unmounted) so edits, undo
+ * history, and scroll position survive; the editor is re-measured when it
+ * becomes visible again.
+ *
  * Scroll sync uses an "active pane" lead: only the pane the user is interacting
  * with (hover / focus) drives the other. This avoids the feedback loop a naive
  * two-way sync would create (programmatic scroll of B firing B's scroll handler
  * and echoing back), without timing hacks.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
 
+export type ViewMode = 'source' | 'split' | 'preview';
+
 interface SplitViewProps {
   initialDoc: string;
+  viewMode: ViewMode;
 }
 
 const MIN_PCT = 20;
 const MAX_PCT = 80;
 
-export function SplitView({ initialDoc }: SplitViewProps) {
+export function SplitView({ initialDoc, viewMode }: SplitViewProps) {
   const editorRef = useRef<EditorHandle>(null);
   const previewRef = useRef<PreviewHandle>(null);
   const active = useRef<'editor' | 'preview' | null>(null);
@@ -28,12 +37,21 @@ export function SplitView({ initialDoc }: SplitViewProps) {
   const [source, setSource] = useState(initialDoc);
   const [leftPct, setLeftPct] = useState(50);
 
+  const showEditor = viewMode !== 'preview';
+  const showPreview = viewMode !== 'source';
+  const showDivider = viewMode === 'split';
+
+  // Re-measure the editor when it returns to view (display:none hides resize).
+  useEffect(() => {
+    if (showEditor) editorRef.current?.refresh();
+  }, [showEditor]);
+
   const onEditorScroll = () => {
-    if (active.current !== 'editor') return;
+    if (viewMode !== 'split' || active.current !== 'editor') return;
     previewRef.current?.scrollToLine(editorRef.current?.getTopLine() ?? 0);
   };
   const onPreviewScroll = () => {
-    if (active.current !== 'preview') return;
+    if (viewMode !== 'split' || active.current !== 'preview') return;
     editorRef.current?.scrollToLine(previewRef.current?.getTopLine() ?? 0);
   };
 
@@ -56,7 +74,10 @@ export function SplitView({ initialDoc }: SplitViewProps) {
     <div className="split-view" ref={containerRef}>
       <div
         className="pane pane-editor"
-        style={{ width: `${leftPct}%` }}
+        style={{
+          display: showEditor ? 'block' : 'none',
+          width: viewMode === 'split' ? `${leftPct}%` : '100%',
+        }}
         onMouseEnter={() => (active.current = 'editor')}
         onFocusCapture={() => (active.current = 'editor')}
       >
@@ -71,12 +92,14 @@ export function SplitView({ initialDoc }: SplitViewProps) {
         className="split-divider"
         role="separator"
         aria-orientation="vertical"
+        style={{ display: showDivider ? 'block' : 'none' }}
         onPointerDown={onDividerDown}
         onPointerMove={onDividerMove}
         onPointerUp={onDividerUp}
       />
       <div
         className="pane pane-preview"
+        style={{ display: showPreview ? 'block' : 'none' }}
         onMouseEnter={() => (active.current = 'preview')}
       >
         <Preview ref={previewRef} source={source} onScroll={onPreviewScroll} />
