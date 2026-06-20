@@ -11,9 +11,10 @@
  * well-defined keeps that migration cheap; everything above it — React,
  * CodeMirror, markdown-it/KaTeX, scroll-sync, tabs — ports as-is.
  *
- * This file defines the contract only. The Node implementation and its wiring
- * into main.ts land in later steps; nothing here is built out in the skeleton.
+ * This file defines the contract; the Node file-IO implementation lives in
+ * ./fileIo (the watcher and channel listener are still deferred).
  */
+import * as fileIo from './fileIo';
 
 /** A file's content plus the baseline hash captured at read/write time (PRD §5.6). */
 export interface FileSnapshot {
@@ -32,8 +33,11 @@ export interface ExternalChangeEvent {
 
 export interface PlatformBridge {
   // --- CLI (R7) -----------------------------------------------------------
-  /** Absolute file path passed on the command line at launch, if any. */
-  parseCliFileArg(argv: string[]): string | null;
+  /**
+   * Absolute file path passed on the command line at launch, if any.
+   * `packaged` distinguishes `mdtool.exe <file>` from a dev `electron . <file>`.
+   */
+  parseCliFileArg(argv: readonly string[], packaged: boolean): string | null;
 
   // --- File IO + hashing (R33–R35) ---------------------------------------
   readFile(absPath: string): Promise<FileSnapshot>;
@@ -59,12 +63,27 @@ export interface PlatformBridge {
 }
 
 /**
- * Placeholder factory. Returns the concrete Node-backed bridge once it is
- * implemented; throws until then so accidental early use fails loudly rather
- * than silently no-op'ing.
+ * The Node-backed bridge. File IO + CLI parsing are implemented (this phase);
+ * the watcher (R32–R38) and the per-project channel listener (R11–R15) are
+ * deferred to later phases and throw if called early, so accidental use fails
+ * loudly rather than silently no-op'ing.
  */
 export function createPlatformBridge(): PlatformBridge {
-  throw new Error(
-    'PlatformBridge not implemented yet — wired up in a later build step (see PRD §5.2/§5.3/§5.6).',
-  );
+  return {
+    parseCliFileArg: fileIo.parseCliFileArg,
+    readFile: fileIo.readFile,
+    writeFile: fileIo.writeFile,
+    watch() {
+      throw new Error('watch() not implemented yet (deferred phase — PRD §5.6).');
+    },
+    unwatch() {
+      throw new Error('unwatch() not implemented yet (deferred phase — PRD §5.6).');
+    },
+    listenOnChannel() {
+      throw new Error('listenOnChannel() not implemented yet (deferred phase — PRD §5.3).');
+    },
+    closeChannel() {
+      throw new Error('closeChannel() not implemented yet (deferred phase — PRD §5.3).');
+    },
+  };
 }
