@@ -310,35 +310,25 @@ export function App() {
   const conflict = activeTab?.conflict ?? null;
   const showModal = activeTab?.showModal ?? false;
 
-  const status = !activeTab
-    ? 'Welcome!'
-    : conflict
-      ? 'out of sync — disk changed'
-      : activeTab.dirty
-        ? 'unsaved changes'
-        : 'saved';
+  // The OS window title carries the active file name (the in-app title line was
+  // removed in favour of the single toolbar row).
+  const activePath = activeTab?.path;
+  useEffect(() => {
+    document.title = activePath ? `${basename(activePath)} — Galley` : 'Galley';
+  }, [activePath]);
 
   return (
     <div className="app">
-      <header className="app-titlebar">
-        <span className="app-title">Galley</span>
-        <span className="app-subtitle" title={activeTab?.path}>
-          {activeTab && activeTab.dirty && (
-            <span className="dirty-dot" aria-label="Unsaved changes">●</span>
-          )}
-          {status}
-        </span>
-        {conflict && !showModal && (
-          <span className="sync-flag" role="status">
-            <span className="sync-flag-dot" aria-hidden="true">●</span>
-            out of sync
-            <button type="button" className="sync-flag-btn" onClick={resolveLoadFromDisk}>
-              Reload
-            </button>
-            <button type="button" className="sync-flag-btn" onClick={resolveKeepMine}>
-              Keep mine
-            </button>
-          </span>
+      {/* One toolbar row: tabs on the left, the source toggle on the right. */}
+      <header className="toolbar">
+        {tabs.length > 0 && (
+          <TabStrip
+            tabs={tabs}
+            activeId={activeId}
+            onSelect={switchTo}
+            onClose={requestClose}
+            nameOf={(t) => basename(t.path)}
+          />
         )}
         <button
           type="button"
@@ -350,14 +340,20 @@ export function App() {
           {showingSource ? 'Hide Source' : 'Show Source'}
         </button>
       </header>
-      {tabs.length > 0 && (
-        <TabStrip
-          tabs={tabs}
-          activeId={activeId}
-          onSelect={switchTo}
-          onClose={requestClose}
-          nameOf={(t) => basename(t.path)}
-        />
+      {/* Out-of-sync notice sits just below the tab bar (R36, passive flag). */}
+      {conflict && !showModal && (
+        <div className="sync-flag" role="status">
+          <span className="sync-flag-dot" aria-hidden="true">●</span>
+          <span className="sync-flag-text">
+            <strong>{basename(conflict.path)}</strong> is out of sync — disk changed
+          </span>
+          <button type="button" className="sync-flag-btn" onClick={resolveLoadFromDisk}>
+            Reload
+          </button>
+          <button type="button" className="sync-flag-btn" onClick={resolveKeepMine}>
+            Keep mine
+          </button>
+        </div>
       )}
       <SplitView
         initialDoc={welcome}

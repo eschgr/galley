@@ -10,34 +10,23 @@
   color: #1f2328;
 }
 
-.app-titlebar {
+/* Single toolbar row: tabs on the left, source toggle on the right. */
+.toolbar {
   flex: 0 0 auto;
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 8px 14px;
+  align-items: stretch;
+  gap: 8px;
+  padding: 4px 10px 0;
   border-bottom: 1px solid #d0d7de;
   background: #f6f8fa;
   user-select: none;
 }
-.app-title {
-  font-weight: 600;
-  font-size: 13px;
-}
-.app-subtitle {
-  font-size: 12px;
-  color: #57606a;
-}
-.app-subtitle .dirty-dot {
-  color: #bf8700;
-  margin-right: 5px;
-  font-size: 11px;
-  vertical-align: middle;
-}
 
-/* Show/Hide Source toggle, pinned to the right of the titlebar */
+/* Show/Hide Source toggle, pinned to the right of the toolbar */
 .source-toggle {
   margin-left: auto;
+  align-self: center;
+  flex: 0 0 auto;
   appearance: none;
   border: 1px solid #d0d7de;
   border-radius: 6px;
@@ -56,17 +45,14 @@
   border-color: #0969da;
 }
 
-/* Tab strip (R39/R40) */
+/* Tab strip (R39/R40) — lives inside the toolbar, fills it so the toggle is right. */
 .tab-strip {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   display: flex;
   align-items: stretch;
   gap: 2px;
-  padding: 4px 8px 0;
-  background: #f6f8fa;
-  border-bottom: 1px solid #d0d7de;
+  min-width: 0;
   overflow-x: auto;
-  user-select: none;
 }
 .tab {
   display: flex;
@@ -173,16 +159,20 @@
 
 /* Passive out-of-sync flag in the titlebar — what the one-shot modal (R34/R35)
    collapses to once acknowledged. Stays put, never re-pops. */
+/* Out-of-sync banner, full width just below the tab bar (R36). */
 .sync-flag {
-  display: inline-flex;
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
   color: #9a6700;
   background: #fff8c5;
-  border: 1px solid #eac54f;
-  border-radius: 6px;
-  padding: 2px 6px 2px 8px;
+  border-bottom: 1px solid #eac54f;
+  padding: 6px 12px;
+}
+.sync-flag-text {
+  margin-right: auto;
 }
 .sync-flag-dot {
   color: #bf8700;

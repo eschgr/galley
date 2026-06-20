@@ -74,10 +74,12 @@ async function fire(page: Page, cb: 'openCb' | 'extCb', file: MockFile): Promise
   );
 }
 
-const subtitle = (page: Page) => page.locator('.app-subtitle');
-const dirtyDot = (page: Page) => page.locator('.app-subtitle .dirty-dot');
+// The unsaved-changes dot now lives on the active tab; out-of-sync is a banner.
+const dirtyDot = (page: Page) => page.locator('.tab.is-active .tab-dot');
+const syncFlag = (page: Page) => page.locator('.sync-flag');
 const tabNames = (page: Page) => page.locator('.tab-name');
 const activeTabName = (page: Page) => page.locator('.tab.is-active .tab-name');
+const noTabs = (page: Page) => page.locator('.tab-strip');
 
 test('loads a command-line file on startup, in a tab (R7/R39)', async ({ page }) => {
   await installMockBridge(page, {
@@ -93,9 +95,9 @@ test('loads a command-line file on startup, in a tab (R7/R39)', async ({ page })
 test('the welcome screen shows until a file is opened in a tab (R8/R46)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
-  // No file open → welcome screen, no tab strip.
-  await expect(subtitle(page)).toHaveText('Welcome!');
-  await expect(page.locator('.tab-strip')).toBeHidden();
+  // No file open → welcome sandbox, no tab strip.
+  await expect(noTabs(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('Welcome to Galley');
 
   await page.evaluate(() =>
     (window as unknown as { __mock: { openCb: (f: MockFile) => void } }).__mock.openCb({
@@ -105,7 +107,6 @@ test('the welcome screen shows until a file is opened in a tab (R8/R46)', async 
     }),
   );
   await expect(activeTabName(page)).toHaveText('report.md');
-  await expect(subtitle(page)).not.toContainText('Welcome!');
   await expect(page.locator('.markdown-preview')).toContainText('Fresh open');
   await expect(dirtyDot(page)).toBeHidden();
 });
@@ -273,7 +274,6 @@ test('Ctrl+S while flagged keeps mine; Load from disk re-arms the loud modal (R3
   await expect(page.locator('.sync-flag')).toBeVisible();
   await menuSave(page);
   await expect(page.locator('.sync-flag')).toBeHidden();
-  await expect(subtitle(page)).not.toContainText('out of sync');
 
   // Another recurrence → passive flag; Reload takes theirs and fully reconciles.
   await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs three\n', hash: 'h4' });
@@ -400,8 +400,7 @@ test('closing the last tab returns to the welcome screen (R46)', async ({ page }
   await page.goto('/');
   await fire(page, 'openCb', { path: 'C:\\docs\\only.md', content: '# Only\n', hash: 'h' });
   await page.locator('.tab.is-active .tab-close').click();
-  await expect(page.locator('.tab-strip')).toBeHidden();
-  await expect(subtitle(page)).toHaveText('Welcome!');
+  await expect(noTabs(page)).toBeHidden();
   await expect(page.locator('.markdown-preview')).toContainText('Welcome to Galley');
 });
 
