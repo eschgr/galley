@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
-import { createPlatformBridge } from './main/platform';
+import { createPlatformBridge, type SaveResult } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -66,19 +66,29 @@ function requestSave(): void {
   targetWindow()?.webContents.send('menu:save');
 }
 
-// Save path (R29/R30): the renderer sends content; main writes it and returns
-// the new snapshot (its hash becomes the renderer's new baseline).
-ipcMain.handle('file:write', (_event, args: unknown) => {
+// Save path (R29/R30/R34): the renderer sends content. A `force` write
+// overwrites unconditionally ("keep mine"); otherwise it is a checked save that
+// refuses to write if disk diverged since we last knew (the write-path guard),
+// returning the on-disk snapshot so the renderer can prompt.
+ipcMain.handle('file:write', async (_event, args: unknown): Promise<SaveResult> => {
   if (
     !args ||
     typeof args !== 'object' ||
     typeof (args as { path?: unknown }).path !== 'string' ||
     typeof (args as { content?: unknown }).content !== 'string'
   ) {
-    throw new Error('file:write requires { path: string, content: string }');
+    throw new Error('file:write requires { path: string, content: string, force?: boolean }');
   }
-  const { path: absPath, content } = args as { path: string; content: string };
-  return platform.writeFile(absPath, content);
+  const { path: absPath, content, force } = args as {
+    path: string;
+    content: string;
+    force?: boolean;
+  };
+  if (force === true) {
+    const file = await platform.writeFile(absPath, content);
+    return { conflict: false, file };
+  }
+  return platform.saveChecked(absPath, content);
 });
 
 // R7: the renderer pulls the command-line file (if any) once on mount.

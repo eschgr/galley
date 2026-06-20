@@ -14,8 +14,10 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       openCb: ((f: MockFile) => void) | null;
       saveCb: (() => void) | null;
       extCb: ((f: MockFile) => void) | null;
-      saveCalls: { path: string; content: string }[];
-    } = { openCb: null, saveCb: null, extCb: null, saveCalls: [] };
+      saveCalls: { path: string; content: string; force: boolean }[];
+      // When set, the next non-force save returns this as a write-path conflict.
+      nextSaveConflict: MockFile | null;
+    } = { openCb: null, saveCb: null, extCb: null, saveCalls: [], nextSaveConflict: null };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { mdtool: unknown }).mdtool = {
       platform: 'win32',
@@ -23,9 +25,14 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       openExternal: async () => {},
       setSourceVisible: async () => {},
       getStartupFile: async () => startupFile,
-      saveFile: async (path: string, content: string) => {
-        harness.saveCalls.push({ path, content });
-        return { path, content, hash: 'mock-hash' };
+      saveFile: async (path: string, content: string, force?: boolean) => {
+        harness.saveCalls.push({ path, content, force: !!force });
+        if (!force && harness.nextSaveConflict) {
+          const disk = harness.nextSaveConflict;
+          harness.nextSaveConflict = null;
+          return { conflict: true, disk };
+        }
+        return { conflict: false, file: { path, content, hash: 'mock-hash' } };
       },
       onOpenFile: (cb: (f: MockFile) => void) => {
         harness.openCb = cb;
@@ -154,7 +161,7 @@ test('external change with unsaved edits prompts; Load from disk discards them (
   await expect(dirtyDot(page)).toBeHidden();
 });
 
-test('conflict → Keep my changes overwrites the disk version (R35)', async ({ page }) => {
+test('conflict → Keep mine overwrites the disk version (R35)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
   await openAndDirty(page, { path: 'C:\\docs\\c.md', content: 'original\n', hash: 'h' }, ' MINE');
@@ -162,7 +169,7 @@ test('conflict → Keep my changes overwrites the disk version (R35)', async ({ 
   await fire(page, 'extCb', { path: 'C:\\docs\\c.md', content: 'theirs\n', hash: 'h2' });
   await expect(overlay(page)).toBeVisible();
 
-  await page.getByRole('button', { name: /Keep my changes/ }).click();
+  await page.getByRole('button', { name: /Keep mine/ }).click();
   await expect(overlay(page)).toBeHidden();
   await expect(dirtyDot(page)).toBeHidden();
 
@@ -171,4 +178,148 @@ test('conflict → Keep my changes overwrites the disk version (R35)', async ({ 
   );
   expect(calls[calls.length - 1].path).toBe('C:\\docs\\c.md');
   expect(calls[calls.length - 1].content).toContain('MINE');
+});
+
+test('after Keep mine, a further external change re-raises quietly — never a silent load (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\k.md', content: 'orig\n', hash: 'h' }, ' MINE');
+
+  await fire(page, 'extCb', { path: 'C:\\docs\\k.md', content: 'theirs\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep mine/ }).click();
+  await expect(overlay(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('MINE');
+
+  // The writer didn't stop: another external change lands. My version must not
+  // be silently replaced — but having already seen the loud modal, the notice
+  // recurs as the passive flag, not a second modal.
+  await fire(page, 'extCb', { path: 'C:\\docs\\k.md', content: 'theirs again\n', hash: 'h3' });
+  await expect(page.locator('.sync-flag')).toBeVisible();
+  await expect(overlay(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).not.toContainText('theirs again');
+  await expect(page.locator('.markdown-preview')).toContainText('MINE');
+});
+
+const menuSave = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __mock: { saveCb: () => void } }).__mock.saveCb());
+
+test('a save that finds disk diverged prompts (write-path guard, R34)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\w.md', content: 'orig\n', hash: 'h' }, ' EDIT');
+
+  // Arm a write-path conflict for the next checked (non-force) save, then save.
+  await page.evaluate(() => {
+    (window as unknown as { __mock: { nextSaveConflict: MockFile } }).__mock.nextSaveConflict = {
+      path: 'C:\\docs\\w.md',
+      content: 'changed underneath\n',
+      hash: 'h2',
+    };
+  });
+  await menuSave(page);
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.modal')).toContainText('w.md');
+});
+
+test('the loud modal pops only once; repeated divergence stays on the passive flag (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\s.md', content: 'orig\n', hash: 'h' }, ' MINE');
+
+  await fire(page, 'extCb', { path: 'C:\\docs\\s.md', content: 'theirs one\n', hash: 'h2' });
+  await expect(overlay(page)).toBeVisible();
+  await page.getByRole('button', { name: /Keep mine/ }).click(); // resolve once
+  await expect(overlay(page)).toBeHidden();
+
+  // The writer keeps going. Each further change recurs as the passive flag —
+  // never another modal — and never silently replaces my version.
+  for (const v of ['theirs two', 'theirs three', 'theirs four']) {
+    await fire(page, 'extCb', { path: 'C:\\docs\\s.md', content: `${v}\n`, hash: v });
+    await expect(page.locator('.sync-flag')).toBeVisible();
+    await expect(overlay(page)).toBeHidden();
+    await expect(page.locator('.markdown-preview')).not.toContainText(v);
+  }
+  await expect(page.locator('.markdown-preview')).toContainText('MINE');
+});
+
+test('Ctrl+S while flagged keeps mine; Load from disk re-arms the loud modal (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\e.md', content: 'orig\n', hash: 'h' }, ' MINE');
+
+  await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep mine/ }).click();
+
+  // A recurrence brings up the passive flag; Ctrl+S there = keep mine, clears it.
+  await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs two\n', hash: 'h3' });
+  await expect(page.locator('.sync-flag')).toBeVisible();
+  await menuSave(page);
+  await expect(page.locator('.sync-flag')).toBeHidden();
+  await expect(subtitle(page)).not.toContainText('out of sync');
+
+  // Another recurrence → passive flag; Reload takes theirs and fully reconciles.
+  await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs three\n', hash: 'h4' });
+  await expect(page.locator('.sync-flag')).toBeVisible();
+  await page.getByRole('button', { name: /Reload/ }).click();
+  await expect(page.locator('.sync-flag')).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('theirs three');
+
+  // Having reconciled, a brand-new divergence is loud again.
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' AGAIN');
+  await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs four\n', hash: 'h5' });
+  await expect(overlay(page)).toBeVisible();
+});
+
+test('auto-save is suspended while out of sync (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.addInitScript(() => {
+    (window as unknown as { __galleyAutosaveMs: number }).__galleyAutosaveMs = 120;
+  });
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\p.md', content: 'orig\n', hash: 'h' });
+
+  await page.locator('.source-toggle').click();
+  await expect(page.locator('.pane-editor')).toBeVisible();
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' FIRST');
+  await expect(dirtyDot(page)).toBeHidden(); // first auto-save fired
+
+  // Go out of sync (loud modal), keep mine, then a recurrence → passive flag.
+  await fire(page, 'extCb', { path: 'C:\\docs\\p.md', content: 'theirs\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep mine/ }).click();
+  await fire(page, 'extCb', { path: 'C:\\docs\\p.md', content: 'theirs two\n', hash: 'h3' });
+  await expect(page.locator('.sync-flag')).toBeVisible();
+  const before = await page.evaluate(
+    () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls.length,
+  );
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' MORE WORK');
+  await page.waitForTimeout(300); // well past the 120ms debounce
+  const after = await page.evaluate(
+    () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls.length,
+  );
+  expect(after).toBe(before); // no auto-save while flagged
+});
+
+test('auto-save does not let an external change silently discard edits (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.addInitScript(() => {
+    (window as unknown as { __galleyAutosaveMs: number }).__galleyAutosaveMs = 120; // fast auto-save
+  });
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\d.md', content: 'orig\n', hash: 'h' });
+
+  await page.locator('.source-toggle').click();
+  await expect(page.locator('.pane-editor')).toBeVisible();
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' MY WORK');
+  await expect(dirtyDot(page)).toBeVisible();
+  await expect(dirtyDot(page)).toBeHidden(); // auto-save fired → buffer clean again
+
+  // Even though the buffer is clean, the user has work in progress — an external
+  // change must prompt, not silently refresh over their edit.
+  await fire(page, 'extCb', { path: 'C:\\docs\\d.md', content: 'theirs\n', hash: 'h2' });
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.markdown-preview')).not.toContainText('theirs');
 });

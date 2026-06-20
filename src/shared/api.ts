@@ -16,6 +16,11 @@ export interface OpenedFile {
   readonly hash: string;
 }
 
+/** Outcome of a save (R34): it wrote, or disk had diverged (no write). */
+export type SaveOutcome =
+  | { readonly conflict: false; readonly file: OpenedFile }
+  | { readonly conflict: true; readonly disk: OpenedFile };
+
 export interface MdtoolApi {
   /** Host platform, surfaced for platform-conditional UI (shortcut labels, etc.). */
   readonly platform: NodeJS.Platform;
@@ -33,8 +38,12 @@ export interface MdtoolApi {
    */
   setSourceVisible(visible: boolean): Promise<void>;
 
-  /** Save content to a path (R29/R30). Resolves to the new baseline snapshot. */
-  saveFile(filePath: string, content: string): Promise<OpenedFile>;
+  /**
+   * Save content to a path (R29/R30). A checked save (default) refuses to write
+   * if disk diverged since we last knew, resolving to `{ conflict: true, disk }`
+   * (R34); `force` overwrites unconditionally ("keep mine").
+   */
+  saveFile(filePath: string, content: string, force?: boolean): Promise<SaveOutcome>;
   /** Pull the file passed on the command line at launch (R7), once. */
   getStartupFile(): Promise<OpenedFile | null>;
   /**

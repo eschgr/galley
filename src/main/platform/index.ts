@@ -34,6 +34,11 @@ export interface ExternalChangeEvent {
   readonly hash: string;
 }
 
+/** Result of a checked save (R34): either it wrote, or disk had diverged. */
+export type SaveResult =
+  | { readonly conflict: false; readonly file: FileSnapshot }
+  | { readonly conflict: true; readonly disk: FileSnapshot };
+
 export interface PlatformBridge {
   // --- CLI (R7) -----------------------------------------------------------
   /**
@@ -43,13 +48,19 @@ export interface PlatformBridge {
   parseCliFileArg(argv: readonly string[], packaged: boolean): string | null;
 
   // --- File IO + hashing (R33–R35) ---------------------------------------
+  /** Read a file and record its hash as the last-known on-disk state. */
   readFile(absPath: string): Promise<FileSnapshot>;
   /**
-   * Write content to disk. Records the written content's hash so the watcher
-   * can distinguish the app's own save from a genuine external change (R33).
-   * Callers are responsible for the disk-vs-baseline guard (R34) before this.
+   * Write content unconditionally (force / "keep mine"). Records the written
+   * hash as the last-known on-disk state so the watcher ignores this own save.
    */
   writeFile(absPath: string, content: string): Promise<FileSnapshot>;
+  /**
+   * Write only if disk still matches what we last knew (R34 write-path guard).
+   * If disk has diverged (an external change landed since our last read/write),
+   * returns the on-disk snapshot WITHOUT writing, so the caller can prompt.
+   */
+  saveChecked(absPath: string, content: string): Promise<SaveResult>;
 
   // --- File watching (R32, R37) ------------------------------------------
   watch(absPath: string, onChange: (event: ExternalChangeEvent) => void): void;
@@ -72,9 +83,11 @@ export interface PlatformBridge {
  * no-op'ing.
  */
 export function createPlatformBridge(): PlatformBridge {
-  // Self-write detection (R33): the hash of the content we last wrote, per path.
-  // A watcher event whose on-disk hash matches is our own save → ignored.
-  const lastWrittenHash = new Map<string, string>();
+  // The hash of the on-disk content as we last knew it (set on read/write and
+  // when we forward an external change), per path. Drives both self-write
+  // detection (R33) and the write-path divergence guard (R34): a watcher event
+  // or a save whose disk hash matches `knownHash` is consistent with our view.
+  const knownHash = new Map<string, string>();
   const watchers = new Map<string, FSWatcher>();
 
   const closeWatcher = (absPath: string): void => {
@@ -87,12 +100,27 @@ export function createPlatformBridge(): PlatformBridge {
 
   return {
     parseCliFileArg: fileIo.parseCliFileArg,
-    readFile: fileIo.readFile,
+
+    async readFile(absPath) {
+      const snapshot = await fileIo.readFile(absPath);
+      knownHash.set(absPath, snapshot.hash);
+      return snapshot;
+    },
 
     async writeFile(absPath, content) {
       const snapshot = await fileIo.writeFile(absPath, content);
-      lastWrittenHash.set(absPath, snapshot.hash);
+      knownHash.set(absPath, snapshot.hash);
       return snapshot;
+    },
+
+    async saveChecked(absPath, content) {
+      const onDisk = await fileIo.readFile(absPath); // raw read — does NOT update knownHash
+      if (onDisk.hash !== knownHash.get(absPath)) {
+        return { conflict: true, disk: onDisk }; // diverged since we last knew (R34)
+      }
+      const file = await fileIo.writeFile(absPath, content);
+      knownHash.set(absPath, file.hash);
+      return { conflict: false, file };
     },
 
     watch(absPath, onChange) {
@@ -105,7 +133,8 @@ export function createPlatformBridge(): PlatformBridge {
       const handle = async (): Promise<void> => {
         try {
           const snapshot = await fileIo.readFile(absPath);
-          if (snapshot.hash === lastWrittenHash.get(absPath)) return; // R33: our own save
+          if (snapshot.hash === knownHash.get(absPath)) return; // unchanged from our view (R33)
+          knownHash.set(absPath, snapshot.hash); // remember the new on-disk state
           onChange({ path: absPath, content: snapshot.content, hash: snapshot.hash });
         } catch {
           // File vanished or was unreadable mid-change — ignore (delete handling TBD).

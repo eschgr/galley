@@ -97,7 +97,38 @@
   background: #d0d7de;
 }
 
-/* Conflict prompt (R35) */
+/* Passive out-of-sync flag in the titlebar — what the one-shot modal (R34/R35)
+   collapses to once acknowledged. Stays put, never re-pops. */
+.sync-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #9a6700;
+  background: #fff8c5;
+  border: 1px solid #eac54f;
+  border-radius: 6px;
+  padding: 2px 6px 2px 8px;
+}
+.sync-flag-dot {
+  color: #bf8700;
+  font-size: 10px;
+}
+.sync-flag-btn {
+  appearance: none;
+  border: 1px solid #d0d7de;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #24292f;
+  font-size: 11px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+.sync-flag-btn:hover {
+  background: #f3f4f6;
+}
+
+/* Out-of-sync notice (R34/R35) */
 .modal-overlay {
   position: fixed;
   inset: 0;
