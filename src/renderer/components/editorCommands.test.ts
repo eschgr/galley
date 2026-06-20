@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { wrapEdit, headingEdit, fencedEdit, listIndentEdit, type EditResult } from './editorCommands';
+import {
+  wrapEdit,
+  headingEdit,
+  fencedEdit,
+  listIndentEdit,
+  listContinueEdit,
+  type EditResult,
+} from './editorCommands';
 
 /** Apply an EditResult to a doc and return the new doc + selection, for asserting. */
 function apply(doc: string, r: EditResult): { doc: string; sel: [number, number] } {
@@ -162,5 +169,42 @@ describe('listIndentEdit (R26 — CommonMark-correct nesting)', () => {
 
   it('returns null when outdenting a top-level item', () => {
     expect(listIndentEdit('1. top', 5, 'out')).toBeNull();
+  });
+});
+
+describe('listContinueEdit (R26b — Enter continues a list with "1.")', () => {
+  const end = (doc: string, n: number) => {
+    const lines = doc.split('\n');
+    return lines.slice(0, n).reduce((s, l) => s + l.length + 1, 0) + lines[n].length;
+  };
+  const cont = (doc: string, n: number) => {
+    const r = listContinueEdit(doc, end(doc, n));
+    return r ? apply(doc, r).doc : null;
+  };
+
+  it('continues an ordered list with a fresh "1." (never the next number)', () => {
+    expect(cont('1. a', 0)).toBe('1. a\n1. ');
+    expect(cont('1. a\n1. b', 1)).toBe('1. a\n1. b\n1. ');
+  });
+
+  it('continues a bullet list with the same marker', () => {
+    expect(cont('- a', 0)).toBe('- a\n- ');
+    expect(cont('* a', 0)).toBe('* a\n* ');
+  });
+
+  it('preserves indentation when continuing a nested item', () => {
+    expect(cont('1. a\n   1. b', 1)).toBe('1. a\n   1. b\n   1. ');
+  });
+
+  it('keeps the delimiter style (1) stays "1)")', () => {
+    expect(cont('1) a', 0)).toBe('1) a\n1) ');
+  });
+
+  it('ends the list when Enter is pressed on an empty item', () => {
+    expect(cont('1. a\n1. ', 1)).toBe('1. a\n');
+  });
+
+  it('returns null off a list line (plain newline)', () => {
+    expect(listContinueEdit('a paragraph', 4)).toBeNull();
   });
 });

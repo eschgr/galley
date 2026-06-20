@@ -93,6 +93,18 @@ test('Tab nests a list item from anywhere on the line; numbered markers stay "1.
   await expect.poll(() => lineText(page)).toBe('1. item');
 });
 
+test('Enter continues an ordered list with a fresh "1."; an empty item exits (R26b)', async ({ page }) => {
+  await setEditor(page, '1. first');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => lineText(page, 1)).toBe('1. '); // a fresh "1. ", not "2. "
+  await page.keyboard.type('second');
+  await expect.poll(() => lineText(page, 1)).toBe('1. second');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => lineText(page, 2)).toBe('1. '); // empty item
+  await page.keyboard.press('Enter'); // Enter on the empty item ends the list
+  await expect.poll(() => lineText(page, 2)).toBe('');
+});
+
 test('Tab nests an ordered item under its parent by its content column (R26)', async ({ page }) => {
   await setEditor(page, '1. line');
   await page.keyboard.press('End');

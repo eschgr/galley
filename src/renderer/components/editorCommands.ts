@@ -195,3 +195,31 @@ export function listIndentEdit(doc: string, pos: number, dir: 'in' | 'out'): Edi
   const cursor = Math.max(lineStart, pos + (target - cur.indent));
   return { from: lineStart, to: lineStart + cur.indent, insert: ' '.repeat(target), select: [cursor, cursor] };
 }
+
+const LIST_LINE_RE = /^(\s*)(\d+[.)]|[-*+])(\s+)(.*)$/;
+
+/**
+ * Continue a list on Enter (R26b). On a non-empty list item, start a new item on
+ * the next line with the same indent and marker — **ordered markers reset to
+ * "1"** (lazy numbering: every item is `1.`, so inserting, reordering, and
+ * re-nesting never force a renumber; the renderer shows the real sequence). On
+ * an **empty** item, Enter ends the list (the marker is cleared). Returns null
+ * off a list line so the caller falls back to a plain newline.
+ */
+export function listContinueEdit(doc: string, pos: number): EditResult | null {
+  const lineStart = doc.lastIndexOf('\n', pos - 1) + 1;
+  let lineEnd = doc.indexOf('\n', pos);
+  if (lineEnd === -1) lineEnd = doc.length;
+  const m = LIST_LINE_RE.exec(doc.slice(lineStart, lineEnd));
+  if (!m) return null;
+
+  const [, indent, marker, spaces, content] = m;
+  // Empty item → exit the list: clear the line to blank.
+  if (content.length === 0) {
+    return { from: lineStart, to: lineEnd, insert: '', select: [lineStart, lineStart] };
+  }
+  // Non-empty → new item below. Ordered markers become "1." / "1)"; bullets stay.
+  const nextMarker = /\d/.test(marker) ? '1' + marker.replace(/^\d+/, '') : marker;
+  const insert = '\n' + indent + nextMarker + spaces;
+  return { from: pos, to: pos, insert, select: [pos + insert.length, pos + insert.length] };
+}

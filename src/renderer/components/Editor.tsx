@@ -39,7 +39,14 @@ import {
 } from '@codemirror/language';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
-import { wrapEdit, headingEdit, fencedEdit, listIndentEdit, type EditResult } from './editorCommands';
+import {
+  wrapEdit,
+  headingEdit,
+  fencedEdit,
+  listIndentEdit,
+  listContinueEdit,
+  type EditResult,
+} from './editorCommands';
 
 /** Link context handed to the host so it can open the dialog prefilled (R27). */
 export interface LinkContext {
@@ -191,6 +198,17 @@ const shiftTabCmd: Command = (view) => {
   return indentLess(view);
 };
 
+// Enter continues a list with a fresh "1." item (R26b); off a list line it
+// returns false so the default newline runs.
+const continueListCmd: Command = (view) => {
+  const range = view.state.selection.main;
+  if (!range.empty) return false;
+  const r = listContinueEdit(view.state.doc.toString(), range.head);
+  if (!r) return false;
+  applyEdit(view, r, 'input');
+  return true;
+};
+
 const LINK_RE = /^\[([^\]]*)\]\(([^)]*)\)$/;
 
 type CbRef<T> = { current: T | undefined };
@@ -214,6 +232,7 @@ function formattingKeymap(onLinkRef: CbRef<() => void>): Extension {
       { key: 'Mod-5', run: headingCmd(5) },
       { key: 'Mod-6', run: headingCmd(6) },
       { key: 'Mod-k', run: linkCmd },
+      { key: 'Enter', run: continueListCmd },
       { key: 'Tab', run: tabCmd, shift: shiftTabCmd },
     ]),
   );
