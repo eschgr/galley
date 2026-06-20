@@ -12,33 +12,24 @@ import { useState } from 'react';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
 
-const MODES: { id: ViewMode; label: string; title: string }[] = [
-  { id: 'split', label: 'Split', title: 'Editor and rendered view side by side' },
-  { id: 'preview', label: 'View', title: 'Rendered view only (reading)' },
-];
-
 export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
+  const showingSource = viewMode === 'split';
 
   return (
     <div className="app">
       <header className="app-titlebar">
         <span className="app-title">mdtool</span>
         <span className="app-subtitle">welcome.md — sample (unsaved)</span>
-        <div className="view-switch" role="group" aria-label="View mode">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`view-switch-btn${viewMode === m.id ? ' is-active' : ''}`}
-              aria-pressed={viewMode === m.id}
-              title={m.title}
-              onClick={() => setViewMode(m.id)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          className={`source-toggle${showingSource ? ' is-active' : ''}`}
+          aria-pressed={showingSource}
+          title={showingSource ? 'Hide the source editor' : 'Show the source editor'}
+          onClick={() => setViewMode(showingSource ? 'preview' : 'split')}
+        >
+          {showingSource ? 'Hide Source' : 'Show Source'}
+        </button>
       </header>
       <SplitView initialDoc={welcome} viewMode={viewMode} />
     </div>
