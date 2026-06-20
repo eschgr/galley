@@ -40,6 +40,21 @@ test('bold wraps the selection and toggles back off (R24)', async ({ page }) => 
   await expect.poll(() => lineText(page)).toBe('bold');
 });
 
+test('toggling from a bare cursor inside a span removes the whole span (R24)', async ({ page }) => {
+  await setEditor(page, '**Hello world**');
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 7; i++) await page.keyboard.press('ArrowRight'); // "**Hello| world**"
+  await page.keyboard.press(`${MOD}+b`);
+  await expect.poll(() => lineText(page)).toBe('Hello world');
+
+  // Same for inline code with the cursor in the middle.
+  await setEditor(page, '`snippet`');
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press(`${MOD}+e`);
+  await expect.poll(() => lineText(page)).toBe('snippet');
+});
+
 test('italic, inline code, and strikethrough wrap the selection (R23)', async ({ page }) => {
   await setEditor(page, 'word');
   await selectAllText(page);

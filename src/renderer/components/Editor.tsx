@@ -39,8 +39,10 @@ import {
 } from '@codemirror/language';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
 import {
   wrapEdit,
+  unwrapSpan,
   headingEdit,
   fencedEdit,
   listIndentEdit,
@@ -143,10 +145,48 @@ function formatCommand(fn: (doc: string, from: number, to: number) => EditResult
   };
 }
 
-const boldCmd = formatCommand((d, f, t) => wrapEdit(d, f, t, '**'));
-const italicCmd = formatCommand((d, f, t) => wrapEdit(d, f, t, '*'));
-const inlineCodeCmd = formatCommand((d, f, t) => wrapEdit(d, f, t, '`'));
-const strikeCmd = formatCommand((d, f, t) => wrapEdit(d, f, t, '~~'));
+// The Lezer node each inline marker produces, used to detect when a bare cursor
+// sits inside an existing span so the shortcut toggles it OFF (R24).
+const INLINE_NODE: Record<string, string> = {
+  '**': 'StrongEmphasis',
+  '*': 'Emphasis',
+  '`': 'InlineCode',
+  '~~': 'Strikethrough',
+};
+
+function enclosingSpan(state: EditorState, pos: number, nodeName: string): { from: number; to: number } | null {
+  const tree = syntaxTree(state);
+  for (const side of [-1, 1] as const) {
+    for (let n: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(pos, side); n; n = n.parent) {
+      if (n.name === nodeName) return { from: n.from, to: n.to };
+    }
+  }
+  return null;
+}
+
+// A wrap toggle: with a selection (or empty cursor not inside a span) it wraps;
+// with a bare cursor *inside* a span of this type it removes the whole span.
+function wrapCommand(marker: string): Command {
+  const nodeName = INLINE_NODE[marker];
+  return (view) => {
+    const { state } = view;
+    const range = state.selection.main;
+    if (range.empty) {
+      const span = enclosingSpan(state, range.head, nodeName);
+      if (span) {
+        applyEdit(view, unwrapSpan(state.doc.toString(), span.from, span.to, marker.length, range.head), 'input.format');
+        return true;
+      }
+    }
+    applyEdit(view, wrapEdit(state.doc.toString(), range.from, range.to, marker), 'input.format');
+    return true;
+  };
+}
+
+const boldCmd = wrapCommand('**');
+const italicCmd = wrapCommand('*');
+const inlineCodeCmd = wrapCommand('`');
+const strikeCmd = wrapCommand('~~');
 const fencedCmd = formatCommand(fencedEdit);
 const headingCmd = (level: number) => formatCommand((d, f, t) => headingEdit(d, f, t, level));
 
@@ -258,7 +298,7 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkR
     indentUnit.of('  '),
     EditorView.lineWrapping,
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    markdown(),
+    markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
     search({ top: true }),
     formattingKeymap(onLinkRef), // R23–R27, highest precedence so it wins

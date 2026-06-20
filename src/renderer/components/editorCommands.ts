@@ -20,6 +20,18 @@ export interface EditResult {
   select: [number, number];
 }
 
+/**
+ * Strip the symmetric markers off an inline span [from, to) — e.g. turn the
+ * `**…**` of a StrongEmphasis node back into plain text — keeping the cursor on
+ * the same character (R24: toggling a format off from a bare cursor *inside* the
+ * span, not just when the selection touches the markers).
+ */
+export function unwrapSpan(doc: string, from: number, to: number, markerLen: number, cursor: number): EditResult {
+  const inner = doc.slice(from + markerLen, to - markerLen);
+  const c = Math.max(from, Math.min(cursor - markerLen, from + inner.length));
+  return { from, to, insert: inner, select: [c, c] };
+}
+
 /** Expand [from, to) to cover whole lines; returns the line span offsets. */
 function lineSpan(doc: string, from: number, to: number): { start: number; end: number } {
   const start = doc.lastIndexOf('\n', from - 1) + 1; // 0 when no preceding newline

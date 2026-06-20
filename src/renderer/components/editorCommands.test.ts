@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   wrapEdit,
+  unwrapSpan,
   headingEdit,
   fencedEdit,
   listIndentEdit,
@@ -57,6 +58,22 @@ describe('wrapEdit (R24/R25 — toggle + smart selection)', () => {
   it('works for strikethrough', () => {
     const doc = 'gone';
     expect(apply(doc, wrapEdit(doc, 0, 4, '~~')).doc).toBe('~~gone~~');
+  });
+});
+
+describe('unwrapSpan (R24 — toggle off from a cursor inside the span)', () => {
+  it('removes the markers of the enclosing span, keeping the cursor in place', () => {
+    const doc = '**Hello world**';
+    const cursor = 7; // "**Hello| world**"
+    const r = unwrapSpan(doc, 0, doc.length, 2, cursor);
+    const { doc: out, sel } = apply(doc, r);
+    expect(out).toBe('Hello world');
+    expect(out.slice(0, sel[0])).toBe('Hello'); // cursor still after "Hello"
+  });
+
+  it('handles a single-char marker', () => {
+    const doc = '`code`';
+    expect(apply(doc, unwrapSpan(doc, 0, doc.length, 1, 3)).doc).toBe('code');
   });
 });
 

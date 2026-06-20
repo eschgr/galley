@@ -125,6 +125,7 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
   | Outdent list item | `Shift+Tab` | decreases list nesting |
 
 - **R24. Toggle behavior.** Each wrapping shortcut (bold, italic, inline code, strikethrough, code block) **toggles**: if the selection is already wrapped in that marker, the shortcut removes it rather than adding another layer.
+  - **A bare cursor inside an existing span counts too.** With no selection but the cursor *within* a span of that type (e.g. `**Hello|world**` + bold), the shortcut removes the whole span instead of inserting a new empty pair. The span is found via the editor's Lezer syntax tree (the parser runs GFM, so strikethrough/tables/task-lists are recognized).
   - **Headings normalize to the requested level** rather than stacking. Applying a heading sets the line to exactly that level no matter its current level, and applying the line's *current* level removes the heading. Examples: `## Hello` + `Ctrl+4` → `#### Hello` (switches level, does **not** become `######`); `## Hello` + `Ctrl+2` → `Hello` (same level removes).
 
 - **R25. Smart selection handling.** Each wrapping/prefixing shortcut behaves correctly with and without an active selection:
