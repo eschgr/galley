@@ -126,3 +126,72 @@ export function fencedEdit(doc: string, from: number, to: number): EditResult {
   const innerStart = start + 4; // past the opening "```\n"
   return { from: start, to: end, insert: wrapped, select: [innerStart, innerStart + block.length] };
 }
+
+const LIST_ITEM_RE = /^(\s*)(\d+[.)]|[-*+])(\s+)/;
+
+interface ListInfo {
+  /** Leading-space count. */
+  indent: number;
+  /** Column where the item's content begins (indent + marker + spaces). */
+  contentCol: number;
+}
+
+function parseListInfo(line: string): ListInfo | null {
+  const m = LIST_ITEM_RE.exec(line);
+  return m ? { indent: m[1].length, contentCol: m[1].length + m[2].length + m[3].length } : null;
+}
+
+/**
+ * Nest ('in') or un-nest ('out') the list item on the line containing `pos`,
+ * matching CommonMark's indentation rule: a nested item must align with the
+ * parent item's **content column** (3 for `1. `, 2 for `- `, 4 for `10. `), not
+ * a flat two spaces — otherwise the renderer flattens or merges the list. Nest
+ * indents to the nearest preceding item at the same-or-shallower level; un-nest
+ * drops to the parent item's column. Returns null when the line isn't a list
+ * item or there's nothing to do, so the caller can fall back to plain indent.
+ */
+export function listIndentEdit(doc: string, pos: number, dir: 'in' | 'out'): EditResult | null {
+  const lineStart = doc.lastIndexOf('\n', pos - 1) + 1;
+  let lineEnd = doc.indexOf('\n', pos);
+  if (lineEnd === -1) lineEnd = doc.length;
+  const cur = parseListInfo(doc.slice(lineStart, lineEnd));
+  if (!cur) return null;
+
+  const prevLines = lineStart === 0 ? [] : doc.slice(0, lineStart - 1).split('\n');
+
+  let target: number;
+  if (dir === 'in') {
+    // Align under the nearest preceding item at the same or a shallower level.
+    target = cur.indent + 2; // fallback: one level, when there's no such item
+    for (let i = prevLines.length - 1; i >= 0; i--) {
+      const info = parseListInfo(prevLines[i]);
+      if (info) {
+        if (info.indent <= cur.indent) {
+          if (info.contentCol > cur.indent) target = info.contentCol;
+          break;
+        }
+        // a deeper item — keep scanning up for the sibling/parent
+      } else if (prevLines[i].trim() !== '') {
+        break; // a non-list line ends the list context
+      }
+    }
+  } else {
+    if (cur.indent === 0) return null; // already at the top level
+    target = Math.max(0, cur.indent - 2); // fallback
+    for (let i = prevLines.length - 1; i >= 0; i--) {
+      const info = parseListInfo(prevLines[i]);
+      if (info) {
+        if (info.indent < cur.indent) {
+          target = info.indent;
+          break;
+        }
+      } else if (prevLines[i].trim() !== '') {
+        break;
+      }
+    }
+  }
+
+  if (target === cur.indent) return null;
+  const cursor = Math.max(lineStart, pos + (target - cur.indent));
+  return { from: lineStart, to: lineStart + cur.indent, insert: ' '.repeat(target), select: [cursor, cursor] };
+}

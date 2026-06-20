@@ -93,6 +93,20 @@ test('Tab nests a list item from anywhere on the line; numbered markers stay "1.
   await expect.poll(() => lineText(page)).toBe('1. item');
 });
 
+test('Tab nests an ordered item under its parent by its content column (R26)', async ({ page }) => {
+  await setEditor(page, '1. line');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Home'); // clear any auto-indent on the new line
+  await page.keyboard.press('Shift+End');
+  await page.keyboard.press('Delete');
+  await page.keyboard.type('1. stuff');
+  await expect.poll(() => lineText(page, 1)).toBe('1. stuff'); // baseline: not yet nested
+  await page.keyboard.press('Tab');
+  await expect.poll(() => lineText(page, 1)).toBe('   1. stuff'); // 3 spaces, aligned under "1. "
+  await expect.poll(() => lineText(page, 0)).toBe('1. line');
+});
+
 test('Tab in the middle of a paragraph inserts spaces at the cursor, not a line indent (R26)', async ({ page }) => {
   await setEditor(page, 'ab');
   await page.keyboard.press('Home');

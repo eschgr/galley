@@ -133,7 +133,7 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
   - *(Link is the exception — it always uses the dialog in R27.)*
 
 - **R26. Indent / outdent.**
-  - On a **list line**, `Tab` / `Shift+Tab` nest / un-nest the whole item by one indent unit, from **anywhere on the line** — not just at the start. The list marker is left untouched (numbered items keep their marker; the renderer numbers them — see R26a). The cursor stays on the same character.
+  - On a **list line**, `Tab` / `Shift+Tab` nest / un-nest the whole item from **anywhere on the line** — not just at the start. Nesting aligns the item with its parent's **CommonMark content column** (3 spaces under `1. `, 2 under `- `, 4 under `10. `), so nested lists actually render as nested rather than flattening or merging; un-nesting drops back to the parent item's column. The list marker is left untouched (numbered items keep their marker; the renderer numbers them — see R26a). The cursor stays on the same character.
   - On any **other line**, `Tab` inserts indentation at the cursor and `Shift+Tab` outdents the line. `Tab` never moves focus out of the editor.
   - Indentation uses **spaces, not hard tab characters**, at the width set in R28.
 - **R26a. Lazy ordered-list numbering.** Galley never renumbers ordered lists; markers are left exactly as authored (the convention "`1.` on every item" works well, since re-nesting doesn't force a renumber and the renderer shows the correct sequence). *(A list auto-continuation feature — Enter starting the next item — is not in scope yet.)*

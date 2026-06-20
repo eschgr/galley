@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapEdit, headingEdit, fencedEdit, type EditResult } from './editorCommands';
+import { wrapEdit, headingEdit, fencedEdit, listIndentEdit, type EditResult } from './editorCommands';
 
 /** Apply an EditResult to a doc and return the new doc + selection, for asserting. */
 function apply(doc: string, r: EditResult): { doc: string; sel: [number, number] } {
@@ -122,5 +122,45 @@ describe('fencedEdit (R23 — toggle fenced block)', () => {
     expect(wrapped.doc).toBe('```\nx = 1\n```');
     const [a, b] = wrap.select; // the inner "x = 1"
     expect(apply(wrapped.doc, fencedEdit(wrapped.doc, a, b)).doc).toBe('x = 1');
+  });
+});
+
+describe('listIndentEdit (R26 — CommonMark-correct nesting)', () => {
+  // cursor at the end of line `n` (0-based)
+  const atEndOfLine = (doc: string, n: number) => {
+    const lines = doc.split('\n');
+    return lines.slice(0, n).reduce((sum, l) => sum + l.length + 1, 0) + lines[n].length;
+  };
+  const nestEnd = (doc: string, n: number, dir: 'in' | 'out') => {
+    const r = listIndentEdit(doc, atEndOfLine(doc, n), dir);
+    return r ? apply(doc, r).doc : null;
+  };
+
+  it('nests an ordered item to its parent content column (3 spaces under "1. ")', () => {
+    expect(nestEnd('1. line\n1. stuff', 1, 'in')).toBe('1. line\n   1. stuff');
+  });
+
+  it('nests a bullet item by 2 spaces (content column of "- ")', () => {
+    expect(nestEnd('- a\n- b', 1, 'in')).toBe('- a\n  - b');
+  });
+
+  it('aligns under a wide marker (4 spaces under "10. ")', () => {
+    expect(nestEnd('10. line\n1. b', 1, 'in')).toBe('10. line\n    1. b');
+  });
+
+  it('leaves the marker untouched — lazy "1." survives nesting', () => {
+    expect(nestEnd('1. a\n1. b\n1. c', 2, 'in')).toBe('1. a\n1. b\n   1. c');
+  });
+
+  it('un-nests back to the parent item column', () => {
+    expect(nestEnd('1. a\n   1. b', 1, 'out')).toBe('1. a\n1. b');
+  });
+
+  it('returns null off a list line (caller falls back to plain indent)', () => {
+    expect(listIndentEdit('just a paragraph', 4, 'in')).toBeNull();
+  });
+
+  it('returns null when outdenting a top-level item', () => {
+    expect(listIndentEdit('1. top', 5, 'out')).toBeNull();
   });
 });

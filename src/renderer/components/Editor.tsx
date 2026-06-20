@@ -39,7 +39,7 @@ import {
 } from '@codemirror/language';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
-import { wrapEdit, headingEdit, fencedEdit, type EditResult } from './editorCommands';
+import { wrapEdit, headingEdit, fencedEdit, listIndentEdit, type EditResult } from './editorCommands';
 
 /** Link context handed to the host so it can open the dialog prefilled (R27). */
 export interface LinkContext {
@@ -144,23 +144,32 @@ const fencedCmd = formatCommand(fencedEdit);
 const headingCmd = (level: number) => formatCommand((d, f, t) => headingEdit(d, f, t, level));
 
 // --- List-aware Tab / Shift+Tab (R26/R28) ----------------------------------
-// At the start of a list line, Tab/Shift+Tab change nesting by one indent unit
-// (2 spaces); anywhere else they indent/outdent normally and never escape the
-// editor.
-const LIST_RE = /^(\s*)(?:[-*+]|\d+\.)\s/;
+// On a list line, Tab/Shift+Tab nest/un-nest the whole item to the CommonMark
+// content column of its parent (so nested lists actually render), from anywhere
+// on the line. Off a list line, Tab inserts spaces at the cursor and Shift+Tab
+// outdents — and Tab never escapes the editor.
+function applyEdit(view: EditorView, r: EditResult, userEvent: string): void {
+  view.dispatch(
+    view.state.update({
+      changes: { from: r.from, to: r.to, insert: r.insert },
+      selection: { anchor: r.select[0], head: r.select[1] },
+      userEvent,
+    }),
+  );
+}
 
 const tabCmd: Command = (view) => {
-  const { state } = view;
-  const range = state.selection.main;
+  const range = view.state.selection.main;
   if (range.empty) {
-    const line = state.doc.lineAt(range.head);
-    // On a list line, Tab nests the whole item (indent the line) wherever the
-    // cursor sits — not wedge spaces between the marker and the text. On any
-    // other line it inserts indentation at the cursor.
-    const insertAt = LIST_RE.test(line.text) ? line.from : range.head;
+    const r = listIndentEdit(view.state.doc.toString(), range.head, 'in');
+    if (r) {
+      applyEdit(view, r, 'input.indent');
+      return true;
+    }
+    // Not a list line → insert indentation at the cursor.
     view.dispatch(
-      state.update({
-        changes: { from: insertAt, insert: '  ' },
+      view.state.update({
+        changes: { from: range.head, insert: '  ' },
         selection: { anchor: range.head + 2 },
         userEvent: 'input.indent',
       }),
@@ -171,21 +180,11 @@ const tabCmd: Command = (view) => {
 };
 
 const shiftTabCmd: Command = (view) => {
-  const { state } = view;
-  const range = state.selection.main;
+  const range = view.state.selection.main;
   if (range.empty) {
-    const line = state.doc.lineAt(range.head);
-    const m = LIST_RE.exec(line.text);
-    // Outdent a list item by one indent unit, from anywhere on the line.
-    if (m && m[1].length > 0) {
-      const remove = Math.min(2, m[1].length);
-      view.dispatch(
-        state.update({
-          changes: { from: line.from, to: line.from + remove },
-          selection: { anchor: Math.max(line.from, range.head - remove) },
-          userEvent: 'delete.dedent',
-        }),
-      );
+    const r = listIndentEdit(view.state.doc.toString(), range.head, 'out');
+    if (r) {
+      applyEdit(view, r, 'delete.dedent');
       return true;
     }
   }
