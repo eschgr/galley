@@ -10,16 +10,16 @@
  * Conflict handling (R34/R35/R36) — Galley is for turn-based work, not
  * collaborative editing: the LLM writes the file and pauses, you read and tweak
  * it, you tell the LLM, it re-reads. Divergence (the file changing on disk while
- * you have unsaved edits) is the rare exception, so the app's only job is to say
- * so clearly and stay out of the way:
+ * you have unsaved edits) is the rare exception, and there are only ever two
+ * real choices — take theirs or keep yours:
  *  - clean buffer + external change → refresh silently;
- *  - the first time disk diverges while you have edits (an external change, or a
- *    save that finds disk moved) → a modal pops once, loud enough to catch, and
- *    auto-save pauses so nothing is silently overwritten;
- *  - dismissing the modal ("decide later") collapses it to a passive status-bar
- *    flag (Reload / Keep mine) that does not re-pop on further external changes;
- *  - Reload takes disk, Keep mine overwrites — either clears the flag and resumes
- *    the normal flow. No locks, no sticky episodes.
+ *  - the first divergence of a run while you have edits (an external change, or a
+ *    save that finds disk moved) → one loud modal: Load from disk / Keep mine.
+ *    Auto-save pauses so nothing is silently overwritten;
+ *  - Keep mine writes your version and stays alert; if disk diverges again it
+ *    recurs as a passive status-bar flag (Reload / Keep mine), not another modal;
+ *  - Load from disk takes theirs and fully reconciles, re-arming the loud notice
+ *    for a genuinely new divergence later. No locks, no sticky episodes.
  *
  * Tabs (R39+) are a later phase. Until a file is opened, the editor shows a
  * built-in welcome sample (not savable).
@@ -51,15 +51,19 @@ export function App() {
   const [text, setText] = useState(welcome);
   const [dirty, setDirty] = useState(false);
   // The on-disk version that diverged from our buffer (null = in sync). Drives
-  // the one-shot modal (until acknowledged) and the persistent status-bar flag.
+  // the loud modal (first divergence) and the passive flag (recurrences).
   const [conflict, setConflict] = useState<OpenedFile | null>(null);
-  const [acknowledged, setAcknowledged] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   // Refs mirror state for the once-registered IPC handlers / the autosave timer.
   const pathRef = useRef<string | null>(null);
   const textRef = useRef(welcome);
   const savedTextRef = useRef(welcome);
   const conflictRef = useRef<OpenedFile | null>(null);
+  // The loud modal has already been shown since the last full reload. Once set,
+  // further divergence recurs as the passive flag, not another modal — "loud
+  // once per run". Reset only by loading from disk / reopening.
+  const noticedRef = useRef(false);
   // True once the user has edited since the last reconcile (load/reload or a
   // deliberate save). Auto-save can momentarily clear `dirty`, but while this is
   // set an external change still flags divergence instead of silently
@@ -79,13 +83,16 @@ export function App() {
     }
   };
 
-  // Flag that disk diverged from our buffer. The first time (in sync → diverged)
-  // we leave it un-acknowledged so the modal pops; later disk changes only
-  // refresh the stashed version, keeping the flag passive (R36 no re-nag).
+  // Flag that disk diverged from our buffer. The first divergence of a run pops
+  // the loud modal; once that's been shown, later divergence (e.g. after Keep
+  // mine) recurs quietly as the passive flag (R36 — loud once).
   const flagDiverged = (disk: OpenedFile) => {
     clearAutosave(); // R36: pause auto-save while out of sync
-    if (!conflictRef.current) setAcknowledged(false); // first divergence → noisy modal
     setConflictState(disk); // always track the newest disk version
+    if (!noticedRef.current) {
+      noticedRef.current = true;
+      setShowModal(true); // first divergence of the run → one loud notice
+    }
   };
 
   // Save the current buffer. `force` overwrites disk ("keep mine"); a normal
@@ -116,7 +123,8 @@ export function App() {
   const loadFile = (file: OpenedFile) => {
     clearAutosave();
     setConflictState(null);
-    setAcknowledged(false);
+    setShowModal(false);
+    noticedRef.current = false; // full reconcile → the loud notice re-arms
     editedRef.current = false;
     pathRef.current = file.path;
     savedTextRef.current = file.content;
@@ -139,23 +147,20 @@ export function App() {
     }
   };
 
-  // Conflict resolutions (R34/R35).
+  // Conflict resolutions (R34/R35) — two choices: take theirs, or keep mine.
   const resolveKeepMine = () => {
     setConflictState(null);
-    setAcknowledged(false);
-    // Write my version over disk, but stay alert. I still hold authored content,
-    // so if the file diverges *again* (e.g. the writer didn't stop) the next
-    // external change must re-raise the notice, not silently load disk over my
-    // version. Hence keep `editedRef` set and don't pass `manual` (which would
-    // reset it and re-arm silent refresh).
+    setShowModal(false);
+    // Write my version over disk, but stay alert: I still hold authored content,
+    // so if disk diverges *again* the next change re-raises the notice (quietly,
+    // as the passive flag) rather than silently loading over my version. Hence
+    // keep `editedRef` set and don't pass `manual` (which would re-arm silent
+    // refresh).
     editedRef.current = true;
     void save({ force: true }); // overwrite the diverged disk
   };
   const resolveLoadFromDisk = () => {
     if (conflictRef.current) loadFile(conflictRef.current); // take theirs
-  };
-  const resolveDecideLater = () => {
-    setAcknowledged(true); // collapse the modal to a passive flag; keep the warning
   };
 
   // Pull a command-line file (R7) and subscribe to opens / save / external change.
@@ -207,7 +212,7 @@ export function App() {
           {dirty && <span className="dirty-dot" aria-label="Unsaved changes">●</span>}
           {name} — {status}
         </span>
-        {conflict && (
+        {conflict && !showModal && (
           <span className="sync-flag" role="status">
             <span className="sync-flag-dot" aria-hidden="true">●</span>
             out of sync
@@ -236,12 +241,11 @@ export function App() {
         editorRef={editorRef}
         viewMode={viewMode}
       />
-      {conflict && !acknowledged && (
+      {conflict && showModal && (
         <ConflictDialog
           fileName={basename(conflict.path)}
           onKeepMine={resolveKeepMine}
           onLoadFromDisk={resolveLoadFromDisk}
-          onCancel={resolveDecideLater}
         />
       )}
     </div>

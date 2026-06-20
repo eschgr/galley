@@ -168,11 +168,11 @@ The governing principle: **both the write path (save) and the read path (load/re
 - **R35. Read-path guard (an external change arrives while the user has work in progress).** When the watcher reports an external change:
   - **If the buffer is in sync and the user has not edited** since it was loaded/last saved, reload silently and update the baseline.
   - **Otherwise** (the user has edits in progress, or the file is already flagged out of sync), raise/update the out-of-sync notice (R36) rather than discarding the work. *(Gated on "has been edited since reconcile", not the momentary dirty flag: a debounced auto-save can briefly clear `dirty`, but an external change just after must still flag — otherwise auto-save would silently downgrade a conflict to an edit-discarding refresh. The flag resets on a deliberate save (Ctrl/Cmd+S) or a reload.)*
-- **R36. Out-of-sync notice — loud once, then passive.** The first time a tab goes from in-sync to diverged (R34 or R35), show a **modal** ("Files are out of sync") so the user notices immediately, and **suspend that tab's auto-save** so nothing is silently overwritten while they decide. Three choices:
-  - **Load from disk** — take the on-disk version (discard local edits), clear the flag, resume normal flow.
-  - **Keep my changes** — force-overwrite disk with the buffer now and clear the flag. *(Ctrl/Cmd+S while flagged does the same.)* The buffer still holds authored content, so if the file diverges **again** (the external writer didn't stop) the next external change **re-raises the notice** rather than silently loading disk over the version you just kept — "keep mine" never gets silently undone.
-  - **Keep editing (decide later)** — dismiss the modal to a **passive status-bar flag** (Reload / Keep mine). The flag stays put; **further external changes update the stashed disk version but do not re-pop the modal** and do not auto-reload. Auto-save stays suspended until the user resolves via Reload or Keep mine.
-  - Rationale: concurrent writes are a non-goal as a *primary* flow (§3); one unmistakable notice plus a non-nagging reminder beats either silent data loss or a modal that keeps interrupting while the LLM rewrites the file.
+- **R36. Out-of-sync notice — two choices, loud once.** When out of sync there are only ever two real choices, presented as two buttons: **Load from disk** (take theirs, discard my edits) or **Keep mine** (overwrite disk with my buffer). The first divergence of a run shows them in a **modal** ("Files are out of sync") so the user notices immediately, and **suspends that tab's auto-save** so nothing is silently overwritten while they decide.
+  - **Load from disk** — take the on-disk version and fully reconcile; the loud notice re-arms, so a genuinely new divergence later is loud again.
+  - **Keep mine** — force-overwrite disk with the buffer now. The buffer still holds authored content, so if the file diverges **again** (the external writer didn't stop) the notice **re-raises**, but — having already been shown loudly once this run — it recurs as a **passive status-bar flag** (Reload / Keep mine), not another modal. Auto-save stays suspended while flagged. *(Ctrl/Cmd+S while flagged = Keep mine.)*
+  - "Loud once per run": the modal appears only on the first divergence after a full reconcile (a load/reload/reopen). After that it's the passive flag, so a still-writing LLM can't turn the notice into a nag. The flag never silently loads disk over the user's version.
+  - Rationale: concurrent writes are a non-goal as a *primary* flow (§3). Earlier drafts offered a third "keep editing / decide later" button, but in use it was indistinguishable from "keep mine" — both just keep the user's buffer — so it was removed. One loud notice, two opposite choices, then a quiet reminder.
 - **R37. Watcher debounce.** Debounce the watcher so a rapid sequence of external writes does not cause flicker or repeated prompts.
 - **R38. No view locks.** The app does **not** hold a write/exclusive lock on files merely opened for viewing/editing, keeping the window in which two applications contend for the file as small as possible.
 
@@ -340,7 +340,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Save model | Auto-save, 5s debounce; force-save retained as reassurance |
 | Conflict — write path | Save checks disk vs. baseline; if diverged, raise the out-of-sync notice, no silent overwrite (R34) |
 | Conflict — read path | Reload silent if buffer in sync; else raise the out-of-sync notice (R35) |
-| Conflict — notice | Loud modal once per divergence, then a passive status-bar flag (Reload / Keep mine); auto-save suspended until resolved (R36) |
+| Conflict — notice | Two choices (Load from disk / Keep mine); loud modal on the first divergence per run, then a passive status-bar flag; auto-save suspended until resolved (R36) |
 | Diff view | Out of scope (labeled choice only this version) |
 | File locks | No write/view locks held on open files (R38) |
 | Self-write detection | Content-hash baseline, in the Node main process (R33) |
