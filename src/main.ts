@@ -21,16 +21,22 @@ function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-// The file currently watched for external changes (single window/file for now).
-let watchedPath: string | null = null;
+// Every open file (one per tab, R39) is watched for external changes. The set
+// tracks what's currently watched so opens are idempotent and closes unwatch.
+const watchedPaths = new Set<string>();
 
 // Watch a file and forward genuine external changes to the renderer (R32/R33).
+// Additive and idempotent — opening more files doesn't stop watching the others.
 function watchFile(win: BrowserWindow, absPath: string): void {
-  if (watchedPath && watchedPath !== absPath) platform.unwatch(watchedPath);
-  watchedPath = absPath;
+  if (watchedPaths.has(absPath)) return;
+  watchedPaths.add(absPath);
   platform.watch(absPath, (event) => {
     if (!win.isDestroyed()) win.webContents.send('file:externalChange', event);
   });
+}
+
+function unwatchPath(absPath: string): void {
+  if (watchedPaths.delete(absPath)) platform.unwatch(absPath);
 }
 
 // Read a file, hand it to the renderer to open (R7/R8), and watch it. Errors
@@ -66,13 +72,11 @@ function requestSave(): void {
   targetWindow()?.webContents.send('menu:save');
 }
 
-// View → Reload File (Ctrl/Cmd+R): re-read the open file from disk and hand it
-// to the renderer to load fresh (same path as opening it). Reloads only the
-// document — the renderer keeps its view layout. No-op when nothing is open.
-async function reloadCurrentFile(): Promise<void> {
-  const win = targetWindow();
-  if (!win || !watchedPath) return;
-  await openPath(win, watchedPath);
+// View → Reload File (Ctrl/Cmd+R): ask the renderer to re-read the active tab's
+// file from disk and reload it in place (R31a) — the renderer owns which tab is
+// active, so it does the read and keeps the layout/tab.
+function requestReload(): void {
+  targetWindow()?.webContents.send('menu:reloadFile');
 }
 
 // Save path (R29/R30/R34): the renderer sends content. A `force` write
@@ -114,6 +118,27 @@ ipcMain.handle('file:getStartup', async (event) => {
     dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
     return null;
   }
+});
+
+// Read a file on demand (R31a reload, and opening a file already known to the
+// renderer). Updates the baseline hash and (re)watches it. Errors surface as a
+// dialog and resolve to null.
+ipcMain.handle('file:read', async (event, p: unknown) => {
+  if (typeof p !== 'string') return null;
+  try {
+    const snapshot = await platform.readFile(p);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) watchFile(win, p);
+    return snapshot;
+  } catch (err) {
+    dialog.showErrorBox('Could not read file', `${p}\n\n${String(err)}`);
+    return null;
+  }
+});
+
+// A tab closed (R41): stop watching its file.
+ipcMain.handle('file:closed', (_event, p: unknown) => {
+  if (typeof p === 'string') unwatchPath(p);
 });
 
 // DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,
@@ -187,12 +212,10 @@ const createWindow = () => {
     },
   });
 
-  // Stop watching the open file when the window closes.
+  // Stop watching every open file when the window closes.
   mainWindow.on('closed', () => {
-    if (watchedPath) {
-      platform.unwatch(watchedPath);
-      watchedPath = null;
-    }
+    for (const p of watchedPaths) platform.unwatch(p);
+    watchedPaths.clear();
   });
 
   // R4 / §7 security: links and window.open() from the preview must open in the
@@ -244,7 +267,7 @@ app.on('ready', () => {
   buildAppMenu({
     openFile: openFileViaDialog,
     saveFile: requestSave,
-    reloadFile: reloadCurrentFile,
+    reloadFile: requestReload,
   });
   createWindow();
 });

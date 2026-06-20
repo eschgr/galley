@@ -1,35 +1,31 @@
 /**
- * Root component. Owns the open document and the view-mode switch, and hosts the
+ * Root component. Owns the open tabs and the view-mode switch, and hosts the
  * split editor/preview view (PRD R45).
  *
- * Document lifecycle: a file arrives via the command line (R7, pulled on mount)
- * or File → Open (R8); edits mark the doc dirty and trigger a debounced
- * auto-save (R29); Ctrl/Cmd+S force-saves (R30). The open file is watched for
- * external changes (R32).
+ * Tabs (R39): each open file is a tab with its own buffer, baseline, dirty state,
+ * conflict state, and editor state (undo/scroll/selection, stashed on switch).
+ * One CodeMirror instance is shared; switching tabs swaps its state. When no tab
+ * is open the editor shows the built-in welcome sandbox (R46 empty state).
  *
- * Conflict handling (R34/R35/R36) — Galley is for turn-based work, not
- * collaborative editing: the LLM writes the file and pauses, you read and tweak
- * it, you tell the LLM, it re-reads. Divergence (the file changing on disk while
- * you have unsaved edits) is the rare exception, and there are only ever two
- * real choices — take theirs or keep yours:
- *  - clean buffer + external change → refresh silently;
- *  - the first divergence of a run while you have edits (an external change, or a
- *    save that finds disk moved) → one loud modal: Load from disk / Keep mine.
- *    Auto-save pauses so nothing is silently overwritten;
- *  - Keep mine writes your version and stays alert; if disk diverges again it
- *    recurs as a passive status-bar flag (Reload / Keep mine), not another modal;
- *  - Load from disk takes theirs and fully reconciles, re-arming the loud notice
- *    for a genuinely new divergence later. No locks, no sticky episodes.
+ * Document lifecycle per tab: a file arrives via the command line (R7) or
+ * File → Open (R8); edits mark the tab dirty and trigger a debounced auto-save
+ * (R29); Ctrl/Cmd+S force-saves the active tab (R30); each open file is watched
+ * for external changes (R32).
  *
- * Tabs (R39+) are a later phase. Until a file is opened, the editor shows a
- * built-in welcome sample (not savable).
+ * Conflict handling (R34/R35/R36) is per tab — for the active tab a divergence
+ * pops one loud modal then a passive flag; a background tab's divergence is
+ * tracked silently (its tab shows a marker) and surfaces when you switch to it.
+ * Two choices only: take theirs (Load from disk) or keep yours (Keep mine).
  */
 import './app.css';
 import { useEffect, useRef, useState } from 'react';
+import type { EditorState } from '@codemirror/state';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
 import { ConflictDialog } from './components/ConflictDialog';
 import { LinkDialog } from './components/LinkDialog';
+import { TabStrip } from './components/TabStrip';
+import { CloseTabDialog } from './components/CloseTabDialog';
 import type { EditorHandle, LinkContext } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 
@@ -42,14 +38,20 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-/**
- * What the editor is currently showing, tracked explicitly rather than inferred
- * from a null path. Today it's either the built-in welcome screen (a never-saved
- * sandbox shown when no file is open) or a file opened from disk. A third
- * `untitled` kind — an editable buffer with no destination yet — arrives with
- * the Save As phase; keeping this a tagged union makes that a clean addition.
- */
-type DocState = { kind: 'welcome' } | { kind: 'file'; path: string };
+/** One open document (R39). The buffer (`text`) is the source of truth; `saved`
+ *  is the last loaded/saved baseline. `conflict`/`noticed`/`showModal`/`edited`
+ *  carry the per-tab out-of-sync state (R34–R36). */
+export interface Tab {
+  id: string;
+  path: string;
+  text: string;
+  saved: string;
+  dirty: boolean;
+  edited: boolean;
+  conflict: OpenedFile | null;
+  noticed: boolean;
+  showModal: boolean;
+}
 
 export function App() {
   const editorRef = useRef<EditorHandle>(null);
@@ -57,155 +59,241 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const showingSource = viewMode === 'split';
 
-  const [doc, setDoc] = useState<DocState>({ kind: 'welcome' });
-  const [text, setText] = useState(welcome);
-  const [dirty, setDirty] = useState(false);
-  // The on-disk version that diverged from our buffer (null = in sync). Drives
-  // the loud modal (first divergence) and the passive flag (recurrences).
-  const [conflict, setConflict] = useState<OpenedFile | null>(null);
-  const [showModal, setShowModal] = useState(false);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [welcomeText, setWelcomeText] = useState(welcome);
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
+  const [closing, setClosing] = useState<Tab | null>(null); // close-with-unsaved prompt
 
-  // Refs mirror state for the once-registered IPC handlers / the autosave timer.
-  const docRef = useRef<DocState>({ kind: 'welcome' });
-  const textRef = useRef(welcome);
-  const savedTextRef = useRef(welcome);
-  const conflictRef = useRef<OpenedFile | null>(null);
-  // The loud modal has already been shown since the last full reload. Once set,
-  // further divergence recurs as the passive flag, not another modal — "loud
-  // once per run". Reset only by loading from disk / reopening.
-  const noticedRef = useRef(false);
-  // True once the user has edited since the last reconcile (load/reload or a
-  // deliberate save). Auto-save can momentarily clear `dirty`, but while this is
-  // set an external change still flags divergence instead of silently
-  // refreshing — so an in-progress edit is never silently overwritten.
-  const editedRef = useRef(false);
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Refs mirror state for the once-registered IPC handlers and timers.
+  const tabsRef = useRef<Tab[]>([]);
+  const activeIdRef = useRef<string | null>(null);
+  const welcomeTextRef = useRef(welcome);
+  const editorStates = useRef<Map<string, EditorState>>(new Map());
+  const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const idSeq = useRef(0);
 
-  const setConflictState = (next: OpenedFile | null) => {
-    conflictRef.current = next;
-    setConflict(next);
+  const commitTabs = (next: Tab[]) => {
+    tabsRef.current = next;
+    setTabs(next);
   };
-  const setDocState = (next: DocState) => {
-    docRef.current = next;
-    setDoc(next);
+  const updateTab = (id: string, patch: Partial<Tab>) =>
+    commitTabs(tabsRef.current.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  const tabById = (id: string | null) => tabsRef.current.find((t) => t.id === id);
+  const setActive = (id: string | null) => {
+    activeIdRef.current = id;
+    setActiveId(id);
+  };
+  const setWelcome = (next: string) => {
+    welcomeTextRef.current = next;
+    setWelcomeText(next);
   };
 
-  const clearAutosave = () => {
-    if (autosaveTimer.current) {
-      clearTimeout(autosaveTimer.current);
-      autosaveTimer.current = null;
+  const clearAutosave = (id: string) => {
+    const timer = autosaveTimers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      autosaveTimers.current.delete(id);
     }
   };
 
-  // Flag that disk diverged from our buffer. The first divergence of a run pops
-  // the loud modal; once that's been shown, later divergence (e.g. after Keep
-  // mine) recurs quietly as the passive flag (R36 — loud once).
-  const flagDiverged = (disk: OpenedFile) => {
-    clearAutosave(); // R36: pause auto-save while out of sync
-    setConflictState(disk); // always track the newest disk version
-    if (!noticedRef.current) {
-      noticedRef.current = true;
-      setShowModal(true); // first divergence of the run → one loud notice
-    }
+  // Out-of-sync for one tab (R36): the first divergence of a run pops the loud
+  // modal; once shown, later divergence recurs as the passive flag.
+  const flagDiverged = (id: string, disk: OpenedFile) => {
+    clearAutosave(id);
+    const t = tabById(id);
+    updateTab(id, { conflict: disk, noticed: true, showModal: !(t?.noticed ?? false) });
   };
 
-  // Save the current buffer. `force` overwrites disk ("keep mine"); a normal
-  // checked save can come back as a conflict if disk diverged (R34). `manual`
-  // (Ctrl+S) records the reconcile so a clean buffer refreshes silently again.
-  const save = async (opts?: { manual?: boolean; force?: boolean }) => {
+  // Save one tab's buffer (R29/R30/R34). `force` overwrites disk ("keep mine").
+  const saveTab = async (id: string, opts?: { manual?: boolean; force?: boolean }) => {
+    const t = tabById(id);
+    if (!t) return;
     const force = opts?.force ?? false;
-    if (conflictRef.current && !force) return; // out of sync: only a "keep mine" save writes
-    const d = docRef.current;
-    if (d.kind !== 'file') return; // the welcome screen has no destination (Save As is a later phase)
-    const p = d.path;
-    const content = textRef.current;
-    if (!force && content === savedTextRef.current) return; // nothing new
-    clearAutosave();
+    if (t.conflict && !force) return; // out of sync: only a keep-mine save writes
+    const content = t.text;
+    if (!force && content === t.saved) return; // nothing new
+    clearAutosave(id);
     try {
-      const outcome = await window.mdtool.saveFile(p, content, force);
+      const outcome = await window.mdtool.saveFile(t.path, content, force);
       if (outcome.conflict) {
-        flagDiverged(outcome.disk); // write-path divergence (R34)
+        flagDiverged(id, outcome.disk); // write-path divergence (R34)
         return;
       }
-      savedTextRef.current = content;
-      setDirty(false);
-      if (opts?.manual) editedRef.current = false; // a deliberate save reconciles with disk
+      const latest = tabById(id);
+      updateTab(id, {
+        saved: content,
+        dirty: latest ? latest.text !== content : false,
+        ...(opts?.manual ? { edited: false } : {}),
+      });
     } catch (err) {
       console.error('[Galley] save failed', err);
     }
   };
 
-  const loadFile = (file: OpenedFile) => {
-    clearAutosave();
-    setConflictState(null);
-    setShowModal(false);
-    noticedRef.current = false; // full reconcile → the loud notice re-arms
-    editedRef.current = false;
-    setDocState({ kind: 'file', path: file.path });
-    savedTextRef.current = file.content;
-    textRef.current = file.content;
-    setText(file.content);
-    setDirty(false);
-    editorRef.current?.setDoc(file.content);
+  // Load disk content into a tab (open, reload, or silent refresh). Resets the
+  // tab to a clean, in-sync baseline; the stashed editor state is dropped so the
+  // editor rebuilds from the new text.
+  const reloadTab = (id: string, file: OpenedFile) => {
+    clearAutosave(id);
+    editorStates.current.delete(id);
+    updateTab(id, {
+      path: file.path,
+      text: file.content,
+      saved: file.content,
+      dirty: false,
+      edited: false,
+      conflict: null,
+      noticed: false,
+      showModal: false,
+    });
+    if (activeIdRef.current === id) editorRef.current?.setDoc(file.content);
   };
 
-  const onSourceChange = (next: string) => {
-    setText(next);
-    textRef.current = next;
-    const isDirty = docRef.current.kind === 'file' && next !== savedTextRef.current;
-    setDirty(isDirty);
-    if (isDirty) editedRef.current = true; // user has work in progress
-    clearAutosave();
-    if (isDirty && !conflictRef.current) {
-      autosaveTimer.current = setTimeout(() => void save(), AUTOSAVE_MS);
+  // Switch the active tab, stashing the current editor state and restoring the
+  // target's (or loading its text fresh if not stashed yet).
+  const switchTo = (id: string) => {
+    const cur = activeIdRef.current;
+    if (cur === id) return;
+    if (cur) {
+      const st = editorRef.current?.getState();
+      if (st) editorStates.current.set(cur, st);
+    }
+    setActive(id);
+    const stashed = editorStates.current.get(id);
+    if (stashed) editorRef.current?.setState(stashed);
+    else {
+      const t = tabById(id);
+      if (t) editorRef.current?.setDoc(t.text);
     }
   };
 
-  // Conflict resolutions (R34/R35) — two choices: take theirs, or keep mine.
-  const resolveKeepMine = () => {
-    setConflictState(null);
-    setShowModal(false);
-    // Write my version over disk, but stay alert: I still hold authored content,
-    // so if disk diverges *again* the next change re-raises the notice (quietly,
-    // as the passive flag) rather than silently loading over my version. Hence
-    // keep `editedRef` set and don't pass `manual` (which would re-arm silent
-    // refresh).
-    editedRef.current = true;
-    void save({ force: true }); // overwrite the diverged disk
-  };
-  const resolveLoadFromDisk = () => {
-    if (conflictRef.current) loadFile(conflictRef.current); // take theirs
+  // Open a file in a tab (R39): focus + refresh if already open, else add a tab.
+  const openTab = (file: OpenedFile) => {
+    const existing = tabsRef.current.find((t) => t.path === file.path);
+    if (existing) {
+      reloadTab(existing.id, file);
+      switchTo(existing.id);
+      return;
+    }
+    const id = `tab${idSeq.current++}`;
+    const tab: Tab = {
+      id,
+      path: file.path,
+      text: file.content,
+      saved: file.content,
+      dirty: false,
+      edited: false,
+      conflict: null,
+      noticed: false,
+      showModal: false,
+    };
+    const cur = activeIdRef.current;
+    if (cur) {
+      const st = editorRef.current?.getState();
+      if (st) editorStates.current.set(cur, st);
+    }
+    commitTabs([...tabsRef.current, tab]);
+    setActive(id);
+    editorRef.current?.setDoc(file.content);
   };
 
-  // Pull a command-line file (R7) and subscribe to opens / save / external change.
+  const closeTab = (id: string) => {
+    const idx = tabsRef.current.findIndex((t) => t.id === id);
+    if (idx === -1) return;
+    const t = tabsRef.current[idx];
+    window.mdtool?.notifyClosed(t.path); // R41: stop watching its file
+    clearAutosave(id);
+    editorStates.current.delete(id);
+    const remaining = tabsRef.current.filter((x) => x.id !== id);
+    commitTabs(remaining);
+    if (activeIdRef.current !== id) return;
+    if (remaining.length === 0) {
+      setActive(null);
+      editorRef.current?.setDoc(welcomeTextRef.current); // back to the welcome sandbox
+      return;
+    }
+    const next = remaining[Math.min(idx, remaining.length - 1)];
+    setActive(next.id);
+    const stashed = editorStates.current.get(next.id);
+    if (stashed) editorRef.current?.setState(stashed);
+    else editorRef.current?.setDoc(next.text);
+  };
+
+  // R41: closing a tab with unsaved edits prompts first.
+  const requestClose = (id: string) => {
+    const t = tabById(id);
+    if (t?.dirty) setClosing(t);
+    else closeTab(id);
+  };
+
+  const onSourceChange = (next: string) => {
+    const id = activeIdRef.current;
+    if (!id) {
+      setWelcome(next); // editing the welcome sandbox — ephemeral, not saved
+      return;
+    }
+    const t = tabById(id);
+    if (!t) return;
+    const isDirty = next !== t.saved;
+    updateTab(id, { text: next, dirty: isDirty, edited: t.edited || isDirty });
+    clearAutosave(id);
+    if (isDirty && !t.conflict) {
+      autosaveTimers.current.set(id, setTimeout(() => void saveTab(id), AUTOSAVE_MS));
+    }
+  };
+
+  // Conflict resolutions (R34/R35) on the active tab — take theirs, or keep mine.
+  const resolveKeepMine = () => {
+    const id = activeIdRef.current;
+    if (!id) return;
+    updateTab(id, { conflict: null, showModal: false, edited: true });
+    void saveTab(id, { force: true });
+  };
+  const resolveLoadFromDisk = () => {
+    const id = activeIdRef.current;
+    const t = tabById(id);
+    if (id && t?.conflict) reloadTab(id, t.conflict);
+  };
+
+  // Pull a command-line file (R7) and subscribe to opens / save / reload / change.
   useEffect(() => {
     void window.mdtool?.getStartupFile().then((file) => {
-      if (file) loadFile(file);
+      if (file) openTab(file);
     });
-    const offOpen = window.mdtool?.onOpenFile((file) => loadFile(file));
+    const offOpen = window.mdtool?.onOpenFile((file) => openTab(file));
     const offSave = window.mdtool?.onMenuSave(() => {
-      if (conflictRef.current) resolveKeepMine(); // Ctrl+S while out of sync = keep mine
-      else void save({ manual: true });
+      const id = activeIdRef.current;
+      const t = tabById(id);
+      if (!id || !t) return;
+      if (t.conflict) resolveKeepMine();
+      else void saveTab(id, { manual: true });
+    });
+    const offReload = window.mdtool?.onReloadFile(() => {
+      const id = activeIdRef.current;
+      const t = tabById(id);
+      if (!id || !t) return;
+      void window.mdtool.readFile(t.path).then((file) => {
+        if (file && activeIdRef.current === id) reloadTab(id, file);
+      });
     });
     const offExternal = window.mdtool?.onExternalChange((diskFile) => {
-      if (!conflictRef.current && !editedRef.current) {
-        loadFile(diskFile); // in sync & untouched → refresh silently (R35)
-      } else {
-        flagDiverged(diskFile); // edits in progress, or already flagged → surface it
-      }
+      const t = tabsRef.current.find((x) => x.path === diskFile.path);
+      if (!t) return;
+      if (!t.conflict && !t.edited) reloadTab(t.id, diskFile); // in sync → refresh
+      else flagDiverged(t.id, diskFile); // edits in progress / already flagged → surface
     });
     return () => {
       offOpen?.();
       offSave?.();
+      offReload?.();
       offExternal?.();
-      clearAutosave();
+      for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cmd/Ctrl+K (R27): snapshot the link context at the cursor, then open the
-  // dialog. Resolving applies/removes via the editor handle's stashed range.
+  // Cmd/Ctrl+K (R27): snapshot the link context at the cursor, then open the dialog.
   const openLinkDialog = () => {
     const ctx = editorRef.current?.requestLink();
     if (ctx) setLinkCtx(ctx);
@@ -217,27 +305,28 @@ export function App() {
     void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
-  // The welcome screen is its own thing — a sandbox, not a file — so it just
-  // reads "Welcome!". A file shows its name plus saved/dirty/out-of-sync status.
-  const fileStatus = conflict
-    ? 'out of sync — disk changed'
-    : dirty
-      ? 'unsaved changes'
-      : 'saved';
+  const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+  const source = activeTab ? activeTab.text : welcomeText;
+  const conflict = activeTab?.conflict ?? null;
+  const showModal = activeTab?.showModal ?? false;
+
+  const status = !activeTab
+    ? 'Welcome!'
+    : conflict
+      ? 'out of sync — disk changed'
+      : activeTab.dirty
+        ? 'unsaved changes'
+        : 'saved';
 
   return (
     <div className="app">
       <header className="app-titlebar">
         <span className="app-title">Galley</span>
-        <span className="app-subtitle" title={doc.kind === 'file' ? doc.path : undefined}>
-          {doc.kind === 'file' ? (
-            <>
-              {dirty && <span className="dirty-dot" aria-label="Unsaved changes">●</span>}
-              {basename(doc.path)} — {fileStatus}
-            </>
-          ) : (
-            'Welcome!'
+        <span className="app-subtitle" title={activeTab?.path}>
+          {activeTab && activeTab.dirty && (
+            <span className="dirty-dot" aria-label="Unsaved changes">●</span>
           )}
+          {status}
         </span>
         {conflict && !showModal && (
           <span className="sync-flag" role="status">
@@ -261,9 +350,18 @@ export function App() {
           {showingSource ? 'Hide Source' : 'Show Source'}
         </button>
       </header>
+      {tabs.length > 0 && (
+        <TabStrip
+          tabs={tabs}
+          activeId={activeId}
+          onSelect={switchTo}
+          onClose={requestClose}
+          nameOf={(t) => basename(t.path)}
+        />
+      )}
       <SplitView
         initialDoc={welcome}
-        source={text}
+        source={source}
         onSourceChange={onSourceChange}
         editorRef={editorRef}
         viewMode={viewMode}
@@ -274,6 +372,22 @@ export function App() {
           fileName={basename(conflict.path)}
           onKeepMine={resolveKeepMine}
           onLoadFromDisk={resolveLoadFromDisk}
+        />
+      )}
+      {closing && (
+        <CloseTabDialog
+          fileName={basename(closing.path)}
+          onSave={() => {
+            const id = closing.id;
+            setClosing(null);
+            void saveTab(id, { manual: true }).then(() => closeTab(id));
+          }}
+          onDiscard={() => {
+            const id = closing.id;
+            setClosing(null);
+            closeTab(id);
+          }}
+          onCancel={() => setClosing(null)}
         />
       )}
       {linkCtx && (
