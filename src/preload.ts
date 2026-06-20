@@ -12,8 +12,8 @@ const api: MdtoolApi = {
   version: process.env.npm_package_version ?? '0.1.0',
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   setSourceVisible: (visible: boolean) => ipcRenderer.invoke('window:setSourceVisible', visible),
-  saveFile: (filePath: string, content: string) =>
-    ipcRenderer.invoke('file:write', { path: filePath, content }),
+  saveFile: (filePath: string, content: string, force?: boolean) =>
+    ipcRenderer.invoke('file:write', { path: filePath, content, force }),
   getStartupFile: () => ipcRenderer.invoke('file:getStartup'),
   onOpenFile: (callback: (file: OpenedFile) => void) => {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);

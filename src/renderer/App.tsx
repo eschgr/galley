@@ -5,10 +5,20 @@
  * Document lifecycle: a file arrives via the command line (R7, pulled on mount)
  * or File → Open (R8); edits mark the doc dirty and trigger a debounced
  * auto-save (R29); Ctrl/Cmd+S force-saves (R30). The open file is watched for
- * external changes (R32): a clean buffer refreshes silently, a dirty buffer
- * prompts (R35), and auto-save is suspended while that prompt is open (R36).
- * Tabs (R39+) and the write-path divergence guard (R34) are later phases. Until
- * a file is opened, the editor shows a built-in welcome sample (not savable).
+ * external changes (R32).
+ *
+ * Conflict reconciliation (R34/R35/R36) — "decide once, mine wins until save or
+ * reload":
+ *  - clean buffer + external change → refresh silently;
+ *  - dirty buffer + external change, or a save that finds disk diverged → prompt
+ *    once (Keep my changes / Keep editing / Load from disk);
+ *  - "Keep editing" starts a `mine` episode: further external changes are
+ *    ignored and auto-save force-overwrites — no repeat prompts (R36). The
+ *    episode ends on a deliberate Ctrl+S or a reload, after which a genuinely
+ *    new change can prompt again.
+ *
+ * Tabs (R39+) are a later phase. Until a file is opened, the editor shows a
+ * built-in welcome sample (not savable).
  */
 import './app.css';
 import { useEffect, useRef, useState } from 'react';
@@ -19,6 +29,9 @@ import type { EditorHandle } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 
 const AUTOSAVE_MS = 5000; // R29: save 5s after the last keystroke
+
+/** 'mine' = a conflict was resolved in favour of the editor for this episode. */
+type Decision = 'none' | 'mine';
 
 function basename(p: string): string {
   const parts = p.split(/[\\/]/);
@@ -35,17 +48,23 @@ export function App() {
   const [text, setText] = useState(welcome);
   const [dirty, setDirty] = useState(false);
   const [conflict, setConflict] = useState<OpenedFile | null>(null);
+  const [decision, setDecision] = useState<Decision>('none');
 
   // Refs mirror state for the once-registered IPC handlers / the autosave timer.
   const pathRef = useRef<string | null>(null);
   const textRef = useRef(welcome);
   const savedTextRef = useRef(welcome);
   const conflictRef = useRef<OpenedFile | null>(null);
+  const decisionRef = useRef<Decision>('none');
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setConflictState = (next: OpenedFile | null) => {
     conflictRef.current = next;
     setConflict(next);
+  };
+  const setDecisionState = (next: Decision) => {
+    decisionRef.current = next;
+    setDecision(next);
   };
 
   const clearAutosave = () => {
@@ -55,17 +74,26 @@ export function App() {
     }
   };
 
-  const save = async () => {
+  // Save the current buffer. `force` overwrites disk ("keep mine"); otherwise a
+  // checked save can come back as a conflict if disk diverged (R34). `manual`
+  // (Ctrl+S) ends a `mine` episode.
+  const save = async (opts?: { manual?: boolean; force?: boolean }) => {
     if (conflictRef.current) return; // R36: not while a conflict prompt is open
     const p = pathRef.current;
     if (!p) return; // welcome sample has nowhere to save (Save As is a later phase)
     const content = textRef.current;
     if (content === savedTextRef.current) return; // nothing changed
     clearAutosave();
+    const force = opts?.force ?? decisionRef.current === 'mine';
     try {
-      await window.mdtool.saveFile(p, content);
+      const outcome = await window.mdtool.saveFile(p, content, force);
+      if (outcome.conflict) {
+        setConflictState(outcome.disk); // write-path divergence (R34) → prompt
+        return;
+      }
       savedTextRef.current = content;
       setDirty(false);
+      if (opts?.manual && decisionRef.current === 'mine') setDecisionState('none'); // Ctrl+S ends the episode
     } catch (err) {
       console.error('[Galley] save failed', err);
     }
@@ -74,6 +102,7 @@ export function App() {
   const loadFile = (file: OpenedFile) => {
     clearAutosave();
     setConflictState(null);
+    setDecisionState('none'); // reconciled with disk
     pathRef.current = file.path;
     savedTextRef.current = file.content;
     textRef.current = file.content;
@@ -94,16 +123,18 @@ export function App() {
     }
   };
 
-  // Conflict resolutions (R35).
+  // Conflict resolutions (R34/R35).
   const resolveKeepMine = () => {
     setConflictState(null);
-    void save(); // overwrite the disk version with ours
-  };
-  const resolveLoadFromDisk = () => {
-    if (conflictRef.current) loadFile(conflictRef.current); // discard our edits
+    setDecisionState('none'); // committing mine reconciles → episode ends
+    void save({ manual: true, force: true }); // overwrite the diverged disk
   };
   const resolveKeepEditing = () => {
-    setConflictState(null); // dismiss; keep editing, decide later
+    setConflictState(null);
+    setDecisionState('mine'); // persist: ignore external changes, auto-save overwrites
+  };
+  const resolveLoadFromDisk = () => {
+    if (conflictRef.current) loadFile(conflictRef.current); // take theirs
   };
 
   // Pull a command-line file (R7) and subscribe to opens / save / external change.
@@ -112,8 +143,10 @@ export function App() {
       if (file) loadFile(file);
     });
     const offOpen = window.mdtool?.onOpenFile((file) => loadFile(file));
-    const offSave = window.mdtool?.onMenuSave(() => void save());
+    const offSave = window.mdtool?.onMenuSave(() => void save({ manual: true }));
     const offExternal = window.mdtool?.onExternalChange((diskFile) => {
+      if (conflictRef.current) return; // a prompt is already open
+      if (decisionRef.current === 'mine') return; // mine wins this episode — ignore (R34)
       if (textRef.current === savedTextRef.current) {
         loadFile(diskFile); // clean buffer → refresh silently (R35)
       } else {
@@ -137,7 +170,13 @@ export function App() {
   };
 
   const name = path ? basename(path) : 'welcome.md';
-  const status = path ? (dirty ? 'unsaved changes' : 'saved') : 'sample (unsaved)';
+  const status = !path
+    ? 'sample (unsaved)'
+    : decision === 'mine'
+      ? 'keeping your version'
+      : dirty
+        ? 'unsaved changes'
+        : 'saved';
 
   return (
     <div className="app">

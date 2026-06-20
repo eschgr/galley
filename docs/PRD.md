@@ -167,6 +167,12 @@ The governing principle: **both the write path (save) and the read path (load/re
   - **If the buffer is clean** (matches baseline), reload silently and update the baseline.
   - **If the buffer is dirty** (has unsaved local edits), **prompt before loading** (keep mine / load from disk / cancel) rather than discarding edits.
 - **R36. Auto-save suspended during a pending conflict.** While a conflict prompt (R34/R35) is open for a tab, that tab's auto-save is suspended until the conflict is resolved, so a debounced write cannot fire into or over the decision being made.
+- **R36a. Decide once — sticky reconciliation.** The conflict prompt (keep mine / load from disk / **keep editing**) is shown **once per divergence "episode"**; the user's choice is then applied automatically without re-prompting. *(Decided 2026-06-20: "mine wins until save or reload.")*
+  - **Keep editing** starts a `mine` episode: subsequent external changes are **ignored** (no prompt, no auto-reload) and auto-save **force-overwrites** disk — no repeat prompts even if the file keeps changing on disk (e.g. the LLM rewriting it).
+  - **Keep my changes** force-overwrites disk now and ends the episode.
+  - **Load from disk** takes the on-disk version and ends the episode.
+  - A `mine` episode also ends on a deliberate **Ctrl/Cmd+S** or a reload/re-open (reconciliation). After it ends, a genuinely new external change prompts again. *(Auto-save does not end the episode; only a manual save or reload does.)*
+  - Rationale: concurrent LLM writes are a non-goal as a *primary* flow (§3); the goal is sane, predictable, no-nag behavior resolved by user intent, not last-writer-by-timestamp.
 - **R37. Watcher debounce.** Debounce the watcher so a rapid sequence of external writes does not cause flicker or repeated prompts.
 - **R38. No view locks.** The app does **not** hold a write/exclusive lock on files merely opened for viewing/editing, keeping the window in which two applications contend for the file as small as possible.
 
