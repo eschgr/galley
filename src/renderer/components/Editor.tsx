@@ -15,7 +15,7 @@
  * and onChange on edits.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Extension } from '@codemirror/state';
 import {
   EditorView,
   lineNumbers,
@@ -45,6 +45,9 @@ export interface EditorHandle {
    * known.
    */
   alignTo(line: number): void;
+  /** Replace the whole document (e.g. when a file is opened) with fresh undo
+   *  history, so undo can't reach back into the previous file. */
+  setDoc(content: string): void;
 }
 
 interface EditorProps {
@@ -86,6 +89,42 @@ function scrollToLine(view: EditorView, line0: number): void {
   view.scrollDOM.scrollTop = block.top + frac * block.height;
 }
 
+type ChangeRef = { current: ((doc: string) => void) | undefined };
+type ScrollRef = { current: (() => void) | undefined };
+
+// The full extension set, rebuilt for setDoc so a loaded file starts with fresh
+// undo history. Callbacks are read through refs so they stay current without
+// re-creating the editor.
+function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef): Extension[] {
+  return [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightActiveLine(),
+    history(),
+    drawSelection(),
+    dropCursor(),
+    rectangularSelection(),
+    EditorState.allowMultipleSelections.of(true),
+    indentUnit.of('  '),
+    EditorView.lineWrapping,
+    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    markdown(),
+    highlightSelectionMatches(),
+    search({ top: true }),
+    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+    theme,
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
+    }),
+    EditorView.domEventHandlers({
+      scroll: () => {
+        onScrollRef.current?.();
+        return false;
+      },
+    }),
+  ];
+}
+
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   { initialDoc, onChange, onScroll },
   ref,
@@ -112,6 +151,11 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       // stale (display:none) geometry and the scroll lands on the wrong line.
       v.requestMeasure({ read: () => null, write: () => scrollToLine(v, line) });
     },
+    setDoc: (content) => {
+      const v = viewRef.current;
+      if (!v) return;
+      v.setState(EditorState.create({ doc: content, extensions: buildExtensions(onChangeRef, onScrollRef) }));
+    },
   }));
 
   useEffect(() => {
@@ -120,33 +164,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       parent: hostRef.current,
       state: EditorState.create({
         doc: initialDoc,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          highlightActiveLine(),
-          history(),
-          drawSelection(),
-          dropCursor(),
-          rectangularSelection(),
-          EditorState.allowMultipleSelections.of(true),
-          indentUnit.of('  '),
-          EditorView.lineWrapping,
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          markdown(),
-          highlightSelectionMatches(),
-          search({ top: true }),
-          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-          theme,
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
-          }),
-          EditorView.domEventHandlers({
-            scroll: () => {
-              onScrollRef.current?.();
-              return false;
-            },
-          }),
-        ],
+        extensions: buildExtensions(onChangeRef, onScrollRef),
       }),
     });
     viewRef.current = view;

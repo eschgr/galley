@@ -1,12 +1,85 @@
-import { app, BrowserWindow, shell, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
+import { createPlatformBridge } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
+
+// All OS-touching file work goes through the platform seam (PRD §7/§9).
+const platform = createPlatformBridge();
+
+// A file passed on the command line (R7) is held here and pulled by the renderer
+// on mount via 'file:getStartup' — pulling avoids a race with pushing before the
+// renderer has registered its listener.
+let startupFilePath: string | null = null;
+
+function targetWindow(): BrowserWindow | null {
+  return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+}
+
+// Read a file and hand it to the renderer to open (R7/R8). Errors surface as a
+// dialog rather than crashing the open.
+async function openPath(win: BrowserWindow, absPath: string): Promise<void> {
+  try {
+    const snapshot = await platform.readFile(absPath);
+    win.webContents.send('file:opened', snapshot);
+  } catch (err) {
+    dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
+  }
+}
+
+// File → Open… (R8): native dialog, then open the chosen file.
+async function openFileViaDialog(): Promise<void> {
+  const win = targetWindow();
+  if (!win) return;
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Open markdown file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (canceled || !filePaths[0]) return;
+  await openPath(win, filePaths[0]);
+}
+
+// File → Save (R30): the document lives in the renderer, so ask it to save.
+function requestSave(): void {
+  targetWindow()?.webContents.send('menu:save');
+}
+
+// Save path (R29/R30): the renderer sends content; main writes it and returns
+// the new snapshot (its hash becomes the renderer's new baseline).
+ipcMain.handle('file:write', (_event, args: unknown) => {
+  if (
+    !args ||
+    typeof args !== 'object' ||
+    typeof (args as { path?: unknown }).path !== 'string' ||
+    typeof (args as { content?: unknown }).content !== 'string'
+  ) {
+    throw new Error('file:write requires { path: string, content: string }');
+  }
+  const { path: absPath, content } = args as { path: string; content: string };
+  return platform.writeFile(absPath, content);
+});
+
+// R7: the renderer pulls the command-line file (if any) once on mount.
+ipcMain.handle('file:getStartup', async () => {
+  if (!startupFilePath) return null;
+  const absPath = startupFilePath;
+  startupFilePath = null;
+  try {
+    return await platform.readFile(absPath);
+  } catch (err) {
+    dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
+    return null;
+  }
+});
 
 // DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,
 // or `mdtool --devtools`) to open them on launch; otherwise use View → Toggle
@@ -117,12 +190,15 @@ const createWindow = () => {
     console.log('[mdtool] --devtools set: opening DevTools');
     mainWindow.webContents.openDevTools();
   }
+
+  // R7: record a command-line file for the renderer to pull on mount.
+  startupFilePath = platform.parseCliFileArg(process.argv, app.isPackaged);
 };
 
 // This method will be called when Electron has finished initialization and is
 // ready to create browser windows. Some APIs can only be used after this event.
 app.on('ready', () => {
-  buildAppMenu();
+  buildAppMenu({ openFile: openFileViaDialog, saveFile: requestSave });
   createWindow();
 });
 
@@ -142,6 +218,6 @@ app.on('activate', () => {
   }
 });
 
-// Main-process feature code (CLI parsing, the channel listener, file IO, file
-// watching, hashing) lives behind the platform seam in src/main/platform and is
-// wired in here in later steps. See PRD §7 (architecture notes) and §9.
+// Still deferred behind the platform seam (src/main/platform): the file watcher
+// + conflict handling (R32–R38) and the per-project channel listener (R11–R15).
+// See PRD §7 (architecture notes) and §9.

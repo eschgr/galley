@@ -28,6 +28,12 @@
   font-size: 12px;
   color: #57606a;
 }
+.app-subtitle .dirty-dot {
+  color: #bf8700;
+  margin-right: 5px;
+  font-size: 11px;
+  vertical-align: middle;
+}
 
 /* Show/Hide Source toggle, pinned to the right of the titlebar */
 .source-toggle {
