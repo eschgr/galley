@@ -1,21 +1,35 @@
 /**
- * Application menu (start of PRD R47 — native menu bar).
+ * Application menu (PRD R47 — native menu bar).
  *
- * Minimal for now: standard role-based File/Edit/View/Window submenus so the OS
- * shortcuts and a "Toggle Developer Tools" item are available. The View submenu
- * is where the user opens DevTools on demand (DevTools no longer auto-opens at
- * startup — see main.ts / the --devtools flag). File's Open/Save and a Help
- * entry are fleshed out in the dedicated menu/Help steps.
+ * File → Open (R8) and Save (R30) call back into main; the rest is standard
+ * role-based Edit/View/Window submenus. The View submenu is where the user opens
+ * DevTools on demand (DevTools no longer auto-opens at startup — see main.ts /
+ * the --devtools flag). The Help entry is fleshed out in the Help step (R48).
  */
 import { Menu } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 
-export function buildAppMenu(): void {
+export interface MenuActions {
+  /** File → Open… (show the open dialog). */
+  openFile: () => void;
+  /** File → Save (force-save the focused document). */
+  saveFile: () => void;
+}
+
+export function buildAppMenu(actions: MenuActions): void {
   const isMac = process.platform === 'darwin';
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
-    { role: 'fileMenu' },
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: actions.openFile },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: actions.saveFile },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
     { role: 'editMenu' },
     {
       label: 'View',

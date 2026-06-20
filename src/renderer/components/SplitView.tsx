@@ -16,28 +16,33 @@
  * two-way sync would create (programmatic scroll of B firing B's scroll handler
  * and echoing back), without timing hacks.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
 
 export type ViewMode = 'split' | 'preview';
 
 interface SplitViewProps {
+  /** Initial editor content, used once to mount the editor. */
   initialDoc: string;
+  /** Current document text (controlled) — drives the preview. */
+  source: string;
+  /** Called when the user edits the source. */
+  onSourceChange: (text: string) => void;
+  /** Editor handle, owned by App so it can load files / drive the editor. */
+  editorRef: RefObject<EditorHandle>;
   viewMode: ViewMode;
 }
 
 const MIN_PCT = 20;
 const MAX_PCT = 80;
 
-export function SplitView({ initialDoc, viewMode }: SplitViewProps) {
-  const editorRef = useRef<EditorHandle>(null);
+export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode }: SplitViewProps) {
   const previewRef = useRef<PreviewHandle>(null);
   const active = useRef<'editor' | 'preview' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
-  const [source, setSource] = useState(initialDoc);
   // Width of the editor — the RIGHT pane; the preview (left) flexes to fill.
   const [editorPct, setEditorPct] = useState(50);
 
@@ -135,7 +140,7 @@ export function SplitView({ initialDoc, viewMode }: SplitViewProps) {
         <Editor
           ref={editorRef}
           initialDoc={initialDoc}
-          onChange={setSource}
+          onChange={onSourceChange}
           onScroll={onEditorScroll}
         />
       </div>

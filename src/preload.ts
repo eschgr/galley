@@ -5,13 +5,26 @@
 // It exposes a single frozen object, `window.mdtool`, typed by MdtoolApi. The
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MdtoolApi } from './shared/api';
+import type { MdtoolApi, OpenedFile } from './shared/api';
 
 const api: MdtoolApi = {
   platform: process.platform,
   version: process.env.npm_package_version ?? '0.1.0',
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   setSourceVisible: (visible: boolean) => ipcRenderer.invoke('window:setSourceVisible', visible),
+  saveFile: (filePath: string, content: string) =>
+    ipcRenderer.invoke('file:write', { path: filePath, content }),
+  getStartupFile: () => ipcRenderer.invoke('file:getStartup'),
+  onOpenFile: (callback: (file: OpenedFile) => void) => {
+    const listener = (_event: unknown, file: OpenedFile) => callback(file);
+    ipcRenderer.on('file:opened', listener);
+    return () => ipcRenderer.removeListener('file:opened', listener);
+  },
+  onMenuSave: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:save', listener);
+    return () => ipcRenderer.removeListener('menu:save', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('mdtool', api);
