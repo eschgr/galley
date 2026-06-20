@@ -133,9 +133,10 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
   - *(Link is the exception — it always uses the dialog in R27.)*
 
 - **R26. Indent / outdent.**
-  - `Tab` / `Shift+Tab` indent / outdent a list item **only when the cursor is at the start of a list line**. In that position `Tab` increases nesting and `Shift+Tab` decreases it.
-  - **Anywhere else**, `Tab` inserts normal indentation and does not affect list nesting. `Tab` never moves focus out of the editor.
+  - On a **list line**, `Tab` / `Shift+Tab` nest / un-nest the whole item by one indent unit, from **anywhere on the line** — not just at the start. The list marker is left untouched (numbered items keep their marker; the renderer numbers them — see R26a). The cursor stays on the same character.
+  - On any **other line**, `Tab` inserts indentation at the cursor and `Shift+Tab` outdents the line. `Tab` never moves focus out of the editor.
   - Indentation uses **spaces, not hard tab characters**, at the width set in R28.
+- **R26a. Lazy ordered-list numbering.** Galley never renumbers ordered lists; markers are left exactly as authored (the convention "`1.` on every item" works well, since re-nesting doesn't force a renumber and the renderer shows the correct sequence). *(A list auto-continuation feature — Enter starting the next item — is not in scope yet.)*
 
 - **R27. Link dialog.** `Cmd/Ctrl+K` opens a small dialog rather than inserting raw syntax, so the user never has to remember `[text](url)` ordering. Behavior:
   - **Two labeled fields:** **Text** and **URL**. Focus starts in the **URL** field.
@@ -151,6 +152,14 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
 > Status (2026-06-20): R23–R28 implemented. The wrap/heading/fence rules live in the pure, unit-tested `src/renderer/components/editorCommands.ts`; the keymap is registered at **highest precedence** so it wins over CodeMirror defaults (no clash found on `Cmd/Ctrl+E` or `K`). The link dialog reads/writes through the editor handle, using the Lezer syntax tree to detect an existing link at the cursor. Clipboard-URL prefill (R27 nice-to-have) remains future.
 
 > Implementation note: CodeMirror 6 exposes keybindings via its keymap system, and wrap/toggle logic operates on selection ranges; existing markdown-command helpers cover much of R24–R25. The link dialog (R27) is a small renderer-side popover reading/writing the editor selection; detecting "cursor within a link" uses the markdown syntax tree (Lezer) CodeMirror already maintains.
+
+### 5.4c Document states
+
+The editor tracks **what it is showing as an explicit state**, not as a null-path heuristic. Two kinds exist today (a third, `untitled`, arrives with Save As):
+
+- **Welcome screen** — a built-in **sandbox** shown whenever no file is open. It introduces the app and lets the user play with the renderer. It is **never saved** (no auto-save, no watcher, no Save), the title bar reads **"Welcome!"**, and it makes no claim to be a file. Opening a file replaces it.
+- **File** — a document opened from disk, with a path, baseline hash, watcher, and the full save/auto-save/conflict behavior (R29–R36).
+- **Untitled** *(future, with Save As)* — an editable buffer with **no destination yet**. Unlike the welcome screen it holds the user's work: auto-save and watching can't run, but unsaved changes must be surfaced and the user offered a way to save (Save As). *Not implemented yet — do not treat the welcome screen as an unsaved buffer.*
 
 ### 5.5 Saving
 

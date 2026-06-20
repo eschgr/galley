@@ -42,13 +42,22 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
+/**
+ * What the editor is currently showing, tracked explicitly rather than inferred
+ * from a null path. Today it's either the built-in welcome screen (a never-saved
+ * sandbox shown when no file is open) or a file opened from disk. A third
+ * `untitled` kind — an editable buffer with no destination yet — arrives with
+ * the Save As phase; keeping this a tagged union makes that a clean addition.
+ */
+type DocState = { kind: 'welcome' } | { kind: 'file'; path: string };
+
 export function App() {
   const editorRef = useRef<EditorHandle>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const showingSource = viewMode === 'split';
 
-  const [path, setPath] = useState<string | null>(null);
+  const [doc, setDoc] = useState<DocState>({ kind: 'welcome' });
   const [text, setText] = useState(welcome);
   const [dirty, setDirty] = useState(false);
   // The on-disk version that diverged from our buffer (null = in sync). Drives
@@ -58,7 +67,7 @@ export function App() {
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
 
   // Refs mirror state for the once-registered IPC handlers / the autosave timer.
-  const pathRef = useRef<string | null>(null);
+  const docRef = useRef<DocState>({ kind: 'welcome' });
   const textRef = useRef(welcome);
   const savedTextRef = useRef(welcome);
   const conflictRef = useRef<OpenedFile | null>(null);
@@ -76,6 +85,10 @@ export function App() {
   const setConflictState = (next: OpenedFile | null) => {
     conflictRef.current = next;
     setConflict(next);
+  };
+  const setDocState = (next: DocState) => {
+    docRef.current = next;
+    setDoc(next);
   };
 
   const clearAutosave = () => {
@@ -103,8 +116,9 @@ export function App() {
   const save = async (opts?: { manual?: boolean; force?: boolean }) => {
     const force = opts?.force ?? false;
     if (conflictRef.current && !force) return; // out of sync: only a "keep mine" save writes
-    const p = pathRef.current;
-    if (!p) return; // welcome sample has nowhere to save (Save As is a later phase)
+    const d = docRef.current;
+    if (d.kind !== 'file') return; // the welcome screen has no destination (Save As is a later phase)
+    const p = d.path;
     const content = textRef.current;
     if (!force && content === savedTextRef.current) return; // nothing new
     clearAutosave();
@@ -128,10 +142,9 @@ export function App() {
     setShowModal(false);
     noticedRef.current = false; // full reconcile → the loud notice re-arms
     editedRef.current = false;
-    pathRef.current = file.path;
+    setDocState({ kind: 'file', path: file.path });
     savedTextRef.current = file.content;
     textRef.current = file.content;
-    setPath(file.path);
     setText(file.content);
     setDirty(false);
     editorRef.current?.setDoc(file.content);
@@ -140,7 +153,7 @@ export function App() {
   const onSourceChange = (next: string) => {
     setText(next);
     textRef.current = next;
-    const isDirty = pathRef.current !== null && next !== savedTextRef.current;
+    const isDirty = docRef.current.kind === 'file' && next !== savedTextRef.current;
     setDirty(isDirty);
     if (isDirty) editedRef.current = true; // user has work in progress
     clearAutosave();
@@ -204,22 +217,27 @@ export function App() {
     void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
-  const name = path ? basename(path) : 'welcome.md';
-  const status = !path
-    ? 'sample (unsaved)'
-    : conflict
-      ? 'out of sync — disk changed'
-      : dirty
-        ? 'unsaved changes'
-        : 'saved';
+  // The welcome screen is its own thing — a sandbox, not a file — so it just
+  // reads "Welcome!". A file shows its name plus saved/dirty/out-of-sync status.
+  const fileStatus = conflict
+    ? 'out of sync — disk changed'
+    : dirty
+      ? 'unsaved changes'
+      : 'saved';
 
   return (
     <div className="app">
       <header className="app-titlebar">
         <span className="app-title">Galley</span>
-        <span className="app-subtitle" title={path ?? undefined}>
-          {dirty && <span className="dirty-dot" aria-label="Unsaved changes">●</span>}
-          {name} — {status}
+        <span className="app-subtitle" title={doc.kind === 'file' ? doc.path : undefined}>
+          {doc.kind === 'file' ? (
+            <>
+              {dirty && <span className="dirty-dot" aria-label="Unsaved changes">●</span>}
+              {basename(doc.path)} — {fileStatus}
+            </>
+          ) : (
+            'Welcome!'
+          )}
         </span>
         {conflict && !showModal && (
           <span className="sync-flag" role="status">

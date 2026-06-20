@@ -154,11 +154,10 @@ const tabCmd: Command = (view) => {
   const range = state.selection.main;
   if (range.empty) {
     const line = state.doc.lineAt(range.head);
-    const m = LIST_RE.exec(line.text);
-    // At the start of a list line → increase nesting by one indent unit.
-    const insertAt = m && range.head - line.from <= m[1].length ? line.from : range.head;
-    // Anywhere else → insert spaces at the cursor (normal indentation, R26),
-    // never re-indenting the whole paragraph.
+    // On a list line, Tab nests the whole item (indent the line) wherever the
+    // cursor sits — not wedge spaces between the marker and the text. On any
+    // other line it inserts indentation at the cursor.
+    const insertAt = LIST_RE.test(line.text) ? line.from : range.head;
     view.dispatch(
       state.update({
         changes: { from: insertAt, insert: '  ' },
@@ -177,7 +176,8 @@ const shiftTabCmd: Command = (view) => {
   if (range.empty) {
     const line = state.doc.lineAt(range.head);
     const m = LIST_RE.exec(line.text);
-    if (m && m[1].length > 0 && range.head - line.from <= m[1].length) {
+    // Outdent a list item by one indent unit, from anywhere on the line.
+    if (m && m[1].length > 0) {
       const remove = Math.min(2, m[1].length);
       view.dispatch(
         state.update({

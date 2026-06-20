@@ -85,6 +85,14 @@ test('Tab indents a list item at the line start; Shift+Tab outdents (R26)', asyn
   await expect.poll(() => lineText(page)).toBe('- item');
 });
 
+test('Tab nests a list item from anywhere on the line; numbered markers stay "1." (R26)', async ({ page }) => {
+  await setEditor(page, '1. item'); // cursor ends inside the item text, not at line start
+  await page.keyboard.press('Tab');
+  await expect.poll(() => lineText(page)).toBe('  1. item'); // whole item nested, marker preserved
+  await page.keyboard.press('Shift+Tab');
+  await expect.poll(() => lineText(page)).toBe('1. item');
+});
+
 test('Tab in the middle of a paragraph inserts spaces at the cursor, not a line indent (R26)', async ({ page }) => {
   await setEditor(page, 'ab');
   await page.keyboard.press('Home');

@@ -1,49 +1,47 @@
-# Welcome to Galley
+# Welcome to Galley!
 
-You're looking at the **rendered view** — how a markdown file actually reads.
+This is your **sandbox** — a friendly place to see how Galley renders Markdown
+and to play with the editor. Nothing here is a real file; poke at it all you
+like. When you open a document, this screen steps aside.
 
-Click **Show Source** in the top-right corner to bring up the markdown **source
-editor on the right**, side by side with this rendered view on the left. Edit the
-source and the view updates as you type; scroll one pane and the other follows.
-Click **Hide Source** to go back to full-window reading.
+You're looking at the **rendered view**. Click **Show Source** (top-right) to
+bring up the Markdown **editor on the right**, side by side. Edit the source and
+this view updates as you type; scroll one pane and the other follows along.
 
-> File opening isn't wired up yet — this is a built-in sample so you can try the
-> view, editor, and preview. Tabs, opening files, and saving come next.
+## Things to try
 
-## Try it
+1. Click **Show Source**, then type in the editor and watch this update live.
+2. Select a word and press **Ctrl/Cmd+B** for **bold**, **Ctrl/Cmd+I** for _italic_.
+3. Press **Ctrl/Cmd+K** to add a [link](https://commonmark.org/) from a little dialog.
+4. Press **Ctrl/Cmd+1** through **6** to turn a line into a heading.
+5. Drag the divider in the middle to resize the panes.
+6. Press **Ctrl/Cmd+F** in the editor to search.
 
-1. Click **Show Source** (top-right) to bring up the source editor beside this view.
-2. Type in the editor (right pane) and watch this view update live.
-3. Drag the divider in the middle to resize the two panes.
-4. Press `Ctrl+F` (or `Cmd+F`) in the editor to open the find panel.
-5. Scroll either pane — they stay aligned by source line.
-6. Click **Hide Source** to go back to full-window reading.
+## What it renders
 
-## Markdown it renders
-
-GitHub Flavored Markdown plus LaTeX math, with syntax-highlighted code.
+GitHub Flavored Markdown, LaTeX math, and syntax-highlighted code.
 
 - **Bold**, _italic_, ~~strikethrough~~, `inline code`
 - Links open in your browser: [the CommonMark spec](https://spec.commonmark.org/)
-- Nested lists
+- Nested lists — press **Tab** on a list line to nest it:
   - second level
     - third level
 
 ### Task list
 
-- [x] Render markdown
+- [x] Render Markdown
 - [x] Live preview
-- [ ] Open and save files
+- [x] Formatting shortcuts
 - [ ] Tabs
 
 ### A table
 
-| Feature        | Status      | Notes                         |
-|----------------|-------------|-------------------------------|
-| Split view     | done        | resizable divider             |
-| Live preview   | done        | updates as you type           |
-| Scroll sync    | done        | anchored by source line       |
-| Find / replace | done        | `Ctrl/Cmd+F` in the editor    |
+| Feature        | Status | Notes                       |
+|----------------|--------|-----------------------------|
+| Split view     | done   | resizable divider           |
+| Live preview   | done   | updates as you type         |
+| Scroll sync    | done   | anchored by source line     |
+| Find / replace | done   | `Ctrl/Cmd+F` in the editor  |
 
 ### Math
 
@@ -76,9 +74,8 @@ def fib(n: int) -> int:
 
 ---
 
-## Some filler to make it scroll
+## A little more, so there's something to scroll
 
-Markdown keeps the source readable while the preview shows the formatted result.
 Because the two panes are anchored by source line, jumping to a heading on one
 side lands you near the same place on the other.
 
@@ -91,11 +88,6 @@ magna, vel scelerisque nisl consectetur et. Donec id elit non mi porta gravida.
 
 Vestibulum id ligula porta felis euismod semper. Cras mattis consectetur purus
 sit amet fermentum. Maecenas faucibus mollis interdum.
-
-### Section C
-
-Nullam quis risus eget urna mollis ornare vel eu leo. Cum sociis natoque
-penatibus et magnis dis parturient montes, nascetur ridiculus mus.
 
 ### The end
 
