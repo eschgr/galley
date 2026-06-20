@@ -28,7 +28,9 @@ import { ConflictDialog } from './components/ConflictDialog';
 import type { EditorHandle } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 
-const AUTOSAVE_MS = 5000; // R29: save 5s after the last keystroke
+// R29: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
+const AUTOSAVE_MS =
+  Number((window as unknown as { __galleyAutosaveMs?: number }).__galleyAutosaveMs) || 5000;
 
 /** 'mine' = a conflict was resolved in favour of the editor for this episode. */
 type Decision = 'none' | 'mine';
@@ -56,6 +58,11 @@ export function App() {
   const savedTextRef = useRef(welcome);
   const conflictRef = useRef<OpenedFile | null>(null);
   const decisionRef = useRef<Decision>('none');
+  // True once the user has edited since the last reconcile (load/reload or a
+  // deliberate save). Auto-save can momentarily clear `dirty`, but while this is
+  // set an external change still raises a conflict instead of silently
+  // refreshing — so an in-progress edit is never silently overwritten.
+  const editedRef = useRef(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setConflictState = (next: OpenedFile | null) => {
@@ -82,9 +89,11 @@ export function App() {
     const p = pathRef.current;
     if (!p) return; // welcome sample has nowhere to save (Save As is a later phase)
     const content = textRef.current;
-    if (content === savedTextRef.current) return; // nothing changed
-    clearAutosave();
     const force = opts?.force ?? decisionRef.current === 'mine';
+    // A force/"keep mine" save always writes (disk may diverge while the buffer
+    // matches our last save); a normal save skips when there's nothing new.
+    if (!force && content === savedTextRef.current) return;
+    clearAutosave();
     try {
       const outcome = await window.mdtool.saveFile(p, content, force);
       if (outcome.conflict) {
@@ -93,7 +102,10 @@ export function App() {
       }
       savedTextRef.current = content;
       setDirty(false);
-      if (opts?.manual && decisionRef.current === 'mine') setDecisionState('none'); // Ctrl+S ends the episode
+      if (opts?.manual) {
+        editedRef.current = false; // a deliberate save reconciles with disk
+        if (decisionRef.current === 'mine') setDecisionState('none'); // Ctrl+S ends the episode
+      }
     } catch (err) {
       console.error('[Galley] save failed', err);
     }
@@ -103,6 +115,7 @@ export function App() {
     clearAutosave();
     setConflictState(null);
     setDecisionState('none'); // reconciled with disk
+    editedRef.current = false;
     pathRef.current = file.path;
     savedTextRef.current = file.content;
     textRef.current = file.content;
@@ -117,6 +130,7 @@ export function App() {
     textRef.current = next;
     const isDirty = pathRef.current !== null && next !== savedTextRef.current;
     setDirty(isDirty);
+    if (isDirty) editedRef.current = true; // user has work in progress
     clearAutosave();
     if (isDirty && !conflictRef.current) {
       autosaveTimer.current = setTimeout(() => void save(), AUTOSAVE_MS);
@@ -147,11 +161,13 @@ export function App() {
     const offExternal = window.mdtool?.onExternalChange((diskFile) => {
       if (conflictRef.current) return; // a prompt is already open
       if (decisionRef.current === 'mine') return; // mine wins this episode — ignore (R34)
-      if (textRef.current === savedTextRef.current) {
-        loadFile(diskFile); // clean buffer → refresh silently (R35)
+      if (!editedRef.current) {
+        loadFile(diskFile); // untouched since load → refresh silently (R35)
       } else {
+        // The user has work in progress (even if auto-save momentarily cleared
+        // `dirty`) — prompt rather than silently overwrite their edits.
         clearAutosave(); // R36: suspend auto-save while prompting
-        setConflictState(diskFile); // dirty buffer → prompt (R35)
+        setConflictState(diskFile);
       }
     });
     return () => {

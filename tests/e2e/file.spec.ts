@@ -236,3 +236,25 @@ test('a manual save ends the episode; a later change prompts again (R34)', async
   await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs again\n', hash: 'h4' });
   await expect(overlay(page)).toBeVisible();
 });
+
+test('auto-save does not let an external change silently discard edits (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.addInitScript(() => {
+    (window as unknown as { __galleyAutosaveMs: number }).__galleyAutosaveMs = 120; // fast auto-save
+  });
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\d.md', content: 'orig\n', hash: 'h' });
+
+  await page.locator('.source-toggle').click();
+  await expect(page.locator('.pane-editor')).toBeVisible();
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' MY WORK');
+  await expect(dirtyDot(page)).toBeVisible();
+  await expect(dirtyDot(page)).toBeHidden(); // auto-save fired → buffer clean again
+
+  // Even though the buffer is clean, the user has work in progress — an external
+  // change must prompt, not silently refresh over their edit.
+  await fire(page, 'extCb', { path: 'C:\\docs\\d.md', content: 'theirs\n', hash: 'h2' });
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.markdown-preview')).not.toContainText('theirs');
+});

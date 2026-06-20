@@ -19,8 +19,8 @@ export function ConflictDialog({ fileName, onKeepMine, onLoadFromDisk, onCancel 
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
         <h2 id="conflict-title" className="modal-title">File changed on disk</h2>
         <p className="modal-body">
-          <strong>{fileName}</strong> was changed by another program while you have unsaved edits.
-          Choose which version to keep.
+          <strong>{fileName}</strong> changed on disk while you were editing it. Keep your version
+          or load the one on disk?
         </p>
         <div className="modal-actions">
           <button type="button" onClick={onLoadFromDisk}>
