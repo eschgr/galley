@@ -36,6 +36,9 @@ This version targets a **working prototype**: built on Electron for fastest path
 - **Text color / font color** — not part of standard markdown (no CommonMark/GFM syntax); Claude does not emit it, and supporting it would require enabling raw-HTML passthrough.
 - **Word / character count.**
 - **"Reveal in Finder/Explorer".**
+- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout.
+- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype.)*
+- **Dynamically swapping the editor/preview pane order in-app** — the layout is fixed (**rendered view on the left, source editor on the right**); a runtime control to flip which side each pane is on is out of scope. It is a possible future nice-to-have, bound up with the i18n/RTL and accessibility work above. *(See §12.)*
 
 ---
 
@@ -65,6 +68,7 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 - **R5.** Before building UI around the preview, run a **rendering spike**: render a corpus of representative real Claude output (math-heavy, table-heavy, code-heavy, task lists) through the candidate pipeline and confirm fidelity for GFM (R1), math delimiters (R2), and fenced-code highlighting (R3). This single spike de-risks the three rendering concerns together and decides the final plugin/engine choices before significant investment.
 - **R6. Math fallback ladder.** If the primary math path is insufficient, fall back in this order: (1) primary KaTeX-based plugin (e.g. `@vscode/markdown-it-katex`); (2) `markdown-it-texmath` for configurable delimiter sets; (3) MathJax engine (more permissive LaTeX, larger/slower, acceptable for a local tool). **Floor behavior:** a math-parse failure must degrade to showing the raw source for that span, never break the whole preview.
+  - **Resolution (spike run, decided).** The spike selected **rung 2: `markdown-it-texmath` with the KaTeX engine**, configured for both the dollar and bracket delimiter sets so all of `$…$`, `$$…$$`, `\(…\)`, and `\[…\]` render. Rung 1 (`@vscode/markdown-it-katex`) was insufficient — it renders dollar delimiters only and drops the `\(…\)` / `\[…\]` forms Claude also emits — and was dropped. texmath is structure-aware (skips code spans/fences) and its dollar guards keep literal `$` in prose (e.g. prices like "$5 and $10") from being parsed as math (R2). The floor is implemented via KaTeX `throwOnError:false` (renders a bad formula's raw source in an error color), plus a whole-document guard so one bad doc can't blank the preview.
 
 ### 5.2 Opening files
 
@@ -99,7 +103,7 @@ The app does **not** manage its own uniqueness — no single-instance lock, no s
 - **R18.** **Scroll synchronization:** the preview tracks the editor's scroll position (and vice versa where natural) so the two panes stay aligned, particularly on long documents.
 - **R19.** **Syntax highlighting** in the editor.
 - **R20.** **Undo / redo** support.
-- **R21.** **Find and replace** within the current document, including find-next/previous and replace/replace-all. *(CodeMirror provides a search panel; this is a frequently used operation, especially in larger files.)*
+- **R21.** **Find and replace** within the current document, via the editor's search panel (opened with `Cmd/Ctrl+F`). The built-in feature set: incremental find with match highlighting, find next / previous, replace and replace-all, and toggles for **case-sensitive**, **whole-word**, and **regular-expression** matching. *(Provided by CodeMirror's search extension out of the box; a frequently used operation, especially in larger files. The toggle set is the component's default — captured here for completeness, not separately required.)*
 - **R22.** **Line numbers** — nice-to-have, optional. *(Typically free from the editor component.)*
 
 ### 5.4a Formatting shortcuts
@@ -177,7 +181,9 @@ The governing principle: **both the write path (save) and the read path (load/re
 
 ### 5.8 Layout & empty state
 
-- **R45.** **Split view**: source editor and live rendered preview shown side by side, with synchronized scrolling (R18).
+- **R45. Split view & reading mode.** The live rendered view (left) and source editor (right) are shown side by side with synchronized scrolling (R18). A **Show Source / Hide Source** toggle in the title bar collapses the editor so the rendered view fills the window for distraction-free reading, and restores the side-by-side split for editing. *(Pane order is fixed; a dynamic in-app swap is out of scope — see §3.)*
+  - **Default to reading view.** Because the primary use is reviewing rendered output, the app opens with the source hidden (rendered view only); one click on **Show Source** reveals the editor to make corrections, and **Hide Source** returns to full-window reading. The editor stays mounted while hidden, so edits, undo history, and scroll position are preserved across toggles.
+  - **Window auto-resize.** Showing the source roughly **doubles the window width** to make room for the side-by-side editor, and hiding it restores the earlier (reading) width — so the reading view stays comfortably narrow and the editing view stays roomy. The reading width is remembered per window (respecting a manual resize), the target is clamped to the display work area and nudged to stay on-screen, and the height is unchanged. No resize happens when the window is maximized or full screen.
 - **R46. Empty state.** When no files are open — whether at a fresh launch with no file argument (R10) or after the last tab is closed — the app remains open and displays a **"No files open"** state. Closing the last tab does **not** quit the app.
 
 ### 5.9 Application menu & commands
@@ -185,8 +191,9 @@ The governing principle: **both the write path (save) and the read path (load/re
 - **R47. Native menu bar.** Common operations are exposed through the **OS-native application menu** (not a custom command palette). At minimum:
   - **File:** Open (R8), Save / force-save (R30), Exit (quit the application).
   - **Edit:** Undo/redo (R20), Find & Replace (R21), and the formatting actions (R23) where appropriate.
+  - **View:** standard view items (reload, zoom, full screen) and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
   - **Help:** open the Help window (R48).
-- *(A searchable command palette is explicitly not built for this version; the native menu covers these operations.)*
+- *(A searchable command palette is explicitly not built for this version; the native menu covers these operations. The Show/Hide Source view toggle (R45) lives in the title bar rather than the menu.)*
 
 ### 5.10 Help
 
@@ -214,8 +221,8 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 | App shell | **Electron** | One language for UI + system code; bundles the rendering engine, JS runtime, and file IO into one toolchain. Heavier binary, fewer ecosystem seams. |
 | UI framework | **React** (recommended) | First-class CodeMirror and markdown-lib bindings. Svelte/plain TS are lighter alternatives. |
 | Editor | **CodeMirror 6** | Syntax highlighting (R19), undo/redo (R20), find/replace panel (R21), line numbers (R22), keymaps (R23). |
-| Markdown render | **markdown-it** + GFM plugins + a KaTeX-based math plugin | Renders source → HTML for the preview pane (R1–R3). Runs in the renderer for zero-latency live preview. Final plugin set decided by the R5 spike. |
-| Math | **KaTeX** (primary) with MathJax as fallback | Delimiter set + engine validated by the R5 spike; fallback ladder in R6. |
+| Markdown render | **markdown-it** + GFM plugins (`markdown-it-task-lists`) + **`markdown-it-texmath`** (math) + **`highlight.js`** (code) | Renders source → HTML for the preview pane (R1–R3). Runs in the renderer for zero-latency live preview. Plugin set decided by the R5 spike. |
+| Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor (R6). MathJax remains the documented heavier fallback if ever needed. |
 | File watching | **chokidar** (or Node `fs.watch`) | In the main process (R32, R37). |
 | File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process (R33–R35). |
 | Instance model | **Caller-owned lifecycle**; app listens on a caller-provided named pipe (Windows) / Unix socket (macOS) | App does not self-arbitrate; the caller (Claude) tracks per-project channels and decides connect-vs-launch (R11–R15). |
@@ -282,7 +289,7 @@ If footprint later becomes a real concern, the migration target is **Tauri** (OS
 
 ## 11. Dependencies
 
-Install picture for the prototype (all permissive licenses; final math/GFM choices pending the R5 spike):
+Install picture for the prototype (all permissive licenses; math/GFM choices resolved by the R5 spike — see R6):
 
 | Package | Purpose | Process |
 |---|---|---|
@@ -292,12 +299,12 @@ Install picture for the prototype (all permissive licenses; final math/GFM choic
 | `codemirror` (v6 packages: `@codemirror/state`, `@codemirror/view`, `@codemirror/commands`, `@codemirror/search`, `@codemirror/lang-markdown`, etc.) | Source editor: highlighting, undo/redo, find/replace, keymaps | renderer |
 | `markdown-it` | Markdown → HTML rendering | renderer |
 | markdown-it GFM plugins (tables/task-lists/strikethrough as needed; e.g. `markdown-it-task-lists`) | GFM coverage | renderer |
-| math plugin (`@vscode/markdown-it-katex` or `markdown-it-texmath`) + `katex` (MathJax as fallback) | Math rendering | renderer |
+| `markdown-it-texmath` + `katex` | Math rendering — dollar + bracket delimiters (chosen over `@vscode/markdown-it-katex`; MathJax is the documented fallback) | renderer |
 | `highlight.js` (or a markdown-it highlight hook) | Fenced-code syntax highlighting in the preview | renderer |
 | `chokidar` | File watching (external-change detection) | main |
 | *(built-in)* Node `fs`, `crypto`, `path` | File IO, hashing, path handling | main |
 
-> Note: exact CodeMirror sub-packages and the specific GFM/math plugin set are finalized during the R5 spike; the table lists the functional pieces rather than a locked version manifest.
+> Note: the GFM/math plugin set was finalized by the R5 spike (`markdown-it-texmath` + `katex`, `markdown-it-task-lists`, `highlight.js`). Exact CodeMirror sub-packages may still vary; the table lists the functional pieces rather than a locked version manifest.
 
 ---
 
@@ -308,6 +315,8 @@ Install picture for the prototype (all permissive licenses; final math/GFM choic
 - Diff view for conflict resolution (deferred enhancement).
 - Clipboard-URL prefill in the link dialog (R27 nice-to-have).
 - Possible future: directory view, drag-and-drop, recently-opened list, tab reordering, bulk tab operations.
+- Possible future: a **dynamic in-app control to swap the editor/preview pane order** (the fixed default is rendered view left, source right) — nice-to-have, gated behind the internationalization/RTL and accessibility work that is out of scope this version (§3).
+- Possible future: internationalization/localization (incl. RTL) and a dedicated accessibility pass (§3).
 - Possible future: migrate shell to Tauri if footprint warrants (§9).
 - Keybinding-collision checks at implementation: `Cmd/Ctrl+E` (inline code) and `Cmd/Ctrl+K` (link) against editor defaults.
 
@@ -319,9 +328,9 @@ Install picture for the prototype (all permissive licenses; final math/GFM choic
 |---|---|
 | Markdown flavor | GFM + LaTeX math; assembled from markdown-it plugins |
 | Code blocks | Syntax-highlighted fences |
-| Math rendering | KaTeX primary, MathJax fallback; delimiters + engine validated by pre-build spike (R5/R6) |
+| Math rendering | **`markdown-it-texmath` + KaTeX** (dollar + bracket delimiters), chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only); `throwOnError:false` floor; MathJax documented fallback (R5/R6) |
 | Preview link clicks | Open in system default browser, never in-app (R4) |
-| Rendering spike | Validate GFM + math + highlighting on real Claude output before building UI (R5) |
+| Rendering spike | **Done.** Validated GFM + math + highlighting on representative Claude output before building UI; settled the math engine (R5/R6) |
 | Save model | Auto-save, 5s debounce; force-save retained as reassurance |
 | Conflict — write path | Auto/force-save checks disk vs. baseline; if diverged, prompt (keep/reload/cancel), no silent overwrite (R34) |
 | Conflict — read path | Reload silent if buffer clean; prompt if buffer dirty (R35) |
@@ -331,7 +340,7 @@ Install picture for the prototype (all permissive licenses; final math/GFM choic
 | Self-write detection | Content-hash baseline, in the Node main process (R33) |
 | Crash-loss tolerance | Up to ~5s, accepted |
 | Preview | Live, as-you-type, with scroll sync (R17/R18) |
-| Find & replace | In scope (R21) |
+| Find & replace | In scope (R21); `Cmd/Ctrl+F` panel — find next/prev, replace/replace-all, case/whole-word/regex toggles (CodeMirror built-in) |
 | Editor features | Syntax highlighting, undo/redo, find/replace; line numbers optional |
 | Formatting shortcuts | Bold, italic, link, inline code, strikethrough, headings (1–6), fenced code block, list indent/outdent; toggle + smart selection |
 | Headings | Explicit `Ctrl/Cmd+1..6`; normalize to requested level (switch, not stack); same-level removes |
@@ -346,10 +355,10 @@ Install picture for the prototype (all permissive licenses; final math/GFM choic
 | Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
 | Empty state | "No files open"; closing last tab keeps app open (R46) |
 | Session restore | Out of scope (future) |
-| Layout | Split view with scroll sync |
+| Layout | Split view with scroll sync; **Show/Hide Source** toggle collapses to full-window reading view; opens in reading view by default (R45) |
 | Commands | OS-native menu bar (File/Edit/Help); no custom command palette |
 | Help window | App info, license + attribution, full keyboard-shortcut reference |
-| Stack | Electron, single language (TS/JS), React, CodeMirror 6, markdown-it + GFM + KaTeX/MathJax → HTML preview; Node main process for IO/watch/channel-listener/CLI |
+| Stack | Electron, single language (TS/JS), React, CodeMirror 6, markdown-it + GFM (task-lists) + `markdown-it-texmath`/KaTeX + highlight.js → HTML preview; Node main process for IO/watch/channel-listener/CLI |
 | Portability | Isolate main-process OS code behind a thin interface; Tauri as later migration target if bloated |
 | Build output | `.dmg` (macOS), `.exe`/`.msi` (Windows) via Electron Forge/electron-builder; per-OS build, CI for both |
 | Licensing | MIT/permissive; bundle attribution notice (also in Help); $0 for personal use |
