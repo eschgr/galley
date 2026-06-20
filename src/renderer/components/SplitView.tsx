@@ -119,8 +119,10 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
         style={{ display: showPreview ? 'block' : 'none' }}
         // Lead on a deliberate scroll of this pane, not mere hover — otherwise
         // hovering the preview while typing in the editor would steal the lead
-        // and the two would drift out of sync.
+        // and the two would drift out of sync. Wheel or keyboard (arrows /
+        // Page Up-Down) both count.
         onWheelCapture={() => (active.current = 'preview')}
+        onKeyDownCapture={() => (active.current = 'preview')}
       >
         <Preview ref={previewRef} source={source} onScroll={onPreviewScroll} onLayout={onPreviewLayout} />
       </div>

@@ -59,7 +59,7 @@ test('italic, inline code, and strikethrough wrap the selection (R23)', async ({
   await setEditor(page, 'word');
   await selectAllText(page);
   await page.keyboard.press(`${MOD}+i`);
-  await expect.poll(() => lineText(page)).toBe('*word*');
+  await expect.poll(() => lineText(page)).toBe('_word_'); // italic uses underscores
 
   await setEditor(page, 'word');
   await selectAllText(page);
@@ -70,6 +70,34 @@ test('italic, inline code, and strikethrough wrap the selection (R23)', async ({
   await selectAllText(page);
   await page.keyboard.press(`${MOD}+Shift+X`);
   await expect.poll(() => lineText(page)).toBe('~~word~~');
+});
+
+test('Ctrl+Shift+Z redoes, alongside the default Ctrl+Y (R20)', async ({ page }) => {
+  await setEditor(page, 'base');
+  await page.waitForTimeout(600); // break the undo grouping from setup
+  await page.keyboard.press('End');
+  await page.keyboard.type('X');
+  await expect.poll(() => lineText(page)).toBe('baseX');
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => lineText(page)).toBe('base');
+  await page.keyboard.press(`${MOD}+y`); // default redo
+  await expect.poll(() => lineText(page)).toBe('baseX');
+
+  await page.keyboard.press(`${MOD}+z`);
+  await expect.poll(() => lineText(page)).toBe('base');
+  // A faithful Ctrl+Shift+Z carries key="Z" + keyCode 90; Playwright's press()
+  // emits lowercase "z", which CodeMirror routes to the Ctrl+Z undo binding. So
+  // dispatch the real-shaped event to exercise our redo binding.
+  await page.evaluate(() => {
+    document.querySelector('.cm-content')!.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Z', code: 'KeyZ', keyCode: 90, which: 90,
+        ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+      }),
+    );
+  });
+  await expect.poll(() => lineText(page)).toBe('baseX');
 });
 
 test('heading normalizes to the requested level, not stacking (R24)', async ({ page }) => {

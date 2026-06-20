@@ -131,6 +131,22 @@ test('scroll is synchronized both ways in split view (R18)', async ({ page }) =>
     .toBeGreaterThan(50);
 });
 
+test('keyboard-scrolling the reading pane syncs the editor (R18)', async ({ page }) => {
+  await toggle(page).click();
+  await expect(editorPane(page)).toBeVisible();
+  // A keydown in the preview makes it the lead pane (like arrows / Page Down),
+  // so scrolling it drives the editor.
+  await page.evaluate(() => {
+    const ps = document.querySelector<HTMLElement>('.preview-scroll')!;
+    ps.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
+    ps.scrollTop = Math.round(ps.scrollHeight * 0.5);
+    ps.dispatchEvent(new Event('scroll'));
+  });
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop))
+    .toBeGreaterThan(50);
+});
+
 test('revealing the source aligns the editor to the line being read (regression)', async ({ page }) => {
   // Scroll the reading view to a deep line while the source is hidden...
   await page.evaluate(() => {

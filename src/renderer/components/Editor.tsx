@@ -30,7 +30,7 @@ import {
   keymap,
   type Command,
 } from '@codemirror/view';
-import { history, historyKeymap, defaultKeymap, indentMore, indentLess } from '@codemirror/commands';
+import { history, historyKeymap, defaultKeymap, indentMore, indentLess, redo } from '@codemirror/commands';
 import {
   syntaxHighlighting,
   defaultHighlightStyle,
@@ -149,7 +149,7 @@ function formatCommand(fn: (doc: string, from: number, to: number) => EditResult
 // sits inside an existing span so the shortcut toggles it OFF (R24).
 const INLINE_NODE: Record<string, string> = {
   '**': 'StrongEmphasis',
-  '*': 'Emphasis',
+  '_': 'Emphasis',
   '`': 'InlineCode',
   '~~': 'Strikethrough',
 };
@@ -184,7 +184,9 @@ function wrapCommand(marker: string): Command {
 }
 
 const boldCmd = wrapCommand('**');
-const italicCmd = wrapCommand('*');
+// Italic uses underscores so `_italic_` reads distinctly from `**bold**` (both
+// are CommonMark emphasis; `_` also avoids accidental intra-word italics).
+const italicCmd = wrapCommand('_');
 const inlineCodeCmd = wrapCommand('`');
 const strikeCmd = wrapCommand('~~');
 const fencedCmd = formatCommand(fencedEdit);
@@ -272,6 +274,10 @@ function formattingKeymap(onLinkRef: CbRef<() => void>): Extension {
       { key: 'Mod-5', run: headingCmd(5) },
       { key: 'Mod-6', run: headingCmd(6) },
       { key: 'Mod-k', run: linkCmd },
+      // Redo alongside the default Mod-y. Always claim the key (return true) so
+      // CodeMirror's shift-letter fallback can't drop through to Mod-z (undo)
+      // when there's nothing to redo.
+      { key: 'Mod-Shift-z', preventDefault: true, run: (view) => { redo(view); return true; } },
       { key: 'Enter', run: continueListCmd },
       { key: 'Tab', run: tabCmd, shift: shiftTabCmd },
     ]),

@@ -89,6 +89,9 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     <div
       className="preview-scroll"
       ref={scrollRef}
+      // Focusable so arrow keys / Page Up-Down scroll the reading pane (and the
+      // editor follows via SplitView's keydown → active-pane handling).
+      tabIndex={0}
       onScroll={() => onScrollRef.current?.()}
     >
       <div
