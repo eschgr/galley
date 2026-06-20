@@ -22,6 +22,10 @@ export function topLineFrom(anchors: Anchor[], scrollTop: number): number {
     const b = anchors[i + 1];
     if (scrollTop < b.top) {
       const span = b.top - a.top;
+      // span > 0 is guaranteed when this returns (the guards above rule out the
+      // zero-span case); the `: 0` arm is a defensive guard against
+      // non-monotonic anchors and is unreachable via these functions.
+      /* v8 ignore next */
       const f = span > 0 ? (scrollTop - a.top) / span : 0;
       return a.line + f * (b.line - a.line);
     }
@@ -38,6 +42,9 @@ export function scrollTopFor(anchors: Anchor[], line: number): number {
     const b = anchors[i + 1];
     if (line < b.line) {
       const span = b.line - a.line;
+      // See the note in topLineFrom: the `: 0` arm is an unreachable defensive
+      // guard (span > 0 is guaranteed here).
+      /* v8 ignore next */
       const f = span > 0 ? (line - a.line) / span : 0;
       return a.top + f * (b.top - a.top);
     }
