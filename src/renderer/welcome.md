@@ -1,4 +1,4 @@
-# Welcome to mdtool
+# Welcome to Galley
 
 You're looking at the **rendered view** — how a markdown file actually reads.
 
@@ -63,7 +63,7 @@ function greet(name: string): string {
   return `Hello, ${name}!`;
 }
 
-console.log(greet('mdtool'));
+console.log(greet('Galley'));
 ```
 
 ```python
