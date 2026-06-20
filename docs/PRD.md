@@ -101,7 +101,7 @@ The app does **not** manage its own uniqueness — no single-instance lock, no s
 - **R16.** Edit the markdown **source** directly in-app.
 - **R17.** **Live preview**: the rendered view updates as the user types.
 - **R18.** **Scroll synchronization:** the preview tracks the editor's scroll position (and vice versa where natural) so the two panes stay aligned, particularly on long documents.
-- **R19.** **Syntax highlighting** in the editor.
+- **R19.** **Syntax highlighting** in the editor — **colour only**. The source pane stays uniform monospace (no bold/italic/enlarged-heading rendering); colour conveys structure the way a code editor highlights syntax, keeping the editor clearly *source* rather than a second rendered view.
 - **R20.** **Undo / redo** support. Undo `Ctrl/Cmd+Z`; redo `Ctrl/Cmd+Y` **and** `Ctrl/Cmd+Shift+Z` (both bound).
 - **R21.** **Find and replace** within the current document, via the editor's search panel (opened with `Cmd/Ctrl+F`). The built-in feature set: incremental find with match highlighting, find next / previous, replace and replace-all, and toggles for **case-sensitive**, **whole-word**, and **regular-expression** matching. *(Provided by CodeMirror's search extension out of the box; a frequently used operation, especially in larger files. The toggle set is the component's default — captured here for completeness, not separately required.)*
 - **R22.** **Line numbers** — nice-to-have, optional. *(Typically free from the editor component.)*

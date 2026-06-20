@@ -58,6 +58,7 @@
     "@codemirror/search": "^6.5.8",
     "@codemirror/state": "^6.4.1",
     "@codemirror/view": "^6.35.0",
+    "@lezer/highlight": "^1.2.3",
     "@lezer/markdown": "^1.6.4",
     "chokidar": "^4.0.1",
     "electron-squirrel-startup": "^1.0.1",

@@ -40,6 +40,27 @@ test('bold wraps the selection and toggles back off (R24)', async ({ page }) => 
   await expect.poll(() => lineText(page)).toBe('bold');
 });
 
+test('the source editor highlights with colour only — no enlarged or bold tokens (R19)', async ({ page }) => {
+  await setEditor(page, '# Heading with **bold**');
+  const s = await page.evaluate(() => {
+    const content = document.querySelector('.cm-content') as HTMLElement;
+    const base = getComputedStyle(content);
+    const spans = [...document.querySelectorAll('.cm-content .cm-line span')] as HTMLElement[];
+    return {
+      baseSize: base.fontSize,
+      baseColor: base.color,
+      sizes: spans.map((el) => getComputedStyle(el).fontSize),
+      weights: spans.map((el) => getComputedStyle(el).fontWeight),
+      colors: spans.map((el) => getComputedStyle(el).color),
+    };
+  });
+  // No token is enlarged or bold (it reads as source, not rendered markdown)...
+  for (const size of s.sizes) expect(size).toBe(s.baseSize);
+  for (const weight of s.weights) expect(Number(weight)).toBeLessThan(700);
+  // ...but colour highlighting is still applied (at least one token differs).
+  expect(s.colors.some((c) => c !== s.baseColor)).toBe(true);
+});
+
 test('toggling from a bare cursor inside a span removes the whole span (R24)', async ({ page }) => {
   await setEditor(page, '**Hello world**');
   await page.keyboard.press('Home');

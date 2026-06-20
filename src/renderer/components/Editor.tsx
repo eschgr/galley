@@ -33,10 +33,11 @@ import {
 import { history, historyKeymap, defaultKeymap, indentMore, indentLess, redo } from '@codemirror/commands';
 import {
   syntaxHighlighting,
-  defaultHighlightStyle,
+  HighlightStyle,
   indentUnit,
   syntaxTree,
 } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
@@ -91,6 +92,24 @@ interface EditorProps {
   /** Cmd/Ctrl+K — the host opens the link dialog (R27). */
   onLink?: () => void;
 }
+
+// Source-like highlighting (R19): colour only — no bold/italic/size/strike — so
+// the editor reads as Markdown *source* (uniform monospace) while colour still
+// conveys structure like a code editor's syntax highlighting.
+const sourceHighlightStyle = HighlightStyle.define([
+  { tag: t.heading, color: '#0550ae' },
+  { tag: [t.strong, t.emphasis], color: '#0a3069' },
+  { tag: t.strikethrough, color: '#6e7781' },
+  { tag: [t.link, t.url], color: '#0969da' },
+  { tag: t.monospace, color: '#0a3069' },
+  { tag: t.quote, color: '#6e7781' },
+  { tag: [t.processingInstruction, t.meta, t.list, t.contentSeparator], color: '#6e7781' },
+  // Fenced code, when a language gets parsed.
+  { tag: t.keyword, color: '#cf222e' },
+  { tag: t.string, color: '#0a3069' },
+  { tag: t.comment, color: '#6e7781' },
+  { tag: t.number, color: '#0550ae' },
+]);
 
 const theme = EditorView.theme({
   '&': { height: '100%', fontSize: '13.5px' },
@@ -303,7 +322,7 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkR
     EditorState.allowMultipleSelections.of(true),
     indentUnit.of('  '),
     EditorView.lineWrapping,
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    syntaxHighlighting(sourceHighlightStyle),
     markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
     search({ top: true }),
