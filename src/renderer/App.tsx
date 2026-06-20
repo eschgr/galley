@@ -16,6 +16,13 @@ export function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const showingSource = viewMode === 'split';
 
+  const toggleSource = () => {
+    const next: ViewMode = showingSource ? 'preview' : 'split';
+    setViewMode(next);
+    // Widen the window for the editor / shrink it back for reading (R45).
+    void window.mdtool?.setSourceVisible(next === 'split');
+  };
+
   return (
     <div className="app">
       <header className="app-titlebar">
@@ -26,7 +33,7 @@ export function App() {
           className={`source-toggle${showingSource ? ' is-active' : ''}`}
           aria-pressed={showingSource}
           title={showingSource ? 'Hide the source editor' : 'Show the source editor'}
-          onClick={() => setViewMode(showingSource ? 'preview' : 'split')}
+          onClick={toggleSource}
         >
           {showingSource ? 'Hide Source' : 'Show Source'}
         </button>

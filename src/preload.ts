@@ -11,6 +11,7 @@ const api: MdtoolApi = {
   platform: process.platform,
   version: process.env.npm_package_version ?? '0.1.0',
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  setSourceVisible: (visible: boolean) => ipcRenderer.invoke('window:setSourceVisible', visible),
 };
 
 contextBridge.exposeInMainWorld('mdtool', api);

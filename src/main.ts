@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, screen } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
@@ -28,6 +28,35 @@ ipcMain.handle('shell:openExternal', (_event, url: unknown) => {
   if (scheme === 'http:' || scheme === 'https:' || scheme === 'mailto:') {
     void shell.openExternal(url);
   }
+});
+
+// Auto-resize on the Show/Hide Source toggle (R45): showing the source roughly
+// doubles the window width to make room for the side-by-side editor; hiding it
+// restores the earlier (reading) width. The reading width is remembered per
+// window so a user's manual resize is respected. Width is clamped to the display
+// work area and the window is nudged to stay fully on-screen; height is kept.
+const readingWidth = new Map<number, number>();
+
+ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isFullScreen() || win.isMaximized()) return;
+  const [w, h] = win.getSize();
+  const area = screen.getDisplayMatching(win.getBounds()).workArea;
+
+  let target: number;
+  if (visible === true) {
+    readingWidth.set(win.id, w);
+    target = Math.min(w * 2, area.width);
+  } else {
+    target = readingWidth.get(win.id) ?? Math.round(w / 2);
+  }
+  target = Math.round(Math.max(480, Math.min(target, area.width)));
+
+  const [x, y] = win.getPosition();
+  let nx = x;
+  if (nx + target > area.x + area.width) nx = area.x + area.width - target;
+  if (nx < area.x) nx = area.x;
+  win.setBounds({ x: Math.round(nx), y, width: target, height: h });
 });
 
 const createWindow = () => {
