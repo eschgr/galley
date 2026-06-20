@@ -9,6 +9,7 @@ import 'highlight.js/styles/github.css';
 import '../markdown/preview.css';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { renderMarkdown } from '../markdown/pipeline';
+import { type Anchor, topLineFrom, scrollTopFor } from './scrollSync';
 
 export interface PreviewHandle {
   /** Top of the viewport as a 0-based fractional source line. */
@@ -25,11 +26,6 @@ interface PreviewProps {
   onLayout?: () => void;
 }
 
-interface Anchor {
-  line: number;
-  top: number;
-}
-
 function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
   const base = scroller.getBoundingClientRect().top - scroller.scrollTop;
   const els = content.querySelectorAll<HTMLElement>('[data-source-line]');
@@ -41,38 +37,6 @@ function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
   });
   anchors.sort((a, b) => a.line - b.line || a.top - b.top);
   return anchors;
-}
-
-/** Interpolate the viewport-top source line from a scrollTop. */
-function topLineFrom(anchors: Anchor[], scrollTop: number): number {
-  if (anchors.length === 0) return 0;
-  if (scrollTop <= anchors[0].top) return anchors[0].line;
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const a = anchors[i];
-    const b = anchors[i + 1];
-    if (scrollTop < b.top) {
-      const span = b.top - a.top;
-      const f = span > 0 ? (scrollTop - a.top) / span : 0;
-      return a.line + f * (b.line - a.line);
-    }
-  }
-  return anchors[anchors.length - 1].line;
-}
-
-/** Inverse: the scrollTop that puts a (fractional) source line at the top. */
-function scrollTopFor(anchors: Anchor[], line: number): number {
-  if (anchors.length === 0) return 0;
-  if (line <= anchors[0].line) return anchors[0].top;
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const a = anchors[i];
-    const b = anchors[i + 1];
-    if (line < b.line) {
-      const span = b.line - a.line;
-      const f = span > 0 ? (line - a.line) / span : 0;
-      return a.top + f * (b.top - a.top);
-    }
-  }
-  return anchors[anchors.length - 1].top;
 }
 
 export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
