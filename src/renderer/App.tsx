@@ -107,7 +107,7 @@ export function App() {
   return (
     <div className="app">
       <header className="app-titlebar">
-        <span className="app-title">mdtool</span>
+        <span className="app-title">Galley</span>
         <span className="app-subtitle" title={path ?? undefined}>
           {dirty && <span className="dirty-dot" aria-label="Unsaved changes">●</span>}
           {name} — {status}

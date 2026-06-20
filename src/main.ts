@@ -82,8 +82,8 @@ ipcMain.handle('file:getStartup', async () => {
 });
 
 // DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,
-// or `mdtool --devtools`) to open them on launch; otherwise use View → Toggle
-// Developer Tools (or F12 / Ctrl+Shift+I) in the menu.
+// or `galley --devtools` on the packaged app) to open them on launch; otherwise
+// use View → Toggle Developer Tools (or F12 / Ctrl+Shift+I) in the menu.
 const OPEN_DEVTOOLS = process.argv.includes('--devtools');
 
 // R4: open a preview link in the system default browser. Renderer requests go
