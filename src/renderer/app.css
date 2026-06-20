@@ -243,3 +243,7 @@
 .modal-actions .modal-danger:hover {
   background: #faecec;
 }
+.modal-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

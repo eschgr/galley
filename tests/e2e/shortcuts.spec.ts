@@ -85,6 +85,25 @@ test('Tab indents a list item at the line start; Shift+Tab outdents (R26)', asyn
   await expect.poll(() => lineText(page)).toBe('- item');
 });
 
+test('Tab in the middle of a paragraph inserts spaces at the cursor, not a line indent (R26)', async ({ page }) => {
+  await setEditor(page, 'ab');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowRight'); // cursor between "a" and "b"
+  await page.keyboard.press('Tab');
+  await expect.poll(() => lineText(page)).toBe('a  b'); // spaces at the cursor, no leading indent
+});
+
+test('Ctrl+Shift+C a second time removes the fenced block (R23)', async ({ page }) => {
+  await setEditor(page, 'x = 1');
+  await selectAllText(page);
+  await page.keyboard.press(`${MOD}+Shift+C`);
+  await expect.poll(() => lineText(page, 0)).toBe('```');
+  // Selection is now the inner line; pressing again must unwrap, not re-nest.
+  await page.keyboard.press(`${MOD}+Shift+C`);
+  await expect.poll(() => lineText(page, 0)).toBe('x = 1');
+  await expect.poll(() => page.locator('.cm-content .cm-line').count()).toBe(1);
+});
+
 test('Cmd/Ctrl+K inserts a link via the dialog, prefilled from the selection (R27)', async ({ page }) => {
   await setEditor(page, 'anchor');
   await selectAllText(page);

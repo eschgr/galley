@@ -25,7 +25,12 @@ export function LinkDialog({ initial, onConfirm, onRemove, onCancel }: LinkDialo
     urlRef.current?.select();
   }, []);
 
-  const confirm = () => onConfirm(text, url);
+  // URL is required; Text is optional — when left blank the URL is used as the
+  // link text (so `[https://x](https://x)`).
+  const canConfirm = url.trim().length > 0;
+  const confirm = () => {
+    if (canConfirm) onConfirm(text, url);
+  };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -62,7 +67,7 @@ export function LinkDialog({ initial, onConfirm, onRemove, onCancel }: LinkDialo
           )}
           <span className="modal-spacer" />
           <button type="button" onClick={onCancel}>Cancel</button>
-          <button type="button" className="modal-primary" onClick={confirm}>
+          <button type="button" className="modal-primary" onClick={confirm} disabled={!canConfirm}>
             {initial.editing ? 'Update' : 'Insert'}
           </button>
         </div>

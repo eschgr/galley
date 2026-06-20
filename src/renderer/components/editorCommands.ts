@@ -77,7 +77,19 @@ export function headingEdit(doc: string, from: number, to: number, level: number
     return '#'.repeat(level) + ' ' + base;
   });
   const insert = out.join('\n');
+  // With a real selection, keep the modified block selected. With a bare cursor,
+  // collapse to where the cursor was, shifted by the net prefix change — so an
+  // empty line that became "## " doesn't end up fully selected (which would make
+  // the next keystroke overwrite the markers).
+  if (from === to) {
+    const shifted = clampOffset(from + (insert.length - (end - start)), start, start + insert.length);
+    return { from: start, to: end, insert, select: [shifted, shifted] };
+  }
   return { from: start, to: end, insert, select: [start, start + insert.length] };
+}
+
+function clampOffset(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
 }
 
 /**
@@ -89,9 +101,25 @@ export function fencedEdit(doc: string, from: number, to: number): EditResult {
   const block = doc.slice(start, end);
   const lines = block.split('\n');
 
+  // Toggle off — the fences are the first and last selected lines.
   if (lines.length >= 2 && lines[0].trim() === '```' && lines[lines.length - 1].trim() === '```') {
     const inner = lines.slice(1, -1).join('\n');
     return { from: start, to: end, insert: inner, select: [start, start + inner.length] };
+  }
+
+  // Toggle off — the fences sit on the lines just *outside* the selection (the
+  // common case: after wrapping, only the inner content is selected, so a second
+  // press should still remove the block rather than nest another one).
+  if (start > 0 && end < doc.length) {
+    const prevStart = doc.lastIndexOf('\n', start - 2) + 1;
+    const prevLine = doc.slice(prevStart, start - 1);
+    const nextStart = end + 1;
+    let nextEnd = doc.indexOf('\n', nextStart);
+    if (nextEnd === -1) nextEnd = doc.length;
+    const nextLine = doc.slice(nextStart, nextEnd);
+    if (prevLine.trim() === '```' && nextLine.trim() === '```') {
+      return { from: prevStart, to: nextEnd, insert: block, select: [prevStart, prevStart + block.length] };
+    }
   }
 
   const wrapped = '```\n' + block + '\n```';

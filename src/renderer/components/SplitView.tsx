@@ -117,7 +117,10 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
       <div
         className="pane pane-preview"
         style={{ display: showPreview ? 'block' : 'none' }}
-        onMouseEnter={() => (active.current = 'preview')}
+        // Lead on a deliberate scroll of this pane, not mere hover — otherwise
+        // hovering the preview while typing in the editor would steal the lead
+        // and the two would drift out of sync.
+        onWheelCapture={() => (active.current = 'preview')}
       >
         <Preview ref={previewRef} source={source} onScroll={onPreviewScroll} onLayout={onPreviewLayout} />
       </div>
@@ -136,7 +139,10 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
           display: showEditor ? 'block' : 'none',
           width: viewMode === 'split' ? `${editorPct}%` : '100%',
         }}
-        onMouseEnter={() => (active.current = 'editor')}
+        // Typing or arrow-key navigation (which can scroll the editor) makes the
+        // editor the lead pane, so the preview follows the cursor.
+        onKeyDownCapture={() => (active.current = 'editor')}
+        onWheelCapture={() => (active.current = 'editor')}
         onFocusCapture={() => (active.current = 'editor')}
       >
         <Editor

@@ -155,18 +155,20 @@ const tabCmd: Command = (view) => {
   if (range.empty) {
     const line = state.doc.lineAt(range.head);
     const m = LIST_RE.exec(line.text);
-    if (m && range.head - line.from <= m[1].length) {
-      view.dispatch(
-        state.update({
-          changes: { from: line.from, insert: '  ' },
-          selection: { anchor: range.head + 2 },
-          userEvent: 'input.indent',
-        }),
-      );
-      return true;
-    }
+    // At the start of a list line → increase nesting by one indent unit.
+    const insertAt = m && range.head - line.from <= m[1].length ? line.from : range.head;
+    // Anywhere else → insert spaces at the cursor (normal indentation, R26),
+    // never re-indenting the whole paragraph.
+    view.dispatch(
+      state.update({
+        changes: { from: insertAt, insert: '  ' },
+        selection: { anchor: range.head + 2 },
+        userEvent: 'input.indent',
+      }),
+    );
+    return true;
   }
-  return indentMore(view);
+  return indentMore(view); // a multi-line selection indents the whole block
 };
 
 const shiftTabCmd: Command = (view) => {

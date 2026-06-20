@@ -74,6 +74,22 @@ describe('headingEdit (R24 — normalize, not stack)', () => {
     expect(apply(doc, headingEdit(doc, 0, 7, 1)).doc).toBe('# one\n# two');
   });
 
+  it('with a bare cursor leaves the cursor after the prefix, not selecting it', () => {
+    // Regression: on an empty line, a heading must not select "## " — otherwise
+    // the next keystroke overwrites the markers.
+    const doc = '';
+    const { doc: out, sel } = apply(doc, headingEdit(doc, 0, 0, 2));
+    expect(out).toBe('## ');
+    expect(sel).toEqual([3, 3]); // collapsed at end, ready to type the title
+  });
+
+  it('keeps the cursor on the same character when toggling on a non-empty line', () => {
+    const doc = 'Hello';
+    const r = headingEdit(doc, 2, 2, 2); // cursor on the first "l"
+    expect(apply(doc, r).doc).toBe('## Hello');
+    expect(r.select).toEqual([5, 5]); // still before the same "l" (shifted by "## ")
+  });
+
   it('only the touched line changes', () => {
     const doc = 'keep\ntarget\nkeep';
     const target = doc.indexOf('target');
@@ -95,5 +111,16 @@ describe('fencedEdit (R23 — toggle fenced block)', () => {
   it('wraps a multi-line selection', () => {
     const doc = 'a\nb';
     expect(apply(doc, fencedEdit(doc, 0, 3)).doc).toBe('```\na\nb\n```');
+  });
+
+  it('toggles off on a second press, when only the inner content is selected', () => {
+    // Regression: after wrapping, the selection is the inner line — pressing
+    // again must remove the block, not nest another pair of fences.
+    const doc = 'x = 1';
+    const wrap = fencedEdit(doc, 0, 5);
+    const wrapped = apply(doc, wrap);
+    expect(wrapped.doc).toBe('```\nx = 1\n```');
+    const [a, b] = wrap.select; // the inner "x = 1"
+    expect(apply(wrapped.doc, fencedEdit(wrapped.doc, a, b)).doc).toBe('x = 1');
   });
 });
