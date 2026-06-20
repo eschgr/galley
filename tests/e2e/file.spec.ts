@@ -180,6 +180,24 @@ test('conflict → Keep my changes overwrites the disk version (R35)', async ({ 
   expect(calls[calls.length - 1].content).toContain('MINE');
 });
 
+test('after Keep mine, a further external change re-raises the notice — never a silent load (R36)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\k.md', content: 'orig\n', hash: 'h' }, ' MINE');
+
+  await fire(page, 'extCb', { path: 'C:\\docs\\k.md', content: 'theirs\n', hash: 'h2' });
+  await page.getByRole('button', { name: /Keep my changes/ }).click();
+  await expect(overlay(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('MINE');
+
+  // The writer didn't stop: another external change lands. My version must not
+  // be silently replaced — the notice re-raises so I decide again.
+  await fire(page, 'extCb', { path: 'C:\\docs\\k.md', content: 'theirs again\n', hash: 'h3' });
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.markdown-preview')).not.toContainText('theirs again');
+  await expect(page.locator('.markdown-preview')).toContainText('MINE');
+});
+
 const menuSave = (page: Page) =>
   page.evaluate(() => (window as unknown as { __mock: { saveCb: () => void } }).__mock.saveCb());
 

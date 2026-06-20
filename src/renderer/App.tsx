@@ -143,7 +143,13 @@ export function App() {
   const resolveKeepMine = () => {
     setConflictState(null);
     setAcknowledged(false);
-    void save({ manual: true, force: true }); // overwrite the diverged disk
+    // Write my version over disk, but stay alert. I still hold authored content,
+    // so if the file diverges *again* (e.g. the writer didn't stop) the next
+    // external change must re-raise the notice, not silently load disk over my
+    // version. Hence keep `editedRef` set and don't pass `manual` (which would
+    // reset it and re-arm silent refresh).
+    editedRef.current = true;
+    void save({ force: true }); // overwrite the diverged disk
   };
   const resolveLoadFromDisk = () => {
     if (conflictRef.current) loadFile(conflictRef.current); // take theirs
