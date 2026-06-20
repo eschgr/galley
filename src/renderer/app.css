@@ -62,9 +62,8 @@
   min-width: 0;
   overflow: hidden;
 }
-.pane-editor {
-  border-right: 1px solid #d0d7de;
-}
+/* Editor is the right pane; the divider provides the separator. Preview (left)
+   flexes to fill the remaining width. */
 .pane-preview {
   flex: 1 1 0;
 }

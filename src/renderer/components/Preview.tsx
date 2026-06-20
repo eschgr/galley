@@ -20,6 +20,9 @@ export interface PreviewHandle {
 interface PreviewProps {
   source: string;
   onScroll?: () => void;
+  /** Fired after the anchor map is (re)built — i.e. once the pane has reflowed
+   *  and its line geometry is current. Used to re-align the editor on reveal. */
+  onLayout?: () => void;
 }
 
 interface Anchor {
@@ -73,7 +76,7 @@ function scrollTopFor(anchors: Anchor[], line: number): number {
 }
 
 export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
-  { source, onScroll },
+  { source, onScroll, onLayout },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -81,6 +84,8 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   const anchorsRef = useRef<Anchor[]>([]);
   const onScrollRef = useRef(onScroll);
   onScrollRef.current = onScroll;
+  const onLayoutRef = useRef(onLayout);
+  onLayoutRef.current = onLayout;
 
   const html = useMemo(() => renderMarkdown(source), [source]);
 
@@ -91,6 +96,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     if (!scroller || !content) return;
     const rebuild = () => {
       anchorsRef.current = buildAnchors(scroller, content);
+      onLayoutRef.current?.();
     };
     rebuild();
     const ro = new ResizeObserver(rebuild);

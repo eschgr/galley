@@ -38,6 +38,13 @@ export interface EditorHandle {
   scrollToLine(line: number): void;
   /** Re-measure layout — call after the editor is re-shown from display:none. */
   refresh(): void;
+  /**
+   * Scroll to a 0-based line *after* the editor has been (re)measured. Use right
+   * after the editor is revealed from display:none, when its line geometry isn't
+   * valid yet — the scroll runs in CodeMirror's measure cycle, once heights are
+   * known.
+   */
+  alignTo(line: number): void;
 }
 
 interface EditorProps {
@@ -97,6 +104,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       if (viewRef.current) scrollToLine(viewRef.current, line);
     },
     refresh: () => viewRef.current?.requestMeasure(),
+    alignTo: (line) => {
+      const v = viewRef.current;
+      if (!v) return;
+      // Scroll in the measure cycle's write phase, after CodeMirror has updated
+      // the height map for the now-visible editor — otherwise lineBlockAt uses
+      // stale (display:none) geometry and the scroll lands on the wrong line.
+      v.requestMeasure({ read: () => null, write: () => scrollToLine(v, line) });
+    },
   }));
 
   useEffect(() => {

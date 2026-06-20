@@ -3,9 +3,9 @@
 You're looking at the **rendered view** — how a markdown file actually reads.
 
 Click **Show Source** in the top-right corner to bring up the markdown **source
-editor on the left**, side by side with this live preview. Edit the source and
-the preview updates as you type; scroll one pane and the other follows. Click
-**Hide Source** to go back to full-window reading.
+editor on the right**, side by side with this rendered view on the left. Edit the
+source and the view updates as you type; scroll one pane and the other follows.
+Click **Hide Source** to go back to full-window reading.
 
 > File opening isn't wired up yet — this is a built-in sample so you can try the
 > view, editor, and preview. Tabs, opening files, and saving come next.
@@ -13,7 +13,7 @@ the preview updates as you type; scroll one pane and the other follows. Click
 ## Try it
 
 1. Click **Show Source** (top-right) to bring up the source editor beside this view.
-2. Type in the left pane and watch the preview update live.
+2. Type in the editor (right pane) and watch this view update live.
 3. Drag the divider in the middle to resize the two panes.
 4. Press `Ctrl+F` (or `Cmd+F`) in the editor to open the find panel.
 5. Scroll either pane — they stay aligned by source line.
