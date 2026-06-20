@@ -32,12 +32,14 @@ interface SplitViewProps {
   /** Editor handle, owned by App so it can load files / drive the editor. */
   editorRef: RefObject<EditorHandle>;
   viewMode: ViewMode;
+  /** Cmd/Ctrl+K in the editor — host opens the link dialog (R27). */
+  onLink?: () => void;
 }
 
 const MIN_PCT = 20;
 const MAX_PCT = 80;
 
-export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode }: SplitViewProps) {
+export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode, onLink }: SplitViewProps) {
   const previewRef = useRef<PreviewHandle>(null);
   const active = useRef<'editor' | 'preview' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,7 +117,12 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
       <div
         className="pane pane-preview"
         style={{ display: showPreview ? 'block' : 'none' }}
-        onMouseEnter={() => (active.current = 'preview')}
+        // Lead on a deliberate scroll of this pane, not mere hover — otherwise
+        // hovering the preview while typing in the editor would steal the lead
+        // and the two would drift out of sync. Wheel or keyboard (arrows /
+        // Page Up-Down) both count.
+        onWheelCapture={() => (active.current = 'preview')}
+        onKeyDownCapture={() => (active.current = 'preview')}
       >
         <Preview ref={previewRef} source={source} onScroll={onPreviewScroll} onLayout={onPreviewLayout} />
       </div>
@@ -134,7 +141,10 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
           display: showEditor ? 'block' : 'none',
           width: viewMode === 'split' ? `${editorPct}%` : '100%',
         }}
-        onMouseEnter={() => (active.current = 'editor')}
+        // Typing or arrow-key navigation (which can scroll the editor) makes the
+        // editor the lead pane, so the preview follows the cursor.
+        onKeyDownCapture={() => (active.current = 'editor')}
+        onWheelCapture={() => (active.current = 'editor')}
         onFocusCapture={() => (active.current = 'editor')}
       >
         <Editor
@@ -142,6 +152,7 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
           initialDoc={initialDoc}
           onChange={onSourceChange}
           onScroll={onEditorScroll}
+          onLink={onLink}
         />
       </div>
     </div>

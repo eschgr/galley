@@ -75,10 +75,11 @@ test('loads a command-line file on startup (R7)', async ({ page }) => {
   await expect(page.locator('.markdown-preview')).toContainText('Loaded at launch');
 });
 
-test('File → Open replaces the document and updates the title bar (R8)', async ({ page }) => {
+test('the welcome screen reads "Welcome!" until a file is opened (R8)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
-  await expect(subtitle(page)).toContainText('welcome.md');
+  // No file open → the welcome screen, not a faux filename.
+  await expect(subtitle(page)).toHaveText('Welcome!');
 
   await page.evaluate(() =>
     (window as unknown as { __mock: { openCb: (f: MockFile) => void } }).__mock.openCb({
@@ -88,6 +89,7 @@ test('File → Open replaces the document and updates the title bar (R8)', async
     }),
   );
   await expect(subtitle(page)).toContainText('report.md');
+  await expect(subtitle(page)).not.toContainText('Welcome!');
   await expect(page.locator('.markdown-preview')).toContainText('Fresh open');
   await expect(dirtyDot(page)).toBeHidden();
 });

@@ -1,13 +1,16 @@
 /**
- * CodeMirror 6 source editor (PRD R16, R19, R20, R21, R22).
+ * CodeMirror 6 source editor (PRD R16, R19–R28).
  *
  * Composes the editor from CM6 sub-packages (no `basicSetup` meta-package):
  *  - markdown() language for syntax highlighting (R19)
  *  - history + history/default keymaps for undo/redo (R20)
  *  - search panel + keymap for find/replace (R21; Cmd/Ctrl+F)
  *  - line numbers (R22), line wrapping, 2-space indent unit (R28)
- *  - indentWithTab so Tab indents and never escapes the editor (R26 baseline;
- *    list-aware Tab is part of the later formatting-shortcuts step)
+ *  - a highest-precedence formatting keymap (R23–R25): bold/italic/inline code/
+ *    strikethrough/heading 1–6/fenced code block, plus list-aware Tab (R26) and
+ *    a Cmd/Ctrl+K hook that asks the host to open the link dialog (R27). The
+ *    wrap/heading/fence rules live in the pure, tested ./editorCommands module;
+ *    link parsing needs the live syntax tree, so it stays on the handle below.
  *
  * Exposes an imperative handle (getTopLine / scrollToLine) in 0-based fractional
  * line units — the same units the preview's data-source-line anchors use — so
@@ -15,7 +18,7 @@
  * and onChange on edits.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorState, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView,
   lineNumbers,
@@ -25,11 +28,36 @@ import {
   dropCursor,
   rectangularSelection,
   keymap,
+  type Command,
 } from '@codemirror/view';
-import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands';
-import { syntaxHighlighting, defaultHighlightStyle, indentUnit } from '@codemirror/language';
+import { history, historyKeymap, defaultKeymap, indentMore, indentLess, redo } from '@codemirror/commands';
+import {
+  syntaxHighlighting,
+  HighlightStyle,
+  indentUnit,
+  syntaxTree,
+} from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
+import {
+  wrapEdit,
+  unwrapSpan,
+  headingEdit,
+  fencedEdit,
+  listIndentEdit,
+  listContinueEdit,
+  type EditResult,
+} from './editorCommands';
+
+/** Link context handed to the host so it can open the dialog prefilled (R27). */
+export interface LinkContext {
+  text: string;
+  url: string;
+  /** True when the cursor sits inside an existing link (edit, not create). */
+  editing: boolean;
+}
 
 export interface EditorHandle {
   /** Top of the viewport as a 0-based fractional source line. */
@@ -48,13 +76,40 @@ export interface EditorHandle {
   /** Replace the whole document (e.g. when a file is opened) with fresh undo
    *  history, so undo can't reach back into the previous file. */
   setDoc(content: string): void;
+  /** Snapshot the link context at the cursor and remember the target range so a
+   *  later applyLink/removeLink edits the right span (R27). */
+  requestLink(): LinkContext | null;
+  /** Insert/replace the remembered range with `[text](url)` (R27). */
+  applyLink(text: string, url: string): void;
+  /** Strip the remembered link to its plain text (R27). */
+  removeLink(): void;
 }
 
 interface EditorProps {
   initialDoc: string;
   onChange?: (doc: string) => void;
   onScroll?: () => void;
+  /** Cmd/Ctrl+K — the host opens the link dialog (R27). */
+  onLink?: () => void;
 }
+
+// Source-like highlighting (R19): colour only — no bold/italic/size/strike — so
+// the editor reads as Markdown *source* (uniform monospace) while colour still
+// conveys structure like a code editor's syntax highlighting.
+const sourceHighlightStyle = HighlightStyle.define([
+  { tag: t.heading, color: '#0550ae' },
+  { tag: [t.strong, t.emphasis], color: '#0a3069' },
+  { tag: t.strikethrough, color: '#6e7781' },
+  { tag: [t.link, t.url], color: '#0969da' },
+  { tag: t.monospace, color: '#0a3069' },
+  { tag: t.quote, color: '#6e7781' },
+  { tag: [t.processingInstruction, t.meta, t.list, t.contentSeparator], color: '#6e7781' },
+  // Fenced code, when a language gets parsed.
+  { tag: t.keyword, color: '#cf222e' },
+  { tag: t.string, color: '#0a3069' },
+  { tag: t.comment, color: '#6e7781' },
+  { tag: t.number, color: '#0550ae' },
+]);
 
 const theme = EditorView.theme({
   '&': { height: '100%', fontSize: '13.5px' },
@@ -89,13 +144,173 @@ function scrollToLine(view: EditorView, line0: number): void {
   view.scrollDOM.scrollTop = block.top + frac * block.height;
 }
 
-type ChangeRef = { current: ((doc: string) => void) | undefined };
-type ScrollRef = { current: (() => void) | undefined };
+// --- Formatting commands (R23–R25) -----------------------------------------
+// Each turns an EditResult (computed by the pure helpers over the primary
+// selection) into a single transaction.
+function formatCommand(fn: (doc: string, from: number, to: number) => EditResult): Command {
+  return (view) => {
+    const { state } = view;
+    const range = state.selection.main;
+    const r = fn(state.doc.toString(), range.from, range.to);
+    view.dispatch(
+      state.update({
+        changes: { from: r.from, to: r.to, insert: r.insert },
+        selection: { anchor: r.select[0], head: r.select[1] },
+        userEvent: 'input.format',
+        scrollIntoView: true,
+      }),
+    );
+    return true;
+  };
+}
+
+// The Lezer node each inline marker produces, used to detect when a bare cursor
+// sits inside an existing span so the shortcut toggles it OFF (R24).
+const INLINE_NODE: Record<string, string> = {
+  '**': 'StrongEmphasis',
+  '_': 'Emphasis',
+  '`': 'InlineCode',
+  '~~': 'Strikethrough',
+};
+
+function enclosingSpan(state: EditorState, pos: number, nodeName: string): { from: number; to: number } | null {
+  const tree = syntaxTree(state);
+  for (const side of [-1, 1] as const) {
+    for (let n: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(pos, side); n; n = n.parent) {
+      if (n.name === nodeName) return { from: n.from, to: n.to };
+    }
+  }
+  return null;
+}
+
+// A wrap toggle: with a selection (or empty cursor not inside a span) it wraps;
+// with a bare cursor *inside* a span of this type it removes the whole span.
+function wrapCommand(marker: string): Command {
+  const nodeName = INLINE_NODE[marker];
+  return (view) => {
+    const { state } = view;
+    const range = state.selection.main;
+    if (range.empty) {
+      const span = enclosingSpan(state, range.head, nodeName);
+      if (span) {
+        applyEdit(view, unwrapSpan(state.doc.toString(), span.from, span.to, marker.length, range.head), 'input.format');
+        return true;
+      }
+    }
+    applyEdit(view, wrapEdit(state.doc.toString(), range.from, range.to, marker), 'input.format');
+    return true;
+  };
+}
+
+const boldCmd = wrapCommand('**');
+// Italic uses underscores so `_italic_` reads distinctly from `**bold**` (both
+// are CommonMark emphasis; `_` also avoids accidental intra-word italics).
+const italicCmd = wrapCommand('_');
+const inlineCodeCmd = wrapCommand('`');
+const strikeCmd = wrapCommand('~~');
+const fencedCmd = formatCommand(fencedEdit);
+const headingCmd = (level: number) => formatCommand((d, f, t) => headingEdit(d, f, t, level));
+
+// --- List-aware Tab / Shift+Tab (R26/R28) ----------------------------------
+// On a list line, Tab/Shift+Tab nest/un-nest the whole item to the CommonMark
+// content column of its parent (so nested lists actually render), from anywhere
+// on the line. Off a list line, Tab inserts spaces at the cursor and Shift+Tab
+// outdents — and Tab never escapes the editor.
+function applyEdit(view: EditorView, r: EditResult, userEvent: string): void {
+  view.dispatch(
+    view.state.update({
+      changes: { from: r.from, to: r.to, insert: r.insert },
+      selection: { anchor: r.select[0], head: r.select[1] },
+      userEvent,
+    }),
+  );
+}
+
+const tabCmd: Command = (view) => {
+  const range = view.state.selection.main;
+  if (range.empty) {
+    const r = listIndentEdit(view.state.doc.toString(), range.head, 'in');
+    if (r) {
+      applyEdit(view, r, 'input.indent');
+      return true;
+    }
+    // Not a list line → insert indentation at the cursor.
+    view.dispatch(
+      view.state.update({
+        changes: { from: range.head, insert: '  ' },
+        selection: { anchor: range.head + 2 },
+        userEvent: 'input.indent',
+      }),
+    );
+    return true;
+  }
+  return indentMore(view); // a multi-line selection indents the whole block
+};
+
+const shiftTabCmd: Command = (view) => {
+  const range = view.state.selection.main;
+  if (range.empty) {
+    const r = listIndentEdit(view.state.doc.toString(), range.head, 'out');
+    if (r) {
+      applyEdit(view, r, 'delete.dedent');
+      return true;
+    }
+  }
+  return indentLess(view);
+};
+
+// Enter continues a list with a fresh "1." item (R26b); off a list line it
+// returns false so the default newline runs.
+const continueListCmd: Command = (view) => {
+  const range = view.state.selection.main;
+  if (!range.empty) return false;
+  const r = listContinueEdit(view.state.doc.toString(), range.head);
+  if (!r) return false;
+  applyEdit(view, r, 'input');
+  return true;
+};
+
+const LINK_RE = /^\[([^\]]*)\]\(([^)]*)\)$/;
+
+type CbRef<T> = { current: T | undefined };
+
+function formattingKeymap(onLinkRef: CbRef<() => void>): Extension {
+  const linkCmd: Command = () => {
+    onLinkRef.current?.();
+    return true; // swallow Mod-k regardless, so no default fires
+  };
+  return Prec.highest(
+    keymap.of([
+      { key: 'Mod-b', run: boldCmd },
+      { key: 'Mod-i', run: italicCmd },
+      { key: 'Mod-e', run: inlineCodeCmd },
+      { key: 'Mod-Shift-x', run: strikeCmd },
+      { key: 'Mod-Shift-c', run: fencedCmd },
+      { key: 'Mod-1', run: headingCmd(1) },
+      { key: 'Mod-2', run: headingCmd(2) },
+      { key: 'Mod-3', run: headingCmd(3) },
+      { key: 'Mod-4', run: headingCmd(4) },
+      { key: 'Mod-5', run: headingCmd(5) },
+      { key: 'Mod-6', run: headingCmd(6) },
+      { key: 'Mod-k', run: linkCmd },
+      // Redo alongside the default Mod-y. Always claim the key (return true) so
+      // CodeMirror's shift-letter fallback can't drop through to Mod-z (undo)
+      // when there's nothing to redo.
+      { key: 'Mod-Shift-z', preventDefault: true, run: (view) => { redo(view); return true; } },
+      { key: 'Enter', run: continueListCmd },
+      { key: 'Tab', run: tabCmd, shift: shiftTabCmd },
+    ]),
+  );
+}
+
+type ChangeRef = CbRef<(doc: string) => void>;
+type ScrollRef = CbRef<() => void>;
+type LinkRef = CbRef<() => void>;
 
 // The full extension set, rebuilt for setDoc so a loaded file starts with fresh
 // undo history. Callbacks are read through refs so they stay current without
 // re-creating the editor.
-function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef): Extension[] {
+function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkRef: LinkRef): Extension[] {
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -107,11 +322,12 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef): Extens
     EditorState.allowMultipleSelections.of(true),
     indentUnit.of('  '),
     EditorView.lineWrapping,
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    markdown(),
+    syntaxHighlighting(sourceHighlightStyle),
+    markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
     search({ top: true }),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+    formattingKeymap(onLinkRef), // R23–R27, highest precedence so it wins
+    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
     theme,
     EditorView.updateListener.of((u) => {
       if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
@@ -125,17 +341,32 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef): Extens
   ];
 }
 
+/** Find the `[text](url)` link span the cursor sits in, if any. */
+function linkAt(view: EditorView, pos: number): { from: number; to: number } | null {
+  const tree = syntaxTree(view.state);
+  for (const side of [-1, 1] as const) {
+    for (let n: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(pos, side); n; n = n.parent) {
+      if (n.name === 'Link') return { from: n.from, to: n.to };
+    }
+  }
+  return null;
+}
+
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { initialDoc, onChange, onScroll },
+  { initialDoc, onChange, onScroll, onLink },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // The link span requestLink() captured, applied by applyLink/removeLink.
+  const linkTargetRef = useRef<{ from: number; to: number } | null>(null);
   // Keep latest callbacks without re-creating the editor.
   const onChangeRef = useRef(onChange);
   const onScrollRef = useRef(onScroll);
+  const onLinkRef = useRef(onLink);
   onChangeRef.current = onChange;
   onScrollRef.current = onScroll;
+  onLinkRef.current = onLink;
 
   useImperativeHandle(ref, () => ({
     getTopLine: () => (viewRef.current ? getTopLine(viewRef.current) : 0),
@@ -154,7 +385,54 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     setDoc: (content) => {
       const v = viewRef.current;
       if (!v) return;
-      v.setState(EditorState.create({ doc: content, extensions: buildExtensions(onChangeRef, onScrollRef) }));
+      v.setState(EditorState.create({ doc: content, extensions: buildExtensions(onChangeRef, onScrollRef, onLinkRef) }));
+    },
+    requestLink: () => {
+      const v = viewRef.current;
+      if (!v) return null;
+      const { state } = v;
+      const range = state.selection.main;
+      const link = linkAt(v, range.head);
+      if (link) {
+        const m = LINK_RE.exec(state.doc.sliceString(link.from, link.to));
+        if (m) {
+          linkTargetRef.current = link;
+          return { text: m[1], url: m[2], editing: true };
+        }
+      }
+      linkTargetRef.current = { from: range.from, to: range.to };
+      return { text: state.doc.sliceString(range.from, range.to), url: '', editing: false };
+    },
+    applyLink: (text, url) => {
+      const v = viewRef.current;
+      const tgt = linkTargetRef.current;
+      if (!v || !tgt) return;
+      const insert = `[${text.length ? text : url}](${url})`;
+      v.dispatch(
+        v.state.update({
+          changes: { from: tgt.from, to: tgt.to, insert },
+          selection: { anchor: tgt.from + insert.length },
+          userEvent: 'input.link',
+        }),
+      );
+      linkTargetRef.current = null;
+      v.focus();
+    },
+    removeLink: () => {
+      const v = viewRef.current;
+      const tgt = linkTargetRef.current;
+      if (!v || !tgt) return;
+      const m = LINK_RE.exec(v.state.doc.sliceString(tgt.from, tgt.to));
+      const plain = m ? m[1] : v.state.doc.sliceString(tgt.from, tgt.to);
+      v.dispatch(
+        v.state.update({
+          changes: { from: tgt.from, to: tgt.to, insert: plain },
+          selection: { anchor: tgt.from + plain.length },
+          userEvent: 'delete.link',
+        }),
+      );
+      linkTargetRef.current = null;
+      v.focus();
     },
   }));
 
@@ -164,7 +442,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       parent: hostRef.current,
       state: EditorState.create({
         doc: initialDoc,
-        extensions: buildExtensions(onChangeRef, onScrollRef),
+        extensions: buildExtensions(onChangeRef, onScrollRef, onLinkRef),
       }),
     });
     viewRef.current = view;

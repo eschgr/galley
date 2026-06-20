@@ -14,6 +14,8 @@ export interface MenuActions {
   openFile: () => void;
   /** File → Save (force-save the focused document). */
   saveFile: () => void;
+  /** View → Reload File (re-read the open file from disk; keeps the layout). */
+  reloadFile: () => void;
 }
 
 export function buildAppMenu(actions: MenuActions): void {
@@ -34,8 +36,11 @@ export function buildAppMenu(actions: MenuActions): void {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
+        // Ctrl/Cmd+R reloads the open *file* from disk (keeping the view layout),
+        // not the renderer. The webContents reload/forceReload roles are
+        // deliberately omitted — and HMR is off (vite.renderer.config.ts) — so
+        // code changes are picked up by restarting the app, never silently.
+        { label: 'Reload File', accelerator: 'CmdOrCtrl+R', click: actions.reloadFile },
         { type: 'separator' },
         { role: 'toggleDevTools' }, // user-facing way to open DevTools
         { type: 'separator' },
