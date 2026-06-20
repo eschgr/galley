@@ -34,8 +34,8 @@ const createWindow = () => {
   const mainWindow = new BrowserWindow({
     // Portrait-ish by default — most documents read better tall than wide.
     // Resizable, so widening for side-by-side editing is one drag away.
-    width: 850,
-    height: 1000,
+    width: 1000,
+    height: 1250,
     minWidth: 480,
     minHeight: 480,
     center: true,
