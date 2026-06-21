@@ -1,9 +1,7 @@
 # Sibling document
 
-*Target of the local-file links in `link-handling.md`. The body below is
-placeholder filler — long on purpose so the preview scrolls a good distance. The
-`#the-race` link points at [The Race](#the-race), about halfway down the page, so
-opening it should jump this tab to the middle rather than leaving you at the top.*
+*Opened by the plain `[sibling.md](./sibling.md)` link in `link-handling.md` — a
+relative file path resolved to a new tab. The body below is placeholder filler.*
 
 ## Section one
 
@@ -27,11 +25,9 @@ vexingly quick daft zebras jump. The five boxing wizards jump quickly.
 The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the
 lazy dog. The quick brown fox jumps over the lazy dog.
 
-## The Race
+## Section three
 
-This heading is the target of the `#the-race` fragment link. It sits about halfway
-down the document, so jumping here scrolls the tab to the middle and leaves room to
-scroll both up and down.
+This is the middle section of the placeholder document.
 
 Sphinx of black quartz, judge my vow. The quick brown fox jumps over the lazy dog.
 The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the
