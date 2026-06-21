@@ -509,3 +509,25 @@ test('clicking an external link opens it in the browser, not as a tab (R4)', asy
   expect(ext).toEqual(['https://example.com/x']);
   expect(local).toEqual([]);
 });
+
+test('preview reading position is preserved per tab; a new tab opens at the top (R39)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  const longDoc = '# Doc A\n\n' + Array.from({ length: 80 }, (_, i) => `Paragraph ${i} of doc A.`).join('\n\n');
+  await fire(page, 'openCb', { path: 'C:\\docs\\long-a.md', content: longDoc, hash: 'ha' });
+
+  // Scroll doc A's preview well down the page.
+  await page.evaluate(() => (document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 1200));
+  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  expect(await scrollTop()).toBeGreaterThan(200);
+
+  // Open a different file in a new tab — it must start at the top, not inherit A's offset.
+  await fire(page, 'openCb', { path: 'C:\\docs\\short-b.md', content: '# Doc B\n\nShort.', hash: 'hb' });
+  await expect(activeTabName(page)).toHaveText('short-b.md');
+  await expect.poll(scrollTop).toBe(0);
+
+  // Switch back to A — its reading position is restored.
+  await page.locator('.tab', { hasText: 'long-a.md' }).click();
+  await expect(activeTabName(page)).toHaveText('long-a.md');
+  await expect.poll(scrollTop).toBeGreaterThan(200);
+});

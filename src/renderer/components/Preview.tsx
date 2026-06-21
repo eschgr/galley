@@ -17,6 +17,9 @@ export interface PreviewHandle {
   getTopLine(): number;
   /** Scroll so a 0-based fractional source line sits at the viewport top. */
   scrollToLine(line: number): void;
+  /** Raw scroll offset in px — used to stash/restore reading position per tab. */
+  getScrollTop(): number;
+  setScrollTop(px: number): void;
 }
 
 interface PreviewProps {
@@ -77,6 +80,10 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     getTopLine: () => (scrollRef.current ? topLineFrom(anchorsRef.current, scrollRef.current.scrollTop) : 0),
     scrollToLine: (line) => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollTopFor(anchorsRef.current, line);
+    },
+    getScrollTop: () => scrollRef.current?.scrollTop ?? 0,
+    setScrollTop: (px) => {
+      if (scrollRef.current) scrollRef.current.scrollTop = px;
     },
   }));
 

@@ -43,6 +43,23 @@ describe('autolinking (linkify) — schemes only, not bare filenames', () => {
   });
 });
 
+describe('link rendering policy (validateLink)', () => {
+  it('renders a file:// link as a real anchor (not raw text)', () => {
+    const html = renderMarkdown('[win.ini](file:///C:/Windows/win.ini)');
+    expect(html).toContain('href="file:///C:/Windows/win.ini"');
+  });
+
+  it('renders a relative file link as an anchor', () => {
+    const html = renderMarkdown('[sibling](./sibling.md)');
+    expect(html).toContain('href="./sibling.md"');
+  });
+
+  it('refuses a javascript: URL (stays non-link)', () => {
+    const html = renderMarkdown('[x](javascript:alert(1))');
+    expect(html).not.toContain('href="javascript:');
+  });
+});
+
 describe('GFM rendering (R1)', () => {
   it('renders tables', () => {
     const html = renderMarkdown('| A | B |\n|---|---|\n| 1 | 2 |');

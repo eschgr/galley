@@ -122,6 +122,18 @@ export function createRenderer(): MarkdownIt {
   // clickable link. Explicit `[text](architecture.md)` links still work (R4).
   md.linkify.set({ fuzzyLink: false });
 
+  // Render `file:` links as real anchors. markdown-it's default validateLink
+  // blocks file:/data:/javascript: — but a local `file://` (or relative) path is
+  // a legitimate, clickable target in this offline viewer, and the preview's
+  // click handler (not navigation) decides what actually opens. Keep blocking
+  // script URLs and non-image data: URLs; html:false already bars raw HTML.
+  md.validateLink = (url: string) => {
+    const str = url.trim().toLowerCase();
+    if (/^(vbscript|javascript):/.test(str)) return false;
+    if (/^data:/.test(str)) return /^data:image\/(gif|png|jpeg|webp);/.test(str);
+    return true;
+  };
+
   md.set({ highlight: (str, lang) => highlightToHtml(str, lang, md) });
 
   md.use(taskLists, { enabled: true, label: true });

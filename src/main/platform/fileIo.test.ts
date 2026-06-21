@@ -2,7 +2,43 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArg, readFile, writeFile } from './fileIo';
+import { hashContent, parseCliFileArg, readFile, resolveLocalLink, writeFile } from './fileIo';
+
+describe('resolveLocalLink (preview local links, R4)', () => {
+  const from = path.resolve('docs', 'index.md');
+
+  it('resolves a relative link against the source document folder', () => {
+    expect(resolveLocalLink('./sibling.md', from)).toBe(path.resolve('docs', 'sibling.md'));
+    expect(resolveLocalLink('sibling.md', from)).toBe(path.resolve('docs', 'sibling.md'));
+    expect(resolveLocalLink('../README.md', from)).toBe(path.resolve('README.md'));
+  });
+
+  it('drops a #fragment before resolving', () => {
+    expect(resolveLocalLink('sibling.md#intro', from)).toBe(path.resolve('docs', 'sibling.md'));
+  });
+
+  it('percent-decodes the href', () => {
+    expect(resolveLocalLink('my%20notes.md', from)).toBe(path.resolve('docs', 'my notes.md'));
+  });
+
+  it('returns an absolute path unchanged', () => {
+    const abs = path.resolve('elsewhere', 'thing.md');
+    expect(resolveLocalLink(abs, from)).toBe(abs);
+  });
+
+  it('handles a file:// URL', () => {
+    if (process.platform === 'win32') {
+      expect(resolveLocalLink('file:///C:/Windows/win.ini', from)).toBe('C:\\Windows\\win.ini');
+    } else {
+      expect(resolveLocalLink('file:///etc/hosts', from)).toBe('/etc/hosts');
+    }
+  });
+
+  it('returns null for an empty or fragment-only href', () => {
+    expect(resolveLocalLink('', from)).toBeNull();
+    expect(resolveLocalLink('#section', from)).toBeNull();
+  });
+});
 
 describe('hashContent', () => {
   it('is the sha256 hex of the utf-8 content', () => {

@@ -6,6 +6,7 @@
 import { readFile as fsReadFile, writeFile as fsWriteFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { FileSnapshot } from './index';
 
 /** SHA-256 (hex) of UTF-8 content — the baseline used for conflict detection. */
@@ -32,6 +33,31 @@ export function parseCliFileArg(argv: readonly string[], packaged: boolean): str
     return path.resolve(arg);
   }
   return null;
+}
+
+/**
+ * Resolve a local-file link clicked in the preview (R4) to an absolute path.
+ * `href` is the link target, `fromPath` the absolute path of the document it was
+ * clicked in. Drops any `#fragment`, percent-decodes, accepts `file://` URLs, and
+ * resolves a relative path against the source document's folder. Returns null for
+ * an empty/unusable href.
+ */
+export function resolveLocalLink(href: string, fromPath: string): string | null {
+  let target = href.split('#')[0]; // a fragment is not part of the path
+  if (!target) return null;
+  try {
+    target = decodeURIComponent(target);
+  } catch {
+    /* keep the raw href if it isn't valid percent-encoding */
+  }
+  if (/^file:\/\//i.test(target)) {
+    try {
+      return fileURLToPath(target);
+    } catch {
+      return null;
+    }
+  }
+  return path.isAbsolute(target) ? target : path.resolve(path.dirname(fromPath), target);
 }
 
 /** Read a file as UTF-8 and capture its baseline hash. */

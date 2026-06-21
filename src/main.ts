@@ -1,6 +1,5 @@
 import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { createPlatformBridge, type SaveResult } from './main/platform';
@@ -155,21 +154,8 @@ ipcMain.handle('file:openLocal', (event, args: unknown) => {
   if (!args || typeof args !== 'object') return;
   const { href, from } = args as { href?: unknown; from?: unknown };
   if (typeof href !== 'string' || typeof from !== 'string') return;
-  let target = href.split('#')[0]; // drop any #fragment
-  if (!target) return;
-  try {
-    target = decodeURIComponent(target);
-  } catch {
-    /* keep the raw href if it isn't valid percent-encoding */
-  }
-  if (/^file:\/\//i.test(target)) {
-    try {
-      target = fileURLToPath(target);
-    } catch {
-      return;
-    }
-  }
-  const resolved = path.isAbsolute(target) ? target : path.resolve(path.dirname(from), target);
+  const resolved = platform.resolveLocalLink(href, from);
+  if (!resolved) return;
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) void openPath(win, resolved);
 });

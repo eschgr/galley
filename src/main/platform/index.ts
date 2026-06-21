@@ -47,6 +47,12 @@ export interface PlatformBridge {
    */
   parseCliFileArg(argv: readonly string[], packaged: boolean): string | null;
 
+  /**
+   * Resolve a local-file link clicked in the preview (R4) to an absolute path,
+   * relative to the document it was clicked in. Returns null for an unusable href.
+   */
+  resolveLocalLink(href: string, fromPath: string): string | null;
+
   // --- File IO + hashing (R33–R35) ---------------------------------------
   /** Read a file and record its hash as the last-known on-disk state. */
   readFile(absPath: string): Promise<FileSnapshot>;
@@ -100,6 +106,7 @@ export function createPlatformBridge(): PlatformBridge {
 
   return {
     parseCliFileArg: fileIo.parseCliFileArg,
+    resolveLocalLink: fileIo.resolveLocalLink,
 
     async readFile(absPath) {
       const snapshot = await fileIo.readFile(absPath);
