@@ -24,9 +24,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # windows-latest → Windows x64; macos-latest → Apple Silicon (arm64);
-        # macos-13 → Intel (x64). Each runner builds for its own architecture.
-        os: [windows-latest, macos-latest, macos-13]
+        # windows-latest → Windows x64; macos-latest → Apple Silicon (arm64).
+        # Intel macOS (macos-13) is intentionally omitted — all target machines
+        # are Apple Silicon, and the Intel runners are the slowest/scarcest.
+        os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
 
@@ -86,7 +87,6 @@ jobs:
             Download the build for your machine:
             - **Windows (x64):** the `*-Setup.exe` installer — download and run.
             - **macOS (Apple Silicon):** the `*-darwin-arm64-*.zip`
-            - **macOS (Intel):** the `*-darwin-x64-*.zip`
 
             Everything is bundled — no Node, npm, or dependencies to download on the target machine. On macOS, unzip and move **Galley.app** to Applications.
 
