@@ -193,3 +193,13 @@ test('clicking an in-page anchor link jumps to that heading (R4)', async ({ page
   await page.locator('.markdown-preview a', { hasText: 'jump to target' }).click();
   await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the heading
 });
+
+test('the preview pane fits within the window — no overflow past the bottom', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 500 });
+  await page.goto('/');
+  const { bottom, inner } = await page.evaluate(() => {
+    const ps = document.querySelector('.preview-scroll')!;
+    return { bottom: ps.getBoundingClientRect().bottom, inner: window.innerHeight };
+  });
+  expect(bottom).toBeLessThanOrEqual(inner + 1); // the scroll container's bottom edge is on-screen
+});
