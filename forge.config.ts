@@ -13,7 +13,12 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    // Install to %LocalAppData%\Galley and put the Start Menu shortcut under a
+    // "Galley" group. Squirrel otherwise uses the package.json `name` ("mdtool")
+    // for the install dir and `author.name` ("eschgr") for the shortcut folder —
+    // neither matches the product name. (Squirrel always nests the Start Menu
+    // shortcut under one folder = `authors`; "Galley" is the cleanest that gives.)
+    new MakerSquirrel({ name: 'Galley', authors: 'Galley' }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
