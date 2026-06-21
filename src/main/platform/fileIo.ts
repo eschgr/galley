@@ -60,6 +60,21 @@ export function resolveLocalLink(href: string, fromPath: string): string | null 
   return path.isAbsolute(target) ? target : path.resolve(path.dirname(fromPath), target);
 }
 
+/**
+ * Pick the channel address from a process argv (R11): `mdtool --channel <addr> …`
+ * or `--channel=<addr>`. The address is whatever the caller chose (a named pipe
+ * on Windows, a Unix-domain socket path on macOS); the app just listens on it.
+ * Returns null when no channel was passed.
+ */
+export function parseCliChannelArg(argv: readonly string[], packaged: boolean): string | null {
+  const rest = argv.slice(packaged ? 1 : 2);
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--channel' && i + 1 < rest.length) return rest[i + 1];
+    if (rest[i].startsWith('--channel=')) return rest[i].slice('--channel='.length);
+  }
+  return null;
+}
+
 /** Read a file as UTF-8 and capture its baseline hash. */
 export async function readFile(absPath: string): Promise<FileSnapshot> {
   const content = await fsReadFile(absPath, 'utf8');

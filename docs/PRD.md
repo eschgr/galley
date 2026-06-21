@@ -96,6 +96,8 @@ The app does **not** manage its own uniqueness — no single-instance lock, no s
 
 > Design note: a global single-instance/self-arbitration model (app acquires a lock, later launches hand off and exit) was considered and **replaced** by this caller-owned model — it removes lock/hand-off logic from the app and yields multi-window project grouping for free. The transport (named pipe / Unix socket) and the receiver-side focus-raise are the same either way; only *who runs the "is one already there?" check* differs (here: the caller, not the app).
 
+> Status (2026-06-20): R11–R15 implemented. `--channel <name>` is a plain **name** (no shell-fragile backslashes); both the app and the caller derive the OS transport from it the same way — `\\.\pipe\mdtool-<name>` on Windows, `<tmpdir>/mdtool-<name>.sock` elsewhere (`channelAddress()` in the platform seam). The wire protocol is one newline-terminated absolute path per message. Each delivered path opens as a new focused tab (R14); already-open paths focus their tab (R15). The listener lives behind the §7 seam (Node `net`), with a real round-trip unit test. *(The receiving instance raises its own window; cross-process raise is the caller's concern, per the note above.)*
+
 ### 5.4 Editing
 
 - **R16.** Edit the markdown **source** directly in-app.
@@ -402,21 +404,20 @@ This appendix specifies how an LLM (e.g. Claude) drives `mdtool`. It is the "how
 
 ### A.2 The channel key
 
-- Derive the channel from a **stable project key** — normally the **absolute project root directory**. Same project root ⇒ same channel ⇒ same window, even across separate caller sessions.
-- Recommended address form:
-  - **macOS:** a Unix-domain socket path, e.g. `/tmp/mdtool-<hash>.sock`
-  - **Windows:** a named pipe, e.g. `\\.\pipe\mdtool-<hash>`
-  - where `<hash>` is a short stable hash of the absolute project root (so the name is filesystem-safe and recomputable).
+- Derive the channel **name** from a **stable project key** — normally a short stable hash of the **absolute project root directory** (filesystem-safe, recomputable). Same project root ⇒ same channel name ⇒ same window, even across separate caller sessions.
+- Launch passes the **name** only: `mdtool --channel <name>` (a plain token — no backslashes to mangle through shells). The app and the caller derive the same OS transport address from it:
+  - **Windows:** named pipe `\\.\pipe\mdtool-<name>`
+  - **macOS/Linux:** Unix-domain socket `<tmpdir>/mdtool-<name>.sock`
 - Do **not** key on PID. PID is only ever used (optionally) as a liveness signal, never as the channel identity.
 
 ### A.3 Procedure (per file to open)
 
-1. **Compute** the channel address from the project root: `addr = channel_for(project_root)`.
-2. **Probe** the channel — attempt to connect.
-3. **If connect succeeds** (a window is live): **send** the file's absolute path over the channel. The existing window opens it as a new (or focused, if already open) tab.
+1. **Compute** the channel name from the project root: `name = hash(project_root)`, and the transport address from the name (`\\.\pipe\mdtool-<name>` / `<tmpdir>/mdtool-<name>.sock`).
+2. **Probe** the channel — attempt to connect to that address.
+3. **If connect succeeds** (a window is live): **send** the file's absolute path over the channel, terminated by a newline (`<absolute_path>\n`). The existing window opens it as a new (or focused, if already open) tab.
 4. **If connect fails** (nothing listening): **launch** a new instance bound to that channel and give it the file, e.g.
-   `mdtool --channel <addr> <absolute_file_path>`
-   The new window comes up listening on `<addr>` and opens the file.
+   `mdtool --channel <name> <absolute_file_path>`
+   The new window comes up listening on the channel and opens the file.
 5. Always pass **absolute** file paths.
 
 > Notes

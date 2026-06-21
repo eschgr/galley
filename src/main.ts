@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
-import { createPlatformBridge, type SaveResult } from './main/platform';
+import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -16,6 +16,11 @@ const platform = createPlatformBridge();
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
 // renderer has registered its listener.
 let startupFilePath: string | null = null;
+
+// Files delivered over the channel (R11) before the renderer has mounted are
+// queued here and flushed once the page finishes loading.
+const pendingChannelFiles: string[] = [];
+let rendererReady = false;
 
 function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
@@ -231,10 +236,11 @@ const createWindow = () => {
     },
   });
 
-  // Stop watching every open file when the window closes.
+  // Stop watching every open file, and close the channel, when the window closes.
   mainWindow.on('closed', () => {
     for (const p of watchedPaths) platform.unwatch(p);
     watchedPaths.clear();
+    void platform.closeChannel();
   });
 
   // R4 / §7 security: links and window.open() from the preview must open in the
@@ -273,6 +279,33 @@ const createWindow = () => {
       mainWindow.webContents.send('menu:closeTab');
     }
   });
+
+  // Channel listener (R11–R15): when launched with `--channel <addr>`, open any
+  // absolute file path the caller (Claude) sends over the channel as a new,
+  // focused tab. The app does not arbitrate — the caller decided to send rather
+  // than launch. Paths arriving before the renderer mounts are queued and
+  // flushed on did-finish-load.
+  rendererReady = false;
+  mainWindow.webContents.on('did-finish-load', () => {
+    rendererReady = true;
+    for (const f of pendingChannelFiles.splice(0)) void openPath(mainWindow, f);
+  });
+  const channelName = platform.parseCliChannelArg(process.argv, app.isPackaged);
+  if (channelName) {
+    const address = channelAddress(channelName);
+    void platform
+      .listenOnChannel(address, (absPath) => {
+        if (mainWindow.isDestroyed()) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus(); // R14: the delivered file's tab is focused
+        const resolved = path.resolve(absPath);
+        if (rendererReady) void openPath(mainWindow, resolved);
+        else pendingChannelFiles.push(resolved);
+      })
+      .catch((err) =>
+        dialog.showErrorBox('Channel error', `Could not listen on ${address}\n\n${String(err)}`),
+      );
+  }
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
