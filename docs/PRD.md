@@ -194,22 +194,24 @@ The governing principle: **both the write path (save) and the read path (load/re
 
 - **R39.** Open multiple documents, each in its own tab; switch between them.
 - **R40.** **Per-tab dirty indicator** showing unsaved local changes.
-- **R41.** Close an individual tab. Closing a tab with unsaved local edits prompts to save first. *(With auto-save, most closes have nothing pending; the prompt covers the un-debounced window.)*
+- **R41.** Close an individual tab — via the tab's **×** or **Ctrl/Cmd+W** (which closes the active tab, never the window). Closing a tab with unsaved local edits prompts to save first (Save / Discard / Cancel). *(With auto-save, most closes have nothing pending; the prompt covers the un-debounced window.)* Closing the **last** tab returns to the welcome/empty state (R46), it does not quit.
 - **R42.** Recently-opened list — **not required**.
 - **R43.** Tab reordering — **not required**; include only if provided for free by the UI framework.
 - **R44.** Bulk tab operations (close all / close others) — **out of scope** (see §3).
+
+> Status (2026-06-20): R39–R41 implemented. One CodeMirror instance is shared across tabs; each tab stashes/restores its full editor state (undo/scroll/selection) on switch, and carries its own buffer, baseline, dirty, and out-of-sync state. Opening a file already open focuses its tab rather than duplicating. Closing a tab unwatches its file; closing a *dirty* tab prompts (Save / Discard / Cancel). R42/R43 remain not-done by design.
 
 ### 5.8 Layout & empty state
 
 - **R45. Split view & reading mode.** The live rendered view (left) and source editor (right) are shown side by side with synchronized scrolling (R18). A **Show Source / Hide Source** toggle in the title bar collapses the editor so the rendered view fills the window for distraction-free reading, and restores the side-by-side split for editing. *(Pane order is fixed; a dynamic in-app swap is out of scope — see §3.)*
   - **Default to reading view.** Because the primary use is reviewing rendered output, the app opens with the source hidden (rendered view only); one click on **Show Source** reveals the editor to make corrections, and **Hide Source** returns to full-window reading. The editor stays mounted while hidden, so edits, undo history, and scroll position are preserved across toggles.
   - **Window auto-resize.** Showing the source roughly **doubles the window width** to make room for the side-by-side editor, and hiding it restores the earlier (reading) width — so the reading view stays comfortably narrow and the editing view stays roomy. The reading width is remembered per window (respecting a manual resize), the target is clamped to the display work area and nudged to stay on-screen, and the height is unchanged. No resize happens when the window is maximized or full screen.
-- **R46. Empty state.** When no files are open — whether at a fresh launch with no file argument (R10) or after the last tab is closed — the app remains open and displays a **"No files open"** state. Closing the last tab does **not** quit the app.
+- **R46. Empty state.** When no files are open — whether at a fresh launch with no file argument (R10) or after the last tab is closed — the app remains open and displays the **welcome screen** (the §5.4c sandbox), which serves as the "no files open" state; the tab strip is hidden. Closing the last tab does **not** quit the app. *(Implemented 2026-06-20.)*
 
 ### 5.9 Application menu & commands
 
 - **R47. Native menu bar.** Common operations are exposed through the **OS-native application menu** (not a custom command palette). At minimum:
-  - **File:** Open (R8), Save / force-save (R30), Exit (quit the application).
+  - **File:** Open (R8), Save / force-save (R30), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
   - **Edit:** Undo/redo (R20), Find & Replace (R21), and the formatting actions (R23) where appropriate.
   - **View:** standard view items (reload, zoom, full screen) and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
   - **Help:** open the Help window (R48).

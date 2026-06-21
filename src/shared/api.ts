@@ -44,15 +44,27 @@ export interface MdtoolApi {
    * (R34); `force` overwrites unconditionally ("keep mine").
    */
   saveFile(filePath: string, content: string, force?: boolean): Promise<SaveOutcome>;
+  /** Read a file on demand — used to reload a tab in place (R31a). Resolves to
+   *  null if it can't be read. (Re)watches the file. */
+  readFile(filePath: string): Promise<OpenedFile | null>;
+  /** Tell the main process a tab closed so it stops watching that file (R41). */
+  notifyClosed(filePath: string): void;
   /** Pull the file passed on the command line at launch (R7), once. */
   getStartupFile(): Promise<OpenedFile | null>;
   /**
    * Subscribe to "a file was opened" (via CLI at launch, or File → Open).
+   * The renderer opens it in a tab, or focuses the tab if already open (R39).
    * Returns an unsubscribe function.
    */
   onOpenFile(callback: (file: OpenedFile) => void): () => void;
   /** Subscribe to the File → Save menu/accelerator (R30). Returns unsubscribe. */
   onMenuSave(callback: () => void): () => void;
+  /** Subscribe to View → Reload File (Ctrl/Cmd+R) — reload the active tab in
+   *  place (R31a). Returns unsubscribe. */
+  onReloadFile(callback: () => void): () => void;
+  /** Subscribe to File → Close Tab (Ctrl/Cmd+W) — close the active tab, prompting
+   *  if it has unsaved edits (R41). Returns unsubscribe. */
+  onCloseTab(callback: () => void): () => void;
   /**
    * Subscribe to a genuine external change to the open file (R32/R33) — the
    * watcher's own saves are already filtered out. Payload is the new on-disk

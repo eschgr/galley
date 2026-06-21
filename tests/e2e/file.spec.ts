@@ -14,10 +14,18 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       openCb: ((f: MockFile) => void) | null;
       saveCb: (() => void) | null;
       extCb: ((f: MockFile) => void) | null;
+      reloadCb: (() => void) | null;
+      closeTabCb: (() => void) | null;
       saveCalls: { path: string; content: string; force: boolean }[];
+      closed: string[];
       // When set, the next non-force save returns this as a write-path conflict.
       nextSaveConflict: MockFile | null;
-    } = { openCb: null, saveCb: null, extCb: null, saveCalls: [], nextSaveConflict: null };
+      // What readFile() (reload) returns next.
+      nextRead: MockFile | null;
+    } = {
+      openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null,
+      saveCalls: [], closed: [], nextSaveConflict: null, nextRead: null,
+    };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { mdtool: unknown }).mdtool = {
       platform: 'win32',
@@ -34,6 +42,8 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
         }
         return { conflict: false, file: { path, content, hash: 'mock-hash' } };
       },
+      readFile: async () => harness.nextRead,
+      notifyClosed: (path: string) => harness.closed.push(path),
       onOpenFile: (cb: (f: MockFile) => void) => {
         harness.openCb = cb;
         return () => (harness.openCb = null);
@@ -41,6 +51,14 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       onMenuSave: (cb: () => void) => {
         harness.saveCb = cb;
         return () => (harness.saveCb = null);
+      },
+      onReloadFile: (cb: () => void) => {
+        harness.reloadCb = cb;
+        return () => (harness.reloadCb = null);
+      },
+      onCloseTab: (cb: () => void) => {
+        harness.closeTabCb = cb;
+        return () => (harness.closeTabCb = null);
       },
       onExternalChange: (cb: (f: MockFile) => void) => {
         harness.extCb = cb;
@@ -61,25 +79,30 @@ async function fire(page: Page, cb: 'openCb' | 'extCb', file: MockFile): Promise
   );
 }
 
-const subtitle = (page: Page) => page.locator('.app-subtitle');
-const dirtyDot = (page: Page) => page.locator('.app-subtitle .dirty-dot');
+// The unsaved-changes dot now lives on the active tab; out-of-sync is a banner.
+const dirtyDot = (page: Page) => page.locator('.tab.is-active .tab-dot');
+const syncFlag = (page: Page) => page.locator('.sync-flag');
+const tabNames = (page: Page) => page.locator('.tab-name');
+const activeTabName = (page: Page) => page.locator('.tab.is-active .tab-name');
+const noTabs = (page: Page) => page.locator('.tab-strip');
 
-test('loads a command-line file on startup (R7)', async ({ page }) => {
+test('loads a command-line file on startup, in a tab (R7/R39)', async ({ page }) => {
   await installMockBridge(page, {
     path: 'C:\\docs\\startup.md',
     content: '# Startup\n\nLoaded at launch.\n',
     hash: 'h',
   });
   await page.goto('/');
-  await expect(subtitle(page)).toContainText('startup.md');
+  await expect(activeTabName(page)).toHaveText('startup.md');
   await expect(page.locator('.markdown-preview')).toContainText('Loaded at launch');
 });
 
-test('the welcome screen reads "Welcome!" until a file is opened (R8)', async ({ page }) => {
+test('the welcome screen shows until a file is opened in a tab (R8/R46)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');
-  // No file open → the welcome screen, not a faux filename.
-  await expect(subtitle(page)).toHaveText('Welcome!');
+  // No file open → welcome sandbox, no tab strip.
+  await expect(noTabs(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('Welcome to Galley');
 
   await page.evaluate(() =>
     (window as unknown as { __mock: { openCb: (f: MockFile) => void } }).__mock.openCb({
@@ -88,8 +111,7 @@ test('the welcome screen reads "Welcome!" until a file is opened (R8)', async ({
       hash: 'h',
     }),
   );
-  await expect(subtitle(page)).toContainText('report.md');
-  await expect(subtitle(page)).not.toContainText('Welcome!');
+  await expect(activeTabName(page)).toHaveText('report.md');
   await expect(page.locator('.markdown-preview')).toContainText('Fresh open');
   await expect(dirtyDot(page)).toBeHidden();
 });
@@ -257,7 +279,6 @@ test('Ctrl+S while flagged keeps mine; Load from disk re-arms the loud modal (R3
   await expect(page.locator('.sync-flag')).toBeVisible();
   await menuSave(page);
   await expect(page.locator('.sync-flag')).toBeHidden();
-  await expect(subtitle(page)).not.toContainText('out of sync');
 
   // Another recurrence → passive flag; Reload takes theirs and fully reconciles.
   await fire(page, 'extCb', { path: 'C:\\docs\\e.md', content: 'theirs three\n', hash: 'h4' });
@@ -324,4 +345,135 @@ test('auto-save does not let an external change silently discard edits (R36)', a
   await fire(page, 'extCb', { path: 'C:\\docs\\d.md', content: 'theirs\n', hash: 'h2' });
   await expect(overlay(page)).toBeVisible();
   await expect(page.locator('.markdown-preview')).not.toContainText('theirs');
+});
+
+const tabByName = (page: Page, name: string) => page.locator('.tab', { hasText: name });
+
+test('the toolbar is the same height with or without open tabs', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  const toolbarHeight = () =>
+    page.evaluate(() => Math.round(document.querySelector('.toolbar')!.getBoundingClientRect().height));
+  const empty = await toolbarHeight();
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'x\n', hash: 'h' });
+  expect(await toolbarHeight()).toBe(empty);
+});
+
+test('opens multiple files in tabs and switches between them (R39)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: '# Doc A\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: '# Doc B\n', hash: 'h' });
+  await expect(tabNames(page)).toHaveText(['a.md', 'b.md']);
+  await expect(activeTabName(page)).toHaveText('b.md');
+  await expect(page.locator('.markdown-preview')).toContainText('Doc B');
+
+  await tabByName(page, 'a.md').locator('.tab-label').click();
+  await expect(activeTabName(page)).toHaveText('a.md');
+  await expect(page.locator('.markdown-preview')).toContainText('Doc A');
+});
+
+test('reopening an already-open file focuses its tab — no duplicate (R39)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: '# Doc A\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: '# Doc B\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: '# Doc A\n', hash: 'h' });
+  await expect(tabNames(page)).toHaveText(['a.md', 'b.md']); // still two
+  await expect(activeTabName(page)).toHaveText('a.md'); // focused
+});
+
+test('per-tab dirty indicator marks only the edited tab (R40)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'aaa\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: 'bbb\n', hash: 'h' }); // active b
+  await page.locator('.source-toggle').click();
+  await expect(page.locator('.pane-editor')).toBeVisible();
+  await page.locator('.cm-content').click();
+  await page.keyboard.type(' EDIT');
+  await expect(tabByName(page, 'b.md').locator('.tab-dot')).toBeVisible();
+  await expect(tabByName(page, 'a.md').locator('.tab-dot')).toBeHidden();
+});
+
+test('closing a clean tab removes it and keeps a neighbor active (R41)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'a\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: 'b\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\c.md', content: 'c\n', hash: 'h' }); // active c
+  await tabByName(page, 'b.md').locator('.tab-close').click();
+  await expect(tabNames(page)).toHaveText(['a.md', 'c.md']);
+  await expect(activeTabName(page)).toHaveText('c.md'); // closing a background tab keeps active
+  await page.locator('.tab.is-active .tab-close').click(); // close active c
+  await expect(tabNames(page)).toHaveText(['a.md']);
+  await expect(activeTabName(page)).toHaveText('a.md');
+});
+
+test('closing the last tab returns to the welcome screen (R46)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\only.md', content: '# Only\n', hash: 'h' });
+  await page.locator('.tab.is-active .tab-close').click();
+  await expect(noTabs(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('Welcome to Galley');
+});
+
+test('closing a tab with unsaved edits prompts; Save closes and writes (R41)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\w.md', content: 'orig\n', hash: 'h' }, ' EDIT');
+  await page.locator('.tab.is-active .tab-close').click();
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.modal')).toContainText('w.md');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.tab-strip')).toBeHidden(); // closed → welcome
+  const calls = await page.evaluate(
+    () => (window as unknown as { __mock: { saveCalls: { content: string }[] } }).__mock.saveCalls,
+  );
+  expect(calls.some((c) => c.content.includes('EDIT'))).toBe(true);
+});
+
+// Drive the File → Close Tab menu item (Ctrl/Cmd+W), which posts to the renderer.
+const closeViaMenu = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __mock: { closeTabCb: () => void } }).__mock.closeTabCb());
+
+test('Ctrl+W closes the active tab (not the window); last tab → welcome (R41/R46)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'a\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: 'b\n', hash: 'h' }); // active b
+  await closeViaMenu(page);
+  await expect(tabNames(page)).toHaveText(['a.md']);
+  await expect(activeTabName(page)).toHaveText('a.md');
+  await closeViaMenu(page); // last tab → welcome, app stays
+  await expect(noTabs(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('Welcome to Galley');
+});
+
+test('Ctrl+W on a tab with unsaved edits prompts first (R41)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\w.md', content: 'orig\n', hash: 'h' }, ' EDIT');
+  await closeViaMenu(page);
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.modal')).toContainText('w.md');
+});
+
+test('close prompt — Discard closes without saving; Cancel keeps the tab (R41)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\w.md', content: 'orig\n', hash: 'h' }, ' EDIT');
+
+  await page.locator('.tab.is-active .tab-close').click();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(activeTabName(page)).toHaveText('w.md'); // still open
+
+  await page.locator('.tab.is-active .tab-close').click();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await expect(page.locator('.tab-strip')).toBeHidden();
+  const calls = await page.evaluate(
+    () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls,
+  );
+  expect(calls.length).toBe(0); // nothing written (auto-save's 5s never fired)
 });

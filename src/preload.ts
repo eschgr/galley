@@ -14,6 +14,10 @@ const api: MdtoolApi = {
   setSourceVisible: (visible: boolean) => ipcRenderer.invoke('window:setSourceVisible', visible),
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),
+  readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
+  notifyClosed: (filePath: string) => {
+    void ipcRenderer.invoke('file:closed', filePath);
+  },
   getStartupFile: () => ipcRenderer.invoke('file:getStartup'),
   onOpenFile: (callback: (file: OpenedFile) => void) => {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);
@@ -24,6 +28,16 @@ const api: MdtoolApi = {
     const listener = () => callback();
     ipcRenderer.on('menu:save', listener);
     return () => ipcRenderer.removeListener('menu:save', listener);
+  },
+  onReloadFile: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:reloadFile', listener);
+    return () => ipcRenderer.removeListener('menu:reloadFile', listener);
+  },
+  onCloseTab: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:closeTab', listener);
+    return () => ipcRenderer.removeListener('menu:closeTab', listener);
   },
   onExternalChange: (callback: (file: OpenedFile) => void) => {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);

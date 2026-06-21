@@ -76,6 +76,11 @@ export interface EditorHandle {
   /** Replace the whole document (e.g. when a file is opened) with fresh undo
    *  history, so undo can't reach back into the previous file. */
   setDoc(content: string): void;
+  /** Snapshot the full editor state (doc + undo history + selection + scroll)
+   *  so a tab switch can restore it later (R39). */
+  getState(): EditorState | null;
+  /** Restore a state captured by getState() when returning to a tab. */
+  setState(state: EditorState): void;
   /** Snapshot the link context at the cursor and remember the target range so a
    *  later applyLink/removeLink edits the right span (R27). */
   requestLink(): LinkContext | null;
@@ -387,6 +392,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       if (!v) return;
       v.setState(EditorState.create({ doc: content, extensions: buildExtensions(onChangeRef, onScrollRef, onLinkRef) }));
     },
+    getState: () => viewRef.current?.state ?? null,
+    setState: (state) => viewRef.current?.setState(state),
     requestLink: () => {
       const v = viewRef.current;
       if (!v) return null;

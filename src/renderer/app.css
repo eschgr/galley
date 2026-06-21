@@ -10,34 +10,26 @@
   color: #1f2328;
 }
 
-.app-titlebar {
+/* Single toolbar row: tabs on the left, source toggle on the right. A fixed
+   min-height keeps the bar the same size whether or not any tabs are open. */
+.toolbar {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: 32px;
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 8px 14px;
+  align-items: stretch;
+  gap: 8px;
+  padding: 4px 10px 0;
   border-bottom: 1px solid #d0d7de;
   background: #f6f8fa;
   user-select: none;
 }
-.app-title {
-  font-weight: 600;
-  font-size: 13px;
-}
-.app-subtitle {
-  font-size: 12px;
-  color: #57606a;
-}
-.app-subtitle .dirty-dot {
-  color: #bf8700;
-  margin-right: 5px;
-  font-size: 11px;
-  vertical-align: middle;
-}
 
-/* Show/Hide Source toggle, pinned to the right of the titlebar */
+/* Show/Hide Source toggle, pinned to the right of the toolbar */
 .source-toggle {
   margin-left: auto;
+  align-self: center;
+  flex: 0 0 auto;
   appearance: none;
   border: 1px solid #d0d7de;
   border-radius: 6px;
@@ -54,6 +46,72 @@
   background: #0969da;
   color: #ffffff;
   border-color: #0969da;
+}
+
+/* Tab strip (R39/R40) — lives inside the toolbar, fills it so the toggle is right. */
+.tab-strip {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  max-width: 220px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+.tab.is-active {
+  background: #ffffff;
+  border-color: #d0d7de;
+}
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #57606a;
+  font-size: 12px;
+  padding: 6px 2px 6px 10px;
+  cursor: pointer;
+}
+.tab.is-active .tab-label {
+  color: #24292f;
+}
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-dot {
+  color: #bf8700;
+  font-size: 10px;
+}
+.tab-warn {
+  color: #cf222e;
+  font-size: 10px;
+}
+.tab-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #6e7781;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tab-close:hover {
+  background: #eaeef2;
+  color: #24292f;
 }
 
 .split-view {
@@ -104,16 +162,20 @@
 
 /* Passive out-of-sync flag in the titlebar — what the one-shot modal (R34/R35)
    collapses to once acknowledged. Stays put, never re-pops. */
+/* Out-of-sync banner, full width just below the tab bar (R36). */
 .sync-flag {
-  display: inline-flex;
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
   color: #9a6700;
   background: #fff8c5;
-  border: 1px solid #eac54f;
-  border-radius: 6px;
-  padding: 2px 6px 2px 8px;
+  border-bottom: 1px solid #eac54f;
+  padding: 6px 12px;
+}
+.sync-flag-text {
+  margin-right: auto;
 }
 .sync-flag-dot {
   color: #bf8700;
