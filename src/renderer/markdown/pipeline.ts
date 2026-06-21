@@ -61,6 +61,39 @@ function injectSourceLines(md: MarkdownIt): void {
   });
 }
 
+/**
+ * GitHub-compatible heading slug: lowercase, drop punctuation (keep letters of
+ * any script, numbers, spaces, hyphens), spaces → hyphens. Matches the anchors
+ * an LLM emits for in-document links like `[…](#some-heading)`.
+ */
+export function slugify(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-'); // each whitespace → one hyphen (GitHub does not collapse runs)
+}
+
+/**
+ * Give each heading an `id` slug so in-page anchor links (`#heading`) have a
+ * target to jump to (the preview's click handler scrolls to it). Duplicate slugs
+ * get `-1`, `-2`, … like GitHub, so repeated headings stay individually linkable.
+ */
+function injectHeadingIds(md: MarkdownIt): void {
+  md.core.ruler.push('heading_ids', (state) => {
+    const seen = new Map<string, number>();
+    for (let i = 0; i < state.tokens.length; i++) {
+      if (state.tokens[i].type !== 'heading_open') continue;
+      const inline = state.tokens[i + 1];
+      const base = inline && inline.type === 'inline' ? slugify(inline.content) : '';
+      if (!base) continue;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      state.tokens[i].attrSet('id', n === 0 ? base : `${base}-${n}`);
+    }
+  });
+}
+
 function highlightToHtml(code: string, lang: string, md: MarkdownIt): string {
   const escaped = (s: string) => md.utils.escapeHtml(s);
   if (lang && hljs.getLanguage(lang)) {
@@ -92,6 +125,7 @@ export function createRenderer(): MarkdownIt {
   });
 
   injectSourceLines(md);
+  injectHeadingIds(md);
 
   return md;
 }

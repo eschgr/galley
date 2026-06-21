@@ -174,3 +174,22 @@ test('revealing the source aligns the editor to the line being read (regression)
   expect(editor).toBeGreaterThan(5); // not stuck at the top (the original bug)
   expect(Math.abs(editor - previewAfter)).toBeLessThanOrEqual(3);
 });
+
+test('clicking an in-page anchor link jumps to that heading (R4)', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 320 }); // short, so the target is below the fold
+  await page.goto('/');
+  await toggle(page).click(); // Show Source
+  await expect(editorPane(page)).toBeVisible();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+a');
+  const filler = Array.from({ length: 16 }, (_, i) => `Filler paragraph number ${i}.`).join('\n\n');
+  await page.keyboard.type(`[jump to target](#target-heading)\n\n${filler}\n\n## Target heading\n`);
+
+  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  // Typing left the cursor (and the preview) at the bottom; reset to the top so
+  // the link is in view and the target heading is below the fold.
+  await page.evaluate(() => (document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 0));
+  expect(await scrollTop()).toBe(0);
+  await page.locator('.markdown-preview a', { hasText: 'jump to target' }).click();
+  await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the heading
+});

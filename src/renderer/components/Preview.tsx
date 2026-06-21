@@ -76,13 +76,21 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     },
   }));
 
-  // R4: open links externally; never navigate the renderer.
+  // In-page anchor links (`#heading`) jump within the preview; every other link
+  // opens in the system browser (R4 — the renderer never navigates itself).
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const anchor = (e.target as HTMLElement).closest('a');
     if (!anchor) return;
-    e.preventDefault();
     const href = anchor.getAttribute('href');
-    if (href) void window.mdtool?.openExternal(href);
+    if (!href) return;
+    e.preventDefault();
+    if (href.startsWith('#')) {
+      const id = decodeURIComponent(href.slice(1));
+      const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    void window.mdtool?.openExternal(href);
   };
 
   return (

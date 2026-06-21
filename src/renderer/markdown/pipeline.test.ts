@@ -1,5 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { renderMarkdown } from './pipeline';
+import { renderMarkdown, slugify } from './pipeline';
+
+describe('heading anchor slugs (in-page links)', () => {
+  it('slugifies like GitHub — lowercase, punctuation dropped, spaces to hyphens', () => {
+    expect(slugify('Clothing: what the scroll images show')).toBe('clothing-what-the-scroll-images-show');
+    expect(slugify('Age & gender (overview)')).toBe('age--gender-overview');
+    expect(slugify('  Trimmed  Spaces  ')).toBe('trimmed--spaces');
+  });
+
+  it('keeps non-Latin letters (e.g. CJK)', () => {
+    expect(slugify('清明 festival')).toBe('清明-festival');
+  });
+
+  it('gives headings an id matching the link target', () => {
+    const html = renderMarkdown('## Clothing: what the scroll images show');
+    expect(html).toContain('id="clothing-what-the-scroll-images-show"');
+  });
+
+  it('de-duplicates repeated headings like GitHub (-1, -2)', () => {
+    const html = renderMarkdown('# Notes\n\n# Notes\n\n# Notes');
+    expect(html).toContain('id="notes"');
+    expect(html).toContain('id="notes-1"');
+    expect(html).toContain('id="notes-2"');
+  });
+});
 
 describe('GFM rendering (R1)', () => {
   it('renders tables', () => {
