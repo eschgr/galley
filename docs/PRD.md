@@ -277,14 +277,18 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 
 ### Output installers (self-contained)
 
-- **macOS:** `.dmg` (disk-image installer) wrapping the `.app` bundle.
-- **Windows:** `.exe` (Squirrel/NSIS) and/or `.msi`.
+- **Windows:** `.exe` (Squirrel) installer, plus a portable `.zip` of the app.
+- **macOS:** `.zip` of the `.app` bundle, per architecture (Apple Silicon + Intel). *(A `.dmg` is a possible nicety later — it needs the Forge DMG maker.)*
 
 Users need **no browser and no runtime** installed — the engine is bundled inside the app.
 
 ### Per-OS build constraint
 
-`make`/build runs for the OS it executes on: a Mac produces the `.dmg`, a Windows machine produces the `.exe`/`.msi`. Cross-building the other platform's installer is unreliable. To produce **both** without owning both machines, use **CI (GitHub Actions)** with the standard Electron build matrix (macOS + Windows runners) — the common solution for solo developers.
+`make`/build runs for the OS it executes on: a Mac produces the macOS build, a Windows machine produces the `.exe`. Cross-building the other platform's installer is unreliable. To produce **both** without owning both machines, use **CI (GitHub Actions)** with the standard Electron build matrix (macOS + Windows runners) — the common solution for solo developers.
+
+### Releases (CI)
+
+A GitHub Actions workflow (`.github/workflows/release.yml`) implements the above: pushing a version tag (`vX.Y.Z`) builds the app natively on Windows and macOS (Apple Silicon + Intel) runners and publishes them all to a GitHub **Release**. Build artifacts are never committed to the repo (`out/` stays gitignored) — the Release is the distribution channel, so a personal machine only ever **downloads** the finished app rather than cloning or building this project.
 
 ### Code signing (deferred, optional)
 
