@@ -16,6 +16,7 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       extCb: ((f: MockFile) => void) | null;
       reloadCb: (() => void) | null;
       closeTabCb: (() => void) | null;
+      helpCb: (() => void) | null;
       saveCalls: { path: string; content: string; force: boolean }[];
       closed: string[];
       openExternalCalls: string[];
@@ -25,7 +26,7 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       // What readFile() (reload) returns next.
       nextRead: MockFile | null;
     } = {
-      openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null,
+      openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
       saveCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
       nextSaveConflict: null, nextRead: null,
     };
@@ -65,6 +66,10 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       onCloseTab: (cb: () => void) => {
         harness.closeTabCb = cb;
         return () => (harness.closeTabCb = null);
+      },
+      onHelp: (cb: () => void) => {
+        harness.helpCb = cb;
+        return () => (harness.helpCb = null);
       },
       onExternalChange: (cb: (f: MockFile) => void) => {
         harness.extCb = cb;
@@ -549,4 +554,23 @@ test('a file link with a #fragment jumps to that heading in the opened tab (R4)'
   await expect(activeTabName(page)).toHaveText('sibling.md');
   const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
   await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the Intro heading, not left at the top
+});
+
+test('the Help window shows app info, shortcuts, and license attribution (R48)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  // The Help menu (main process) sends menu:help; fire that bridge callback.
+  await page.evaluate(() => (window as unknown as { __mock: { helpCb: () => void } }).__mock.helpCb());
+
+  const help = page.locator('.modal-help');
+  await expect(help).toBeVisible();
+  await expect(help).toContainText('Galley Help');
+  await expect(help).toContainText('v0.0.0-test'); // version from the mock bridge
+  await expect(help).toContainText('Keyboard shortcuts');
+  await expect(help.locator('kbd', { hasText: 'Ctrl+B' })).toBeVisible(); // platform win32 → Ctrl
+  await expect(help).toContainText('highlight.js'); // attribution list
+  await expect(help).toContainText('MIT'); // license
+
+  await page.keyboard.press('Escape');
+  await expect(help).toBeHidden();
 });

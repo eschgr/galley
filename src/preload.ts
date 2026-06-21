@@ -42,6 +42,11 @@ const api: MdtoolApi = {
     ipcRenderer.on('menu:closeTab', listener);
     return () => ipcRenderer.removeListener('menu:closeTab', listener);
   },
+  onHelp: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:help', listener);
+    return () => ipcRenderer.removeListener('menu:help', listener);
+  },
   onExternalChange: (callback: (file: OpenedFile) => void) => {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);
     ipcRenderer.on('file:externalChange', listener);

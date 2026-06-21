@@ -26,6 +26,7 @@ import { ConflictDialog } from './components/ConflictDialog';
 import { LinkDialog } from './components/LinkDialog';
 import { TabStrip } from './components/TabStrip';
 import { CloseTabDialog } from './components/CloseTabDialog';
+import { HelpDialog } from './components/HelpDialog';
 import type { EditorHandle, LinkContext } from './components/Editor';
 import type { PreviewHandle } from './components/Preview';
 import type { OpenedFile } from '../shared/api';
@@ -66,6 +67,7 @@ export function App() {
   const [welcomeText, setWelcomeText] = useState(welcome);
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
   const [closing, setClosing] = useState<Tab | null>(null); // close-with-unsaved prompt
+  const [showHelp, setShowHelp] = useState(false); // Help window (R48)
 
   // Refs mirror state for the once-registered IPC handlers and timers.
   const tabsRef = useRef<Tab[]>([]);
@@ -307,12 +309,14 @@ export function App() {
       if (!t.conflict && !t.edited) reloadTab(t.id, diskFile); // in sync → refresh
       else flagDiverged(t.id, diskFile); // edits in progress / already flagged → surface
     });
+    const offHelp = window.mdtool?.onHelp(() => setShowHelp(true)); // R48
     return () => {
       offOpen?.();
       offSave?.();
       offReload?.();
       offClose?.();
       offExternal?.();
+      offHelp?.();
       for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -414,6 +418,13 @@ export function App() {
           window.mdtool?.openLocalFile(href, activeTab.path);
         }}
       />
+      {showHelp && (
+        <HelpDialog
+          version={window.mdtool?.version ?? '0.0.0'}
+          platform={window.mdtool?.platform ?? 'unknown'}
+          onClose={() => setShowHelp(false)}
+        />
+      )}
       {conflict && showModal && (
         <ConflictDialog
           fileName={basename(conflict.path)}

@@ -1,10 +1,12 @@
 /**
  * Application menu (PRD R47 — native menu bar).
  *
- * File → Open (R8) and Save (R30) call back into main; the rest is standard
- * role-based Edit/View/Window submenus. The View submenu is where the user opens
- * DevTools on demand (DevTools no longer auto-opens at startup — see main.ts /
- * the --devtools flag). The Help entry is fleshed out in the Help step (R48).
+ * Three app menus (plus the macOS app menu): File (Open/Save/Reload File/Close
+ * Tab, all calling back into main), a role-based Edit menu, and Help (the Help
+ * window R48 plus Toggle Developer Tools — DevTools never auto-open; they're
+ * opt-in here or via the --devtools flag). The View and Window menus are
+ * intentionally omitted: their only deliberate items live in File (Reload File,
+ * window close), and the rest (zoom / full screen / etc.) was unused clutter.
  */
 import { Menu } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
@@ -14,10 +16,12 @@ export interface MenuActions {
   openFile: () => void;
   /** File → Save (force-save the focused document). */
   saveFile: () => void;
-  /** View → Reload File (re-read the open file from disk; keeps the layout). */
+  /** File → Reload File (re-read the open file from disk; keeps the layout). */
   reloadFile: () => void;
   /** File → Close Tab (close the active tab; prompts if it has unsaved edits). */
   closeTab: () => void;
+  /** Help → Galley Help (open the Help window, R48). */
+  help: () => void;
 }
 
 export function buildAppMenu(actions: MenuActions): void {
@@ -30,6 +34,11 @@ export function buildAppMenu(actions: MenuActions): void {
       submenu: [
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: actions.openFile },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: actions.saveFile },
+        // Ctrl/Cmd+R re-reads the open file from disk, keeping the view layout
+        // (R31a). The webContents reload/forceReload roles are deliberately NOT
+        // here — and HMR is off (vite.renderer.config.ts) — so code changes need
+        // a restart, never a silent in-place reload. (In File since View was removed.)
+        { label: 'Reload File', accelerator: 'CmdOrCtrl+R', click: actions.reloadFile },
         { type: 'separator' },
         // Ctrl/Cmd+W closes the active tab (with an unsaved-edits prompt), not
         // the window. The last tab closing returns to the welcome screen (R41/R46).
@@ -46,24 +55,14 @@ export function buildAppMenu(actions: MenuActions): void {
     },
     { role: 'editMenu' },
     {
-      label: 'View',
+      role: 'help',
       submenu: [
-        // Ctrl/Cmd+R reloads the open *file* from disk (keeping the view layout),
-        // not the renderer. The webContents reload/forceReload roles are
-        // deliberately omitted — and HMR is off (vite.renderer.config.ts) — so
-        // code changes are picked up by restarting the app, never silently.
-        { label: 'Reload File', accelerator: 'CmdOrCtrl+R', click: actions.reloadFile },
+        { label: 'Galley Help', accelerator: 'F1', click: actions.help },
         { type: 'separator' },
-        { role: 'toggleDevTools' }, // user-facing way to open DevTools
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
+        // Opt-in DevTools (role keeps its F12 / Ctrl+Shift+I / Cmd+Opt+I accelerators).
+        { role: 'toggleDevTools' },
       ],
     },
-    { role: 'windowMenu' },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
