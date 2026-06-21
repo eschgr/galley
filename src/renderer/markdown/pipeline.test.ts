@@ -1,5 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { renderMarkdown } from './pipeline';
+import { renderMarkdown, slugify } from './pipeline';
+
+describe('heading anchor slugs (in-page links)', () => {
+  it('slugifies like GitHub — lowercase, punctuation dropped, spaces to hyphens', () => {
+    expect(slugify('Clothing: what the scroll images show')).toBe('clothing-what-the-scroll-images-show');
+    expect(slugify('Age & gender (overview)')).toBe('age--gender-overview');
+    expect(slugify('  Trimmed  Spaces  ')).toBe('trimmed--spaces');
+  });
+
+  it('keeps non-Latin letters (e.g. CJK)', () => {
+    expect(slugify('清明 festival')).toBe('清明-festival');
+  });
+
+  it('gives headings an id matching the link target', () => {
+    const html = renderMarkdown('## Clothing: what the scroll images show');
+    expect(html).toContain('id="clothing-what-the-scroll-images-show"');
+  });
+
+  it('de-duplicates repeated headings like GitHub (-1, -2)', () => {
+    const html = renderMarkdown('# Notes\n\n# Notes\n\n# Notes');
+    expect(html).toContain('id="notes"');
+    expect(html).toContain('id="notes-1"');
+    expect(html).toContain('id="notes-2"');
+  });
+});
+
+describe('autolinking (linkify) — schemes only, not bare filenames', () => {
+  it('does NOT autolink a bare filename whose extension is also a TLD', () => {
+    // `.md` is Moldova's TLD; fuzzy linking would wrongly turn this into a link.
+    const html = renderMarkdown('See architecture.md for the design.');
+    expect(html).not.toContain('<a ');
+  });
+
+  it('still autolinks a bare URL that has an explicit scheme', () => {
+    const html = renderMarkdown('Docs at https://example.com/page here.');
+    expect(html).toContain('href="https://example.com/page"');
+  });
+
+  it('keeps explicit links to local files clickable', () => {
+    const html = renderMarkdown('[the design](architecture.md)');
+    expect(html).toContain('href="architecture.md"');
+  });
+});
+
+describe('link rendering policy (validateLink)', () => {
+  it('renders a file:// link as a real anchor (not raw text)', () => {
+    const html = renderMarkdown('[win.ini](file:///C:/Windows/win.ini)');
+    expect(html).toContain('href="file:///C:/Windows/win.ini"');
+  });
+
+  it('renders a relative file link as an anchor', () => {
+    const html = renderMarkdown('[sibling](./sibling.md)');
+    expect(html).toContain('href="./sibling.md"');
+  });
+
+  it('refuses a javascript: URL (stays non-link)', () => {
+    const html = renderMarkdown('[x](javascript:alert(1))');
+    expect(html).not.toContain('href="javascript:');
+  });
+});
 
 describe('GFM rendering (R1)', () => {
   it('renders tables', () => {

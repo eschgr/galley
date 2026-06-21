@@ -18,7 +18,7 @@
  * Two choices only: take theirs (Load from disk) or keep yours (Keep mine).
  */
 import './app.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorState } from '@codemirror/state';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
@@ -27,6 +27,7 @@ import { LinkDialog } from './components/LinkDialog';
 import { TabStrip } from './components/TabStrip';
 import { CloseTabDialog } from './components/CloseTabDialog';
 import type { EditorHandle, LinkContext } from './components/Editor';
+import type { PreviewHandle } from './components/Preview';
 import type { OpenedFile } from '../shared/api';
 
 // R29: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
@@ -55,6 +56,7 @@ export interface Tab {
 
 export function App() {
   const editorRef = useRef<EditorHandle>(null);
+  const previewRef = useRef<PreviewHandle>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const showingSource = viewMode === 'split';
@@ -70,6 +72,11 @@ export function App() {
   const activeIdRef = useRef<string | null>(null);
   const welcomeTextRef = useRef(welcome);
   const editorStates = useRef<Map<string, EditorState>>(new Map());
+  // Reading position (preview scroll, px) per tab, so switching away and back
+  // restores where you were — and a freshly opened tab starts at the top.
+  const previewScroll = useRef<Map<string, number>>(new Map());
+  // A `#fragment` from a clicked file link, applied once the target tab renders.
+  const pendingFragment = useRef<string | null>(null);
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const idSeq = useRef(0);
 
@@ -137,6 +144,11 @@ export function App() {
   const reloadTab = (id: string, file: OpenedFile) => {
     clearAutosave(id);
     editorStates.current.delete(id);
+    // R31a: a reload (Ctrl+R or a silent external refresh) keeps the reading
+    // position instead of jumping to the top. Capture the line before swapping
+    // the doc, then restore it on the new content.
+    const isActive = activeIdRef.current === id;
+    const keepLine = isActive ? (editorRef.current?.getTopLine() ?? 0) : 0;
     updateTab(id, {
       path: file.path,
       text: file.content,
@@ -147,18 +159,28 @@ export function App() {
       noticed: false,
       showModal: false,
     });
-    if (activeIdRef.current === id) editorRef.current?.setDoc(file.content);
+    if (isActive) {
+      editorRef.current?.setDoc(file.content);
+      editorRef.current?.scrollToLine(keepLine); // synchronous → the reset-to-top never paints
+    }
   };
 
-  // Switch the active tab, stashing the current editor state and restoring the
-  // target's (or loading its text fresh if not stashed yet).
+  // Stash the active tab's editor state and reading position before leaving it,
+  // so returning restores both.
+  const stashActiveView = (id: string) => {
+    const st = editorRef.current?.getState();
+    if (st) editorStates.current.set(id, st);
+    const top = previewRef.current?.getScrollTop();
+    if (top != null) previewScroll.current.set(id, top);
+  };
+
+  // Switch the active tab, stashing the current view and restoring the target's
+  // editor state (or loading its text fresh if not stashed yet). The preview
+  // reading position is restored by the [activeId] effect once it re-renders.
   const switchTo = (id: string) => {
     const cur = activeIdRef.current;
     if (cur === id) return;
-    if (cur) {
-      const st = editorRef.current?.getState();
-      if (st) editorStates.current.set(cur, st);
-    }
+    if (cur) stashActiveView(cur);
     setActive(id);
     const stashed = editorStates.current.get(id);
     if (stashed) editorRef.current?.setState(stashed);
@@ -189,10 +211,7 @@ export function App() {
       showModal: false,
     };
     const cur = activeIdRef.current;
-    if (cur) {
-      const st = editorRef.current?.getState();
-      if (st) editorStates.current.set(cur, st);
-    }
+    if (cur) stashActiveView(cur);
     commitTabs([...tabsRef.current, tab]);
     setActive(id);
     editorRef.current?.setDoc(file.content);
@@ -205,6 +224,7 @@ export function App() {
     window.mdtool?.notifyClosed(t.path); // R41: stop watching its file
     clearAutosave(id);
     editorStates.current.delete(id);
+    previewScroll.current.delete(id);
     const remaining = tabsRef.current.filter((x) => x.id !== id);
     commitTabs(remaining);
     if (activeIdRef.current !== id) return;
@@ -310,6 +330,22 @@ export function App() {
     void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
+  // Position the preview the moment the active tab's content is in the DOM but
+  // before the browser paints (useLayoutEffect → no flash of the wrong scroll):
+  // a file link with a #fragment jumps to that heading; a fragment with no match
+  // falls back to the top; otherwise restore the tab's stashed reading position
+  // (a just-opened tab → the top).
+  useLayoutEffect(() => {
+    const frag = pendingFragment.current;
+    pendingFragment.current = null;
+    if (frag) {
+      if (!previewRef.current?.scrollToAnchor(frag)) previewRef.current?.setScrollTop(0);
+      return;
+    }
+    const top = activeId ? (previewScroll.current.get(activeId) ?? 0) : 0;
+    previewRef.current?.setScrollTop(top);
+  }, [activeId]);
+
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
   const source = activeTab ? activeTab.text : welcomeText;
   const conflict = activeTab?.conflict ?? null;
@@ -365,8 +401,18 @@ export function App() {
         source={source}
         onSourceChange={onSourceChange}
         editorRef={editorRef}
+        previewRef={previewRef}
         viewMode={viewMode}
         onLink={openLinkDialog}
+        onOpenLocal={(href) => {
+          // Resolve the link against the active file's folder (host side); a
+          // local link only makes sense when a real file is open.
+          if (!activeTab) return;
+          // Remember a #fragment so we can jump to it once the target tab opens.
+          const hash = href.indexOf('#');
+          pendingFragment.current = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)) || null : null;
+          window.mdtool?.openLocalFile(href, activeTab.path);
+        }}
       />
       {conflict && showModal && (
         <ConflictDialog

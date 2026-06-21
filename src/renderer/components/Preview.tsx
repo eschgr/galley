@@ -10,12 +10,19 @@ import '../markdown/preview.css';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { renderMarkdown } from '../markdown/pipeline';
 import { type Anchor, topLineFrom, scrollTopFor } from './scrollSync';
+import { classifyHref } from './linkRouting';
 
 export interface PreviewHandle {
   /** Top of the viewport as a 0-based fractional source line. */
   getTopLine(): number;
   /** Scroll so a 0-based fractional source line sits at the viewport top. */
   scrollToLine(line: number): void;
+  /** Raw scroll offset in px — used to stash/restore reading position per tab. */
+  getScrollTop(): number;
+  setScrollTop(px: number): void;
+  /** Jump to the heading whose slug is `id` (a file-link `#fragment` target).
+   *  Returns false if no such heading exists. */
+  scrollToAnchor(id: string): boolean;
 }
 
 interface PreviewProps {
@@ -24,6 +31,9 @@ interface PreviewProps {
   /** Fired after the anchor map is (re)built — i.e. once the pane has reflowed
    *  and its line geometry is current. Used to re-align the editor on reveal. */
   onLayout?: () => void;
+  /** A local-file link was clicked — open it (host resolves it relative to the
+   *  active document and opens a tab). External links go to the browser (R4). */
+  onOpenLocal?: (href: string) => void;
 }
 
 function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
@@ -40,7 +50,7 @@ function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
 }
 
 export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
-  { source, onScroll, onLayout },
+  { source, onScroll, onLayout, onOpenLocal },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,20 +79,48 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     return () => ro.disconnect();
   }, [html]);
 
+  // Scroll the heading whose slug is `id` to the top of the pane. Used by both
+  // anchor-link clicks and (via the handle) a freshly opened file:fragment link.
+  // Returns whether a matching heading was found.
+  const jumpToAnchor = (id: string, behavior: ScrollBehavior): boolean => {
+    const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!target) return false;
+    target.scrollIntoView({ behavior, block: 'start' });
+    return true;
+  };
+
   useImperativeHandle(ref, () => ({
     getTopLine: () => (scrollRef.current ? topLineFrom(anchorsRef.current, scrollRef.current.scrollTop) : 0),
     scrollToLine: (line) => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollTopFor(anchorsRef.current, line);
     },
+    getScrollTop: () => scrollRef.current?.scrollTop ?? 0,
+    setScrollTop: (px) => {
+      if (scrollRef.current) scrollRef.current.scrollTop = px;
+    },
+    scrollToAnchor: (id) => jumpToAnchor(id, 'auto'), // a just-opened file lands at the target, no animation
   }));
 
-  // R4: open links externally; never navigate the renderer.
+  // In-page anchor links (`#heading`) jump within the preview; every other link
+  // opens in the system browser (R4 — the renderer never navigates itself).
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const anchor = (e.target as HTMLElement).closest('a');
     if (!anchor) return;
-    e.preventDefault();
     const href = anchor.getAttribute('href');
-    if (href) void window.mdtool?.openExternal(href);
+    if (!href) return;
+    e.preventDefault();
+    switch (classifyHref(href)) {
+      case 'anchor': {
+        jumpToAnchor(decodeURIComponent(href.slice(1)), 'smooth');
+        break;
+      }
+      case 'external':
+        void window.mdtool?.openExternal(href); // → system browser (R4)
+        break;
+      case 'local':
+        onOpenLocal?.(href); // file path / file:// → open as a tab
+        break;
+    }
   };
 
   return (

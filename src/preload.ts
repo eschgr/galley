@@ -11,6 +11,9 @@ const api: MdtoolApi = {
   platform: process.platform,
   version: process.env.npm_package_version ?? '0.1.0',
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  openLocalFile: (href: string, fromPath: string) => {
+    void ipcRenderer.invoke('file:openLocal', { href, from: fromPath });
+  },
   setSourceVisible: (visible: boolean) => ipcRenderer.invoke('window:setSourceVisible', visible),
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),

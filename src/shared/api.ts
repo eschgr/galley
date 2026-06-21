@@ -32,6 +32,12 @@ export interface MdtoolApi {
    */
   openExternal(url: string): Promise<void>;
   /**
+   * Open a local-file link clicked in the preview (R4): `href` is resolved
+   * relative to `fromPath`'s folder and opened as a tab. For relative/absolute
+   * file paths and `file://` URLs — external (web/mail) links use openExternal.
+   */
+  openLocalFile(href: string, fromPath: string): void;
+  /**
    * Tell the main process whether the source pane is now visible, so it can
    * widen the window for side-by-side editing or shrink it back for reading
    * (PRD R45). A no-op effect when the window is maximized/fullscreen.

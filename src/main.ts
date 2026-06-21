@@ -152,6 +152,19 @@ ipcMain.handle('file:closed', (_event, p: unknown) => {
   if (typeof p === 'string') unwatchPath(p);
 });
 
+// A local-file link clicked in the preview (R4): resolve it relative to the
+// source document's folder and open it as a tab. External (web/mail) links go to
+// the system browser; in-page anchors are handled in the renderer.
+ipcMain.handle('file:openLocal', (event, args: unknown) => {
+  if (!args || typeof args !== 'object') return;
+  const { href, from } = args as { href?: unknown; from?: unknown };
+  if (typeof href !== 'string' || typeof from !== 'string') return;
+  const resolved = platform.resolveLocalLink(href, from);
+  if (!resolved) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) void openPath(win, resolved);
+});
+
 // DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,
 // or `galley --devtools` on the packaged app) to open them on launch; otherwise
 // use View → Toggle Developer Tools (or F12 / Ctrl+Shift+I) in the menu.

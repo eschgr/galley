@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
+export type { PreviewHandle };
 
 export type ViewMode = 'split' | 'preview';
 
@@ -31,16 +32,19 @@ interface SplitViewProps {
   onSourceChange: (text: string) => void;
   /** Editor handle, owned by App so it can load files / drive the editor. */
   editorRef: RefObject<EditorHandle>;
+  /** Preview handle, owned by App so it can stash/restore reading position per tab. */
+  previewRef: RefObject<PreviewHandle>;
   viewMode: ViewMode;
   /** Cmd/Ctrl+K in the editor — host opens the link dialog (R27). */
   onLink?: () => void;
+  /** A local-file link was clicked in the preview (R4). */
+  onOpenLocal?: (href: string) => void;
 }
 
 const MIN_PCT = 20;
 const MAX_PCT = 80;
 
-export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode, onLink }: SplitViewProps) {
-  const previewRef = useRef<PreviewHandle>(null);
+export function SplitView({ initialDoc, source, onSourceChange, editorRef, previewRef, viewMode, onLink, onOpenLocal }: SplitViewProps) {
   const active = useRef<'editor' | 'preview' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -124,7 +128,13 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
         onWheelCapture={() => (active.current = 'preview')}
         onKeyDownCapture={() => (active.current = 'preview')}
       >
-        <Preview ref={previewRef} source={source} onScroll={onPreviewScroll} onLayout={onPreviewLayout} />
+        <Preview
+          ref={previewRef}
+          source={source}
+          onScroll={onPreviewScroll}
+          onLayout={onPreviewLayout}
+          onOpenLocal={onOpenLocal}
+        />
       </div>
       <div
         className="split-divider"

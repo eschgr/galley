@@ -18,19 +18,25 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       closeTabCb: (() => void) | null;
       saveCalls: { path: string; content: string; force: boolean }[];
       closed: string[];
+      openExternalCalls: string[];
+      openLocalCalls: { href: string; from: string }[];
       // When set, the next non-force save returns this as a write-path conflict.
       nextSaveConflict: MockFile | null;
       // What readFile() (reload) returns next.
       nextRead: MockFile | null;
     } = {
       openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null,
-      saveCalls: [], closed: [], nextSaveConflict: null, nextRead: null,
+      saveCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
+      nextSaveConflict: null, nextRead: null,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { mdtool: unknown }).mdtool = {
       platform: 'win32',
       version: '0.0.0-test',
-      openExternal: async () => {},
+      openExternal: async (url: string) => {
+        harness.openExternalCalls.push(url);
+      },
+      openLocalFile: (href: string, from: string) => harness.openLocalCalls.push({ href, from }),
       setSourceVisible: async () => {},
       getStartupFile: async () => startupFile,
       saveFile: async (path: string, content: string, force?: boolean) => {
@@ -476,4 +482,71 @@ test('close prompt — Discard closes without saving; Cancel keeps the tab (R41)
     () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls,
   );
   expect(calls.length).toBe(0); // nothing written (auto-save's 5s never fired)
+});
+
+test('clicking a relative file link asks the host to open it as a tab (R4)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\index.md', content: 'see [the other](../other.md)\n', hash: 'h' });
+  await page.locator('.markdown-preview a', { hasText: 'the other' }).click();
+  const calls = await page.evaluate(
+    () => (window as unknown as { __mock: { openLocalCalls: { href: string; from: string }[] } }).__mock.openLocalCalls,
+  );
+  expect(calls).toEqual([{ href: '../other.md', from: 'C:\\docs\\index.md' }]);
+});
+
+test('clicking an external link opens it in the browser, not as a tab (R4)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\index.md', content: 'see [spec](https://example.com/x)\n', hash: 'h' });
+  await page.locator('.markdown-preview a', { hasText: 'spec' }).click();
+  const ext = await page.evaluate(
+    () => (window as unknown as { __mock: { openExternalCalls: string[] } }).__mock.openExternalCalls,
+  );
+  const local = await page.evaluate(
+    () => (window as unknown as { __mock: { openLocalCalls: unknown[] } }).__mock.openLocalCalls,
+  );
+  expect(ext).toEqual(['https://example.com/x']);
+  expect(local).toEqual([]);
+});
+
+test('preview reading position is preserved per tab; a new tab opens at the top (R39)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  const longDoc = '# Doc A\n\n' + Array.from({ length: 80 }, (_, i) => `Paragraph ${i} of doc A.`).join('\n\n');
+  await fire(page, 'openCb', { path: 'C:\\docs\\long-a.md', content: longDoc, hash: 'ha' });
+
+  // Scroll doc A's preview well down the page.
+  await page.evaluate(() => (document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 1200));
+  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  expect(await scrollTop()).toBeGreaterThan(200);
+
+  // Open a different file in a new tab — it must start at the top, not inherit A's offset.
+  await fire(page, 'openCb', { path: 'C:\\docs\\short-b.md', content: '# Doc B\n\nShort.', hash: 'hb' });
+  await expect(activeTabName(page)).toHaveText('short-b.md');
+  await expect.poll(scrollTop).toBe(0);
+
+  // Switch back to A — its reading position is restored.
+  await page.locator('.tab', { hasText: 'long-a.md' }).click();
+  await expect(activeTabName(page)).toHaveText('long-a.md');
+  await expect.poll(scrollTop).toBeGreaterThan(200);
+});
+
+test('a file link with a #fragment jumps to that heading in the opened tab (R4)', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 320 }); // short, so the target is below the fold
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:/docs/index.md', content: 'see [the intro](./sibling.md#intro)\n', hash: 'h' });
+
+  // Click the fragment link; the host records the open request and remembers the fragment.
+  await page.locator('.markdown-preview a', { hasText: 'the intro' }).click();
+
+  // Simulate the main process resolving + opening the target file in a new tab.
+  const filler = Array.from({ length: 20 }, (_, i) => `Filler paragraph ${i}.`).join('\n\n');
+  const sibling = `# Sibling\n\n${filler}\n\n## Intro\n\nThe target section.`;
+  await fire(page, 'openCb', { path: 'C:/docs/sibling.md', content: sibling, hash: 'hs' });
+
+  await expect(activeTabName(page)).toHaveText('sibling.md');
+  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the Intro heading, not left at the top
 });

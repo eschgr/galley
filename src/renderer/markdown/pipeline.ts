@@ -61,6 +61,39 @@ function injectSourceLines(md: MarkdownIt): void {
   });
 }
 
+/**
+ * GitHub-compatible heading slug: lowercase, drop punctuation (keep letters of
+ * any script, numbers, spaces, hyphens), spaces → hyphens. Matches the anchors
+ * an LLM emits for in-document links like `[…](#some-heading)`.
+ */
+export function slugify(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s/g, '-'); // each whitespace → one hyphen (GitHub does not collapse runs)
+}
+
+/**
+ * Give each heading an `id` slug so in-page anchor links (`#heading`) have a
+ * target to jump to (the preview's click handler scrolls to it). Duplicate slugs
+ * get `-1`, `-2`, … like GitHub, so repeated headings stay individually linkable.
+ */
+function injectHeadingIds(md: MarkdownIt): void {
+  md.core.ruler.push('heading_ids', (state) => {
+    const seen = new Map<string, number>();
+    for (let i = 0; i < state.tokens.length; i++) {
+      if (state.tokens[i].type !== 'heading_open') continue;
+      const inline = state.tokens[i + 1];
+      const base = inline && inline.type === 'inline' ? slugify(inline.content) : '';
+      if (!base) continue;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      state.tokens[i].attrSet('id', n === 0 ? base : `${base}-${n}`);
+    }
+  });
+}
+
 function highlightToHtml(code: string, lang: string, md: MarkdownIt): string {
   const escaped = (s: string) => md.utils.escapeHtml(s);
   if (lang && hljs.getLanguage(lang)) {
@@ -82,6 +115,25 @@ export function createRenderer(): MarkdownIt {
     breaks: false,
   });
 
+  // Only autolink text with an explicit scheme (`https://…`, `mailto:…`). Fuzzy
+  // linking would turn bare `domain.tld` text into links — and since many file
+  // extensions are now real TLDs (`.md` is Moldova, also `.sh`, `.zip`, `.app`…),
+  // a filename mentioned in prose like `architecture.md` would wrongly become a
+  // clickable link. Explicit `[text](architecture.md)` links still work (R4).
+  md.linkify.set({ fuzzyLink: false });
+
+  // Render `file:` links as real anchors. markdown-it's default validateLink
+  // blocks file:/data:/javascript: — but a local `file://` (or relative) path is
+  // a legitimate, clickable target in this offline viewer, and the preview's
+  // click handler (not navigation) decides what actually opens. Keep blocking
+  // script URLs and non-image data: URLs; html:false already bars raw HTML.
+  md.validateLink = (url: string) => {
+    const str = url.trim().toLowerCase();
+    if (/^(vbscript|javascript):/.test(str)) return false;
+    if (/^data:/.test(str)) return /^data:image\/(gif|png|jpeg|webp);/.test(str);
+    return true;
+  };
+
   md.set({ highlight: (str, lang) => highlightToHtml(str, lang, md) });
 
   md.use(taskLists, { enabled: true, label: true });
@@ -92,6 +144,7 @@ export function createRenderer(): MarkdownIt {
   });
 
   injectSourceLines(md);
+  injectHeadingIds(md);
 
   return md;
 }
