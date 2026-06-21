@@ -18,6 +18,8 @@ export interface MenuActions {
   reloadFile: () => void;
   /** File → Close Tab (close the active tab; prompts if it has unsaved edits). */
   closeTab: () => void;
+  /** Help → Galley Help (open the Help window, R48). */
+  help: () => void;
 }
 
 export function buildAppMenu(actions: MenuActions): void {
@@ -64,6 +66,10 @@ export function buildAppMenu(actions: MenuActions): void {
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [{ label: 'Galley Help', accelerator: 'F1', click: actions.help }],
+    },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

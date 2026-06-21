@@ -71,6 +71,8 @@ export interface MdtoolApi {
   /** Subscribe to File → Close Tab (Ctrl/Cmd+W) — close the active tab, prompting
    *  if it has unsaved edits (R41). Returns unsubscribe. */
   onCloseTab(callback: () => void): () => void;
+  /** Subscribe to Help → Galley Help — open the Help window (R48). Returns unsubscribe. */
+  onHelp(callback: () => void): () => void;
   /**
    * Subscribe to a genuine external change to the open file (R32/R33) — the
    * watcher's own saves are already filtered out. Payload is the new on-disk

@@ -90,6 +90,11 @@ function requestCloseTab(): void {
   targetWindow()?.webContents.send('menu:closeTab');
 }
 
+// Help → Galley Help (R48): the Help window is a renderer modal, so ask it to open.
+function requestHelp(): void {
+  targetWindow()?.webContents.send('menu:help');
+}
+
 // Save path (R29/R30/R34): the renderer sends content. A `force` write
 // overwrites unconditionally ("keep mine"); otherwise it is a checked save that
 // refuses to write if disk diverged since we last knew (the write-path guard),
@@ -334,6 +339,7 @@ app.on('ready', () => {
     saveFile: requestSave,
     reloadFile: requestReload,
     closeTab: requestCloseTab,
+    help: requestHelp,
   });
   createWindow();
 });

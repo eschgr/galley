@@ -321,3 +321,129 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Help window (R48) — a taller, scrollable modal with its own header. */
+.modal-help {
+  width: min(560px, calc(100% - 48px));
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #eaeef2;
+}
+.help-header .modal-title {
+  margin: 0;
+}
+.help-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  color: #6e7781;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.help-close:hover {
+  background: #eaeef2;
+  color: #24292f;
+}
+.help-body {
+  overflow-y: auto;
+  padding: 4px 18px 18px;
+}
+.help-section {
+  padding-top: 14px;
+}
+.help-section + .help-section {
+  margin-top: 6px;
+  border-top: 1px solid #f0f2f4;
+}
+.help-about {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.help-version {
+  color: #6e7781;
+  font-weight: 400;
+  font-size: 12px;
+}
+.help-desc {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  color: #57606a;
+  line-height: 1.5;
+}
+.help-h {
+  font-size: 13px;
+  margin: 0 0 8px;
+  color: #24292f;
+}
+.help-shortcut-group {
+  margin-bottom: 10px;
+}
+.help-group-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6e7781;
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.help-shortcuts {
+  margin: 0;
+}
+.help-shortcut {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+}
+.help-shortcut dt {
+  flex: 0 0 132px;
+  margin: 0;
+}
+.help-shortcut dd {
+  margin: 0;
+  font-size: 12.5px;
+  color: #24292f;
+}
+.help-shortcut kbd {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 11px;
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 6px;
+  color: #24292f;
+}
+.help-attrib {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.help-attrib li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12.5px;
+  border-bottom: 1px solid #f0f2f4;
+}
+.help-attrib li:last-child {
+  border-bottom: none;
+}
+.help-lib {
+  color: #24292f;
+}
+.help-license {
+  color: #6e7781;
+}

@@ -1,0 +1,5 @@
+/** App identity shown in the Help window (PRD R48). Version comes from the
+ *  bridge (`window.mdtool.version`); name and description live here. */
+export const APP_NAME = 'Galley';
+export const APP_DESCRIPTION =
+  'A local markdown viewer and editor for reviewing and correcting LLM-generated markdown.';
