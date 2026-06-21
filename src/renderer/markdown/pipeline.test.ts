@@ -25,6 +25,24 @@ describe('heading anchor slugs (in-page links)', () => {
   });
 });
 
+describe('autolinking (linkify) — schemes only, not bare filenames', () => {
+  it('does NOT autolink a bare filename whose extension is also a TLD', () => {
+    // `.md` is Moldova's TLD; fuzzy linking would wrongly turn this into a link.
+    const html = renderMarkdown('See architecture.md for the design.');
+    expect(html).not.toContain('<a ');
+  });
+
+  it('still autolinks a bare URL that has an explicit scheme', () => {
+    const html = renderMarkdown('Docs at https://example.com/page here.');
+    expect(html).toContain('href="https://example.com/page"');
+  });
+
+  it('keeps explicit links to local files clickable', () => {
+    const html = renderMarkdown('[the design](architecture.md)');
+    expect(html).toContain('href="architecture.md"');
+  });
+});
+
 describe('GFM rendering (R1)', () => {
   it('renders tables', () => {
     const html = renderMarkdown('| A | B |\n|---|---|\n| 1 | 2 |');

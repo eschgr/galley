@@ -115,6 +115,13 @@ export function createRenderer(): MarkdownIt {
     breaks: false,
   });
 
+  // Only autolink text with an explicit scheme (`https://…`, `mailto:…`). Fuzzy
+  // linking would turn bare `domain.tld` text into links — and since many file
+  // extensions are now real TLDs (`.md` is Moldova, also `.sh`, `.zip`, `.app`…),
+  // a filename mentioned in prose like `architecture.md` would wrongly become a
+  // clickable link. Explicit `[text](architecture.md)` links still work (R4).
+  md.linkify.set({ fuzzyLink: false });
+
   md.set({ highlight: (str, lang) => highlightToHtml(str, lang, md) });
 
   md.use(taskLists, { enabled: true, label: true });

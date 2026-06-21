@@ -10,6 +10,7 @@ import '../markdown/preview.css';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { renderMarkdown } from '../markdown/pipeline';
 import { type Anchor, topLineFrom, scrollTopFor } from './scrollSync';
+import { classifyHref } from './linkRouting';
 
 export interface PreviewHandle {
   /** Top of the viewport as a 0-based fractional source line. */
@@ -87,17 +88,20 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     const href = anchor.getAttribute('href');
     if (!href) return;
     e.preventDefault();
-    if (href.startsWith('#')) {
-      const id = decodeURIComponent(href.slice(1));
-      const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
+    switch (classifyHref(href)) {
+      case 'anchor': {
+        const id = decodeURIComponent(href.slice(1));
+        const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
+      case 'external':
+        void window.mdtool?.openExternal(href); // → system browser (R4)
+        break;
+      case 'local':
+        onOpenLocal?.(href); // file path / file:// → open as a tab
+        break;
     }
-    if (/^(https?:|mailto:)/i.test(href)) {
-      void window.mdtool?.openExternal(href); // external → system browser (R4)
-      return;
-    }
-    onOpenLocal?.(href); // relative/absolute/file:// path → open as a tab
   };
 
   return (
