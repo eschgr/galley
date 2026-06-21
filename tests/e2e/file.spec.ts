@@ -531,3 +531,22 @@ test('preview reading position is preserved per tab; a new tab opens at the top 
   await expect(activeTabName(page)).toHaveText('long-a.md');
   await expect.poll(scrollTop).toBeGreaterThan(200);
 });
+
+test('a file link with a #fragment jumps to that heading in the opened tab (R4)', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 320 }); // short, so the target is below the fold
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:/docs/index.md', content: 'see [the intro](./sibling.md#intro)\n', hash: 'h' });
+
+  // Click the fragment link; the host records the open request and remembers the fragment.
+  await page.locator('.markdown-preview a', { hasText: 'the intro' }).click();
+
+  // Simulate the main process resolving + opening the target file in a new tab.
+  const filler = Array.from({ length: 20 }, (_, i) => `Filler paragraph ${i}.`).join('\n\n');
+  const sibling = `# Sibling\n\n${filler}\n\n## Intro\n\nThe target section.`;
+  await fire(page, 'openCb', { path: 'C:/docs/sibling.md', content: sibling, hash: 'hs' });
+
+  await expect(activeTabName(page)).toHaveText('sibling.md');
+  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the Intro heading, not left at the top
+});

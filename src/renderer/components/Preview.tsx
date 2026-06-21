@@ -20,6 +20,8 @@ export interface PreviewHandle {
   /** Raw scroll offset in px — used to stash/restore reading position per tab. */
   getScrollTop(): number;
   setScrollTop(px: number): void;
+  /** Jump to the heading whose slug is `id` (a file-link `#fragment` target). */
+  scrollToAnchor(id: string): void;
 }
 
 interface PreviewProps {
@@ -76,6 +78,13 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     return () => ro.disconnect();
   }, [html]);
 
+  // Scroll the heading whose slug is `id` to the top of the pane. Used by both
+  // anchor-link clicks and (via the handle) a freshly opened file:fragment link.
+  const jumpToAnchor = (id: string, behavior: ScrollBehavior) => {
+    const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
+    target?.scrollIntoView({ behavior, block: 'start' });
+  };
+
   useImperativeHandle(ref, () => ({
     getTopLine: () => (scrollRef.current ? topLineFrom(anchorsRef.current, scrollRef.current.scrollTop) : 0),
     scrollToLine: (line) => {
@@ -85,6 +94,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     setScrollTop: (px) => {
       if (scrollRef.current) scrollRef.current.scrollTop = px;
     },
+    scrollToAnchor: (id) => jumpToAnchor(id, 'auto'), // a just-opened file lands at the target, no animation
   }));
 
   // In-page anchor links (`#heading`) jump within the preview; every other link
@@ -97,9 +107,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     e.preventDefault();
     switch (classifyHref(href)) {
       case 'anchor': {
-        const id = decodeURIComponent(href.slice(1));
-        const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
-        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        jumpToAnchor(decodeURIComponent(href.slice(1)), 'smooth');
         break;
       }
       case 'external':

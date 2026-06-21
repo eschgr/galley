@@ -75,6 +75,8 @@ export function App() {
   // Reading position (preview scroll, px) per tab, so switching away and back
   // restores where you were — and a freshly opened tab starts at the top.
   const previewScroll = useRef<Map<string, number>>(new Map());
+  // A `#fragment` from a clicked file link, applied once the target tab renders.
+  const pendingFragment = useRef<string | null>(null);
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const idSeq = useRef(0);
 
@@ -328,10 +330,17 @@ export function App() {
     void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
-  // Restore the active tab's reading position after its content has rendered.
-  // A tab with no stashed position (just opened) lands at the top. Runs after
-  // the child Preview's layout effect, so the new content is already measured.
+  // After the active tab's content has rendered, position the preview: a file
+  // link with a #fragment jumps to that heading; otherwise restore the tab's
+  // stashed reading position (a just-opened tab → the top). Runs after the child
+  // Preview's layout effect, so the new content is already measured.
   useEffect(() => {
+    const frag = pendingFragment.current;
+    if (frag) {
+      pendingFragment.current = null;
+      previewRef.current?.scrollToAnchor(frag);
+      return;
+    }
     const top = activeId ? (previewScroll.current.get(activeId) ?? 0) : 0;
     previewRef.current?.setScrollTop(top);
   }, [activeId]);
@@ -397,7 +406,11 @@ export function App() {
         onOpenLocal={(href) => {
           // Resolve the link against the active file's folder (host side); a
           // local link only makes sense when a real file is open.
-          if (activeTab) window.mdtool?.openLocalFile(href, activeTab.path);
+          if (!activeTab) return;
+          // Remember a #fragment so we can jump to it once the target tab opens.
+          const hash = href.indexOf('#');
+          pendingFragment.current = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)) || null : null;
+          window.mdtool?.openLocalFile(href, activeTab.path);
         }}
       />
       {conflict && showModal && (
