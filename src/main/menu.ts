@@ -33,7 +33,10 @@ export function buildAppMenu(actions: MenuActions): void {
         { type: 'separator' },
         // Ctrl/Cmd+W closes the active tab (with an unsaved-edits prompt), not
         // the window. The last tab closing returns to the welcome screen (R41/R46).
-        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: actions.closeTab },
+        // The accelerator is shown but NOT registered here — the key is captured
+        // in main.ts via before-input-event so Chromium's window-close can't fire;
+        // registering it too would double-fire. The click still works (mouse).
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', registerAccelerator: false, click: actions.closeTab },
         { type: 'separator' },
         // Window close keeps Cmd+Shift+W on macOS so Cmd+W is free for Close Tab.
         isMac

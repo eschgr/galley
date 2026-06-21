@@ -248,6 +248,19 @@ const createWindow = () => {
     }
   });
 
+  // Ctrl/Cmd+W must close the active TAB, not the window. A menu accelerator
+  // doesn't reliably override Chromium's built-in window-close on this key, so
+  // intercept it at the input level, swallow it, and ask the renderer to close
+  // the active tab (R41). The last tab closing returns to the welcome screen.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const mod = process.platform === 'darwin' ? input.meta : input.control;
+    if (mod && !input.shift && !input.alt && input.key.toLowerCase() === 'w') {
+      event.preventDefault();
+      mainWindow.webContents.send('menu:closeTab');
+    }
+  });
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
