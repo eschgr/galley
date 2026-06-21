@@ -59,7 +59,7 @@ resolved relative to the folder this document lives in.
 
 - Relative sibling: [sibling.md](./sibling.md)
 - Parent-relative: [the PRD](../docs/PRD.md)
-- Path + fragment: [sibling, the cavern](./sibling.md#the-cavern)
+- Path + fragment: [sibling, the race](./sibling.md#the-race)
 - A `file://` URL: [win.ini](file:///C:/Windows/win.ini)
 
 Opening one should add a new tab and focus it. Re-clicking the same link should focus

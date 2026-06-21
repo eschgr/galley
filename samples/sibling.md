@@ -1,9 +1,9 @@
 # The Spark Beneath the Hill
 
 *This is the document opened by the local-file links in `link-handling.md`. It is
-long on purpose, so the preview scrolls a good distance; the `#the-cavern` link
-points at the [cavern scene](#the-cavern), deep in the story, so opening it should
-jump this tab well down the page rather than leaving you here at the top.*
+long on purpose, so the preview scrolls a good distance; the `#the-race` link
+points at the [race scene](#the-race) about halfway down the story, so opening it
+should jump this tab to the middle of the page rather than leaving you at the top.*
 
 ## The Forgotten Art
 
