@@ -1,0 +1,95 @@
+name: Release
+
+# Build the desktop app natively on each OS and publish a GitHub Release whenever
+# a version tag (vX.Y.Z) is pushed. macOS builds are produced on macOS runners, so
+# this repo never has to be cloned or built on a personal Mac — you just download
+# the finished app from the Release.
+#
+# To cut a release:  npm version patch   (bumps package.json + creates the tag)
+#                    git push --follow-tags
+# or tag manually:   git tag v0.1.1 && git push origin v0.1.1
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # needed to create the Release and upload assets
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest → Windows x64; macos-latest → Apple Silicon (arm64);
+        # macos-13 → Intel (x64). Each runner builds for its own architecture.
+        os: [windows-latest, macos-latest, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build distributables
+        run: npm run make
+
+      # Collect just the user-facing installer/archive into a flat dist/ folder.
+      # find/basename keeps this robust to Forge's per-OS output paths; spaces in
+      # the Windows installer name are normalised to hyphens.
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          find out/make -name '*.exe' | while read -r f; do
+            cp "$f" "dist/$(basename "$f" | tr ' ' '-')"
+          done
+          find out/make -name '*.zip' -exec cp {} dist/ \;
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Galley ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          files: dist/**/*
+          body: |
+            Galley — a local markdown viewer & editor for reviewing and correcting LLM-generated markdown.
+
+            Download the build for your machine:
+            - **Windows (x64):** the `*-Setup.exe` installer — download and run.
+            - **macOS (Apple Silicon):** the `*-darwin-arm64-*.zip`
+            - **macOS (Intel):** the `*-darwin-x64-*.zip`
+
+            Everything is bundled — no Node, npm, or dependencies to download on the target machine. On macOS, unzip and move **Galley.app** to Applications.
+
+            **These builds are unsigned**, so the OS warns on first launch:
+            - Windows SmartScreen → **More info → Run anyway**.
+            - macOS Gatekeeper → right-click the app → **Open** and confirm (or run `xattr -dr com.apple.quarantine Galley.app`).
