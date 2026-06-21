@@ -278,7 +278,7 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 ### Output installers (self-contained)
 
 - **Windows:** `.exe` (Squirrel) installer, plus a portable `.zip` of the app.
-- **macOS:** `.zip` of the `.app` bundle, per architecture (Apple Silicon + Intel). *(A `.dmg` is a possible nicety later — it needs the Forge DMG maker.)*
+- **macOS:** `.zip` of the `.app` bundle (Apple Silicon / arm64; Intel is not built — all target machines are Apple Silicon). *(A `.dmg` is a possible nicety later — it needs the Forge DMG maker.)*
 
 Users need **no browser and no runtime** installed — the engine is bundled inside the app.
 
@@ -288,7 +288,7 @@ Users need **no browser and no runtime** installed — the engine is bundled ins
 
 ### Releases (CI)
 
-A GitHub Actions workflow (`.github/workflows/release.yml`) implements the above: pushing a version tag (`vX.Y.Z`) builds the app natively on Windows and macOS (Apple Silicon + Intel) runners and publishes them all to a GitHub **Release**. Build artifacts are never committed to the repo (`out/` stays gitignored) — the Release is the distribution channel, so a personal machine only ever **downloads** the finished app rather than cloning or building this project.
+A GitHub Actions workflow (`.github/workflows/release.yml`) implements the above: pushing a version tag (`vX.Y.Z`) builds the app natively on Windows and macOS (Apple Silicon) runners and publishes them all to a GitHub **Release**. Build artifacts are never committed to the repo (`out/` stays gitignored) — the Release is the distribution channel, so a personal machine only ever **downloads** the finished app rather than cloning or building this project.
 
 ### Code signing (deferred, optional)
 
