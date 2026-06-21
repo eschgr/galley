@@ -44,8 +44,8 @@ and is handed to the operating system's default handler.
 - Inline: [Anthropic](https://www.anthropic.com)
 - Bare URL (autolinked): https://example.com/page
 - Angle autolink: <https://example.org>
-- Email: [email me](mailto:greg@example.com)
-- Bare email (autolinked): greg@example.com
+- Email: [email me](mailto:greg.esch@gmali.com)
+- Bare email (autolinked): greg.esch@gmali.com
 
 The renderer never navigates itself, so clicking one of these does not change what is
 shown in the window — it only asks the OS to open the link elsewhere.
