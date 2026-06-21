@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArg, readFile, writeFile } from './fileIo';
+import { hashContent, parseCliFileArg, parseCliChannelArg, readFile, writeFile } from './fileIo';
 
 describe('hashContent', () => {
   it('is the sha256 hex of the utf-8 content', () => {
@@ -36,6 +36,24 @@ describe('parseCliFileArg', () => {
   it('returns null when no file argument is present', () => {
     expect(parseCliFileArg(['mdtool.exe'], true)).toBeNull();
     expect(parseCliFileArg(['mdtool.exe', '--devtools'], true)).toBeNull();
+  });
+});
+
+describe('parseCliChannelArg', () => {
+  it('reads the --channel <addr> value', () => {
+    expect(parseCliChannelArg(['mdtool.exe', '--channel', '\\\\.\\pipe\\galley-x'], true)).toBe(
+      '\\\\.\\pipe\\galley-x',
+    );
+  });
+  it('reads the --channel=<addr> form', () => {
+    expect(parseCliChannelArg(['mdtool.exe', '--channel=/tmp/g.sock', 'notes.md'], true)).toBe('/tmp/g.sock');
+  });
+  it('skips the app-path argv[1] in a dev launch', () => {
+    expect(parseCliChannelArg(['electron.exe', '.', '--channel', 'addr'], false)).toBe('addr');
+  });
+  it('returns null when no channel is passed', () => {
+    expect(parseCliChannelArg(['mdtool.exe', 'notes.md'], true)).toBeNull();
+    expect(parseCliChannelArg(['mdtool.exe', '--channel'], true)).toBeNull(); // no value
   });
 });
 
