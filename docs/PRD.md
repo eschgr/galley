@@ -170,7 +170,7 @@ The editor tracks **what it is showing as an explicit state**, not as a null-pat
 - **R29.** **Auto-save**, debounced: save **5 seconds after the last keystroke**.
 - **R30.** **Force-save** via `Ctrl/Cmd+S`, which saves immediately and bypasses the debounce. *(Auto-save makes this usually a no-op; it is retained intentionally as an explicit, reassuring user action.)*
 - **R31.** Accepted tradeoff: an in-flight crash may lose up to ~5 seconds of un-debounced edits. This is acceptable for this tool.
-- **R31a. Manual reload (`Ctrl/Cmd+R`).** View → Reload File re-reads the open file from disk and loads it fresh, **keeping the current view layout** (split/preview mode, window size, etc.). It reloads only the *document*, never the app. *(Decided 2026-06-20: the webContents reload / force-reload menu roles are removed and renderer HMR is disabled, so code changes are picked up only by restarting the app — keeping "the file changed" and "the software changed" unambiguously distinct.)*
+- **R31a. Manual reload (`Ctrl/Cmd+R`).** File → Reload File re-reads the open file from disk and loads it fresh, **keeping the current view layout** (split/preview mode, window size, etc.). It reloads only the *document*, never the app. *(Decided 2026-06-20: the webContents reload / force-reload menu roles are removed and renderer HMR is disabled, so code changes are picked up only by restarting the app — keeping "the file changed" and "the software changed" unambiguously distinct.)*
 
 ### 5.6 Auto-refresh & conflict handling
 
@@ -213,10 +213,10 @@ The governing principle: **both the write path (save) and the read path (load/re
 ### 5.9 Application menu & commands
 
 - **R47. Native menu bar.** Common operations are exposed through the **OS-native application menu** (not a custom command palette). At minimum:
-  - **File:** Open (R8), Save / force-save (R30), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
+  - **File:** Open (R8), Save / force-save (R30), Reload File (R31a, `Ctrl/Cmd+R`), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
   - **Edit:** Undo/redo (R20), Find & Replace (R21), and the formatting actions (R23) where appropriate.
-  - **View:** standard view items (reload, zoom, full screen) and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
-  - **Help:** open the Help window (R48).
+  - **Help:** open the Help window (R48), and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
+  - *(No **View** or **Window** menu: their only deliberate items — Reload File and window close — live in File; standard view items like zoom and full screen are omitted as unused clutter.)*
 - *(A searchable command palette is explicitly not built for this version; the native menu covers these operations. The Show/Hide Source view toggle (R45) lives in the title bar rather than the menu.)*
 
 ### 5.10 Help
