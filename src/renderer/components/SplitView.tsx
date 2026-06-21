@@ -34,12 +34,14 @@ interface SplitViewProps {
   viewMode: ViewMode;
   /** Cmd/Ctrl+K in the editor — host opens the link dialog (R27). */
   onLink?: () => void;
+  /** A local-file link was clicked in the preview (R4). */
+  onOpenLocal?: (href: string) => void;
 }
 
 const MIN_PCT = 20;
 const MAX_PCT = 80;
 
-export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode, onLink }: SplitViewProps) {
+export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewMode, onLink, onOpenLocal }: SplitViewProps) {
   const previewRef = useRef<PreviewHandle>(null);
   const active = useRef<'editor' | 'preview' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -124,7 +126,13 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, viewM
         onWheelCapture={() => (active.current = 'preview')}
         onKeyDownCapture={() => (active.current = 'preview')}
       >
-        <Preview ref={previewRef} source={source} onScroll={onPreviewScroll} onLayout={onPreviewLayout} />
+        <Preview
+          ref={previewRef}
+          source={source}
+          onScroll={onPreviewScroll}
+          onLayout={onPreviewLayout}
+          onOpenLocal={onOpenLocal}
+        />
       </div>
       <div
         className="split-divider"

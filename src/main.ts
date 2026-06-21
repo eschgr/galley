@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { createPlatformBridge, type SaveResult } from './main/platform';
@@ -145,6 +146,32 @@ ipcMain.handle('file:read', async (event, p: unknown) => {
 // A tab closed (R41): stop watching its file.
 ipcMain.handle('file:closed', (_event, p: unknown) => {
   if (typeof p === 'string') unwatchPath(p);
+});
+
+// A local-file link clicked in the preview (R4): resolve it relative to the
+// source document's folder and open it as a tab. External (web/mail) links go to
+// the system browser; in-page anchors are handled in the renderer.
+ipcMain.handle('file:openLocal', (event, args: unknown) => {
+  if (!args || typeof args !== 'object') return;
+  const { href, from } = args as { href?: unknown; from?: unknown };
+  if (typeof href !== 'string' || typeof from !== 'string') return;
+  let target = href.split('#')[0]; // drop any #fragment
+  if (!target) return;
+  try {
+    target = decodeURIComponent(target);
+  } catch {
+    /* keep the raw href if it isn't valid percent-encoding */
+  }
+  if (/^file:\/\//i.test(target)) {
+    try {
+      target = fileURLToPath(target);
+    } catch {
+      return;
+    }
+  }
+  const resolved = path.isAbsolute(target) ? target : path.resolve(path.dirname(from), target);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) void openPath(win, resolved);
 });
 
 // DevTools do NOT open at startup. Pass --devtools (e.g. `npm run start:devtools`,

@@ -24,6 +24,9 @@ interface PreviewProps {
   /** Fired after the anchor map is (re)built — i.e. once the pane has reflowed
    *  and its line geometry is current. Used to re-align the editor on reveal. */
   onLayout?: () => void;
+  /** A local-file link was clicked — open it (host resolves it relative to the
+   *  active document and opens a tab). External links go to the browser (R4). */
+  onOpenLocal?: (href: string) => void;
 }
 
 function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
@@ -40,7 +43,7 @@ function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
 }
 
 export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
-  { source, onScroll, onLayout },
+  { source, onScroll, onLayout, onOpenLocal },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -90,7 +93,11 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
       target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
-    void window.mdtool?.openExternal(href);
+    if (/^(https?:|mailto:)/i.test(href)) {
+      void window.mdtool?.openExternal(href); // external → system browser (R4)
+      return;
+    }
+    onOpenLocal?.(href); // relative/absolute/file:// path → open as a tab
   };
 
   return (

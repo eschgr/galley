@@ -18,19 +18,25 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       closeTabCb: (() => void) | null;
       saveCalls: { path: string; content: string; force: boolean }[];
       closed: string[];
+      openExternalCalls: string[];
+      openLocalCalls: { href: string; from: string }[];
       // When set, the next non-force save returns this as a write-path conflict.
       nextSaveConflict: MockFile | null;
       // What readFile() (reload) returns next.
       nextRead: MockFile | null;
     } = {
       openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null,
-      saveCalls: [], closed: [], nextSaveConflict: null, nextRead: null,
+      saveCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
+      nextSaveConflict: null, nextRead: null,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { mdtool: unknown }).mdtool = {
       platform: 'win32',
       version: '0.0.0-test',
-      openExternal: async () => {},
+      openExternal: async (url: string) => {
+        harness.openExternalCalls.push(url);
+      },
+      openLocalFile: (href: string, from: string) => harness.openLocalCalls.push({ href, from }),
       setSourceVisible: async () => {},
       getStartupFile: async () => startupFile,
       saveFile: async (path: string, content: string, force?: boolean) => {
@@ -476,4 +482,30 @@ test('close prompt — Discard closes without saving; Cancel keeps the tab (R41)
     () => (window as unknown as { __mock: { saveCalls: unknown[] } }).__mock.saveCalls,
   );
   expect(calls.length).toBe(0); // nothing written (auto-save's 5s never fired)
+});
+
+test('clicking a relative file link asks the host to open it as a tab (R4)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\index.md', content: 'see [the other](../other.md)\n', hash: 'h' });
+  await page.locator('.markdown-preview a', { hasText: 'the other' }).click();
+  const calls = await page.evaluate(
+    () => (window as unknown as { __mock: { openLocalCalls: { href: string; from: string }[] } }).__mock.openLocalCalls,
+  );
+  expect(calls).toEqual([{ href: '../other.md', from: 'C:\\docs\\index.md' }]);
+});
+
+test('clicking an external link opens it in the browser, not as a tab (R4)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\index.md', content: 'see [spec](https://example.com/x)\n', hash: 'h' });
+  await page.locator('.markdown-preview a', { hasText: 'spec' }).click();
+  const ext = await page.evaluate(
+    () => (window as unknown as { __mock: { openExternalCalls: string[] } }).__mock.openExternalCalls,
+  );
+  const local = await page.evaluate(
+    () => (window as unknown as { __mock: { openLocalCalls: unknown[] } }).__mock.openLocalCalls,
+  );
+  expect(ext).toEqual(['https://example.com/x']);
+  expect(local).toEqual([]);
 });

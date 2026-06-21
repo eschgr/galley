@@ -367,6 +367,11 @@ export function App() {
         editorRef={editorRef}
         viewMode={viewMode}
         onLink={openLinkDialog}
+        onOpenLocal={(href) => {
+          // Resolve the link against the active file's folder (host side); a
+          // local link only makes sense when a real file is open.
+          if (activeTab) window.mdtool?.openLocalFile(href, activeTab.path);
+        }}
       />
       {conflict && showModal && (
         <ConflictDialog
