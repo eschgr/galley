@@ -62,6 +62,9 @@ export interface MdtoolApi {
   /** Subscribe to View → Reload File (Ctrl/Cmd+R) — reload the active tab in
    *  place (R31a). Returns unsubscribe. */
   onReloadFile(callback: () => void): () => void;
+  /** Subscribe to File → Close Tab (Ctrl/Cmd+W) — close the active tab, prompting
+   *  if it has unsaved edits (R41). Returns unsubscribe. */
+  onCloseTab(callback: () => void): () => void;
   /**
    * Subscribe to a genuine external change to the open file (R32/R33) — the
    * watcher's own saves are already filtered out. Payload is the new on-disk

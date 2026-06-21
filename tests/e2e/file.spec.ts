@@ -15,6 +15,7 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       saveCb: (() => void) | null;
       extCb: ((f: MockFile) => void) | null;
       reloadCb: (() => void) | null;
+      closeTabCb: (() => void) | null;
       saveCalls: { path: string; content: string; force: boolean }[];
       closed: string[];
       // When set, the next non-force save returns this as a write-path conflict.
@@ -22,7 +23,7 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       // What readFile() (reload) returns next.
       nextRead: MockFile | null;
     } = {
-      openCb: null, saveCb: null, extCb: null, reloadCb: null,
+      openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null,
       saveCalls: [], closed: [], nextSaveConflict: null, nextRead: null,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
@@ -54,6 +55,10 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       onReloadFile: (cb: () => void) => {
         harness.reloadCb = cb;
         return () => (harness.reloadCb = null);
+      },
+      onCloseTab: (cb: () => void) => {
+        harness.closeTabCb = cb;
+        return () => (harness.closeTabCb = null);
       },
       onExternalChange: (cb: (f: MockFile) => void) => {
         harness.extCb = cb;
@@ -427,6 +432,32 @@ test('closing a tab with unsaved edits prompts; Save closes and writes (R41)', a
     () => (window as unknown as { __mock: { saveCalls: { content: string }[] } }).__mock.saveCalls,
   );
   expect(calls.some((c) => c.content.includes('EDIT'))).toBe(true);
+});
+
+// Drive the File → Close Tab menu item (Ctrl/Cmd+W), which posts to the renderer.
+const closeViaMenu = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __mock: { closeTabCb: () => void } }).__mock.closeTabCb());
+
+test('Ctrl+W closes the active tab (not the window); last tab → welcome (R41/R46)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'a\n', hash: 'h' });
+  await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: 'b\n', hash: 'h' }); // active b
+  await closeViaMenu(page);
+  await expect(tabNames(page)).toHaveText(['a.md']);
+  await expect(activeTabName(page)).toHaveText('a.md');
+  await closeViaMenu(page); // last tab → welcome, app stays
+  await expect(noTabs(page)).toBeHidden();
+  await expect(page.locator('.markdown-preview')).toContainText('Welcome to Galley');
+});
+
+test('Ctrl+W on a tab with unsaved edits prompts first (R41)', async ({ page }) => {
+  await installMockBridge(page);
+  await page.goto('/');
+  await openAndDirty(page, { path: 'C:\\docs\\w.md', content: 'orig\n', hash: 'h' }, ' EDIT');
+  await closeViaMenu(page);
+  await expect(overlay(page)).toBeVisible();
+  await expect(page.locator('.modal')).toContainText('w.md');
 });
 
 test('close prompt — Discard closes without saving; Cancel keeps the tab (R41)', async ({ page }) => {

@@ -16,6 +16,8 @@ export interface MenuActions {
   saveFile: () => void;
   /** View → Reload File (re-read the open file from disk; keeps the layout). */
   reloadFile: () => void;
+  /** File → Close Tab (close the active tab; prompts if it has unsaved edits). */
+  closeTab: () => void;
 }
 
 export function buildAppMenu(actions: MenuActions): void {
@@ -29,7 +31,14 @@ export function buildAppMenu(actions: MenuActions): void {
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: actions.openFile },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: actions.saveFile },
         { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' },
+        // Ctrl/Cmd+W closes the active tab (with an unsaved-edits prompt), not
+        // the window. The last tab closing returns to the welcome screen (R41/R46).
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: actions.closeTab },
+        { type: 'separator' },
+        // Window close keeps Cmd+Shift+W on macOS so Cmd+W is free for Close Tab.
+        isMac
+          ? { role: 'close', label: 'Close Window', accelerator: 'Cmd+Shift+W' }
+          : { role: 'quit' },
       ],
     },
     { role: 'editMenu' },

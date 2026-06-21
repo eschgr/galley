@@ -277,6 +277,10 @@ export function App() {
         if (file && activeIdRef.current === id) reloadTab(id, file);
       });
     });
+    const offClose = window.mdtool?.onCloseTab(() => {
+      const id = activeIdRef.current;
+      if (id) requestClose(id); // close the active tab (prompts if dirty; R41)
+    });
     const offExternal = window.mdtool?.onExternalChange((diskFile) => {
       const t = tabsRef.current.find((x) => x.path === diskFile.path);
       if (!t) return;
@@ -287,6 +291,7 @@ export function App() {
       offOpen?.();
       offSave?.();
       offReload?.();
+      offClose?.();
       offExternal?.();
       for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
     };

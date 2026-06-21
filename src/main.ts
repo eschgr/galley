@@ -79,6 +79,12 @@ function requestReload(): void {
   targetWindow()?.webContents.send('menu:reloadFile');
 }
 
+// File → Close Tab (Ctrl/Cmd+W): the renderer owns the tabs, so ask it to close
+// the active one (prompting if it has unsaved edits, R41).
+function requestCloseTab(): void {
+  targetWindow()?.webContents.send('menu:closeTab');
+}
+
 // Save path (R29/R30/R34): the renderer sends content. A `force` write
 // overwrites unconditionally ("keep mine"); otherwise it is a checked save that
 // refuses to write if disk diverged since we last knew (the write-path guard),
@@ -268,6 +274,7 @@ app.on('ready', () => {
     openFile: openFileViaDialog,
     saveFile: requestSave,
     reloadFile: requestReload,
+    closeTab: requestCloseTab,
   });
   createWindow();
 });

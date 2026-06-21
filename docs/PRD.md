@@ -194,7 +194,7 @@ The governing principle: **both the write path (save) and the read path (load/re
 
 - **R39.** Open multiple documents, each in its own tab; switch between them.
 - **R40.** **Per-tab dirty indicator** showing unsaved local changes.
-- **R41.** Close an individual tab. Closing a tab with unsaved local edits prompts to save first. *(With auto-save, most closes have nothing pending; the prompt covers the un-debounced window.)*
+- **R41.** Close an individual tab — via the tab's **×** or **Ctrl/Cmd+W** (which closes the active tab, never the window). Closing a tab with unsaved local edits prompts to save first (Save / Discard / Cancel). *(With auto-save, most closes have nothing pending; the prompt covers the un-debounced window.)* Closing the **last** tab returns to the welcome/empty state (R46), it does not quit.
 - **R42.** Recently-opened list — **not required**.
 - **R43.** Tab reordering — **not required**; include only if provided for free by the UI framework.
 - **R44.** Bulk tab operations (close all / close others) — **out of scope** (see §3).
@@ -211,7 +211,7 @@ The governing principle: **both the write path (save) and the read path (load/re
 ### 5.9 Application menu & commands
 
 - **R47. Native menu bar.** Common operations are exposed through the **OS-native application menu** (not a custom command palette). At minimum:
-  - **File:** Open (R8), Save / force-save (R30), Exit (quit the application).
+  - **File:** Open (R8), Save / force-save (R30), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
   - **Edit:** Undo/redo (R20), Find & Replace (R21), and the formatting actions (R23) where appropriate.
   - **View:** standard view items (reload, zoom, full screen) and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
   - **Help:** open the Help window (R48).
