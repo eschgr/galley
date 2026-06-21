@@ -57,7 +57,7 @@ jobs:
           find out/make -name '*.zip' -exec cp {} dist/ \;
           ls -la dist
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: dist-${{ matrix.os }}
           path: dist/
@@ -68,7 +68,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
