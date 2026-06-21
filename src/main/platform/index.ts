@@ -16,6 +16,22 @@
  */
 import * as fileIo from './fileIo';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+
+/**
+ * Map a channel **name** to its OS transport address (R11): a named pipe on
+ * Windows, a Unix-domain socket under the temp dir elsewhere. The launch only
+ * ever passes a plain name (`--channel <name>`) — no backslashes to mangle
+ * through the shell — and both the app and the caller derive the same address
+ * from it. This keeps the transport detail inside the seam (§7 portability).
+ */
+export function channelAddress(name: string): string {
+  return process.platform === 'win32'
+    ? `\\\\.\\pipe\\mdtool-${name}`
+    : path.join(os.tmpdir(), `mdtool-${name}.sock`);
+}
 
 /** A file's content plus the baseline hash captured at read/write time (PRD §5.6). */
 export interface FileSnapshot {
@@ -46,6 +62,8 @@ export interface PlatformBridge {
    * `packaged` distinguishes `mdtool.exe <file>` from a dev `electron . <file>`.
    */
   parseCliFileArg(argv: readonly string[], packaged: boolean): string | null;
+  /** The `--channel <addr>` address passed at launch, if any (R11). */
+  parseCliChannelArg(argv: readonly string[], packaged: boolean): string | null;
 
   // --- File IO + hashing (R33–R35) ---------------------------------------
   /** Read a file and record its hash as the last-known on-disk state. */
@@ -89,6 +107,7 @@ export function createPlatformBridge(): PlatformBridge {
   // or a save whose disk hash matches `knownHash` is consistent with our view.
   const knownHash = new Map<string, string>();
   const watchers = new Map<string, FSWatcher>();
+  let channelServer: net.Server | null = null;
 
   const closeWatcher = (absPath: string): void => {
     const watcher = watchers.get(absPath);
@@ -100,6 +119,7 @@ export function createPlatformBridge(): PlatformBridge {
 
   return {
     parseCliFileArg: fileIo.parseCliFileArg,
+    parseCliChannelArg: fileIo.parseCliChannelArg,
 
     async readFile(absPath) {
       const snapshot = await fileIo.readFile(absPath);
@@ -149,11 +169,50 @@ export function createPlatformBridge(): PlatformBridge {
       closeWatcher(absPath);
     },
 
-    listenOnChannel() {
-      throw new Error('listenOnChannel() not implemented yet (deferred phase — PRD §5.3).');
+    // Listen on the caller-provided channel (R11). The wire protocol is simple:
+    // each delivered message is a newline-terminated absolute file path. The app
+    // does not arbitrate — the caller already decided to send rather than launch.
+    listenOnChannel(address, onFile) {
+      return new Promise((resolve, reject) => {
+        const server = net.createServer((socket) => {
+          socket.setEncoding('utf8');
+          let buffer = '';
+          const drain = (final: boolean) => {
+            let idx: number;
+            while ((idx = buffer.indexOf('\n')) >= 0) {
+              const line = buffer.slice(0, idx).trim();
+              buffer = buffer.slice(idx + 1);
+              if (line) onFile(line);
+            }
+            if (final) {
+              const line = buffer.trim(); // a message sent without a trailing newline
+              if (line) onFile(line);
+              buffer = '';
+            }
+          };
+          socket.on('data', (chunk: string) => {
+            buffer += chunk;
+            drain(false);
+          });
+          socket.on('end', () => drain(true));
+          socket.on('error', () => {
+            /* a dropped client connection is not our problem */
+          });
+        });
+        server.once('error', reject);
+        server.listen(address, () => {
+          server.removeListener('error', reject);
+          channelServer = server;
+          resolve();
+        });
+      });
     },
     closeChannel() {
-      throw new Error('closeChannel() not implemented yet (deferred phase — PRD §5.3).');
+      return new Promise((resolve) => {
+        if (!channelServer) return resolve();
+        channelServer.close(() => resolve());
+        channelServer = null;
+      });
     },
   };
 }
