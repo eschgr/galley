@@ -10,15 +10,21 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Squirrel groups the Start Menu shortcut under a folder named after the
+    // EXE's CompanyName (which @electron/packager otherwise takes from
+    // package.json `author.name` = "eschgr"). Set it to the product name so the
+    // shortcut lands under Programs\Galley\, not Programs\eschgr\.
+    win32metadata: {
+      CompanyName: 'Galley',
+    },
   },
   rebuildConfig: {},
   makers: [
-    // Install to %LocalAppData%\Galley and put the Start Menu shortcut under a
-    // "Galley" group. Squirrel otherwise uses the package.json `name` ("mdtool")
-    // for the install dir and `author.name` ("eschgr") for the shortcut folder —
-    // neither matches the product name. (Squirrel always nests the Start Menu
-    // shortcut under one folder = `authors`; "Galley" is the cleanest that gives.)
-    new MakerSquirrel({ name: 'Galley', authors: 'Galley' }),
+    // Install to %LocalAppData%\Galley: the Squirrel package id (the install
+    // folder) defaults to the package.json `name` ("mdtool"); override to Galley.
+    // (The Start Menu shortcut folder is the EXE CompanyName, set above — NOT the
+    // nuspec `authors`, which Squirrel ignores for shortcuts.)
+    new MakerSquirrel({ name: 'Galley' }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
