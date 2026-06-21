@@ -141,6 +141,9 @@
   height: 100%;
   overflow-y: auto;
   padding: 16px 24px 64px;
+  /* Don't let the browser auto-shift scrollTop when the content swaps (tab
+     switch / reload) — the app sets the reading position explicitly. */
+  overflow-anchor: none;
 }
 /* Focusable for keyboard scrolling (R18 sync), but it's a reading pane — no ring. */
 .preview-scroll:focus,

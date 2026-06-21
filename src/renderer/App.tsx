@@ -18,7 +18,7 @@
  * Two choices only: take theirs (Load from disk) or keep yours (Keep mine).
  */
 import './app.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorState } from '@codemirror/state';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
@@ -330,15 +330,16 @@ export function App() {
     void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
-  // After the active tab's content has rendered, position the preview: a file
-  // link with a #fragment jumps to that heading; otherwise restore the tab's
-  // stashed reading position (a just-opened tab → the top). Runs after the child
-  // Preview's layout effect, so the new content is already measured.
-  useEffect(() => {
+  // Position the preview the moment the active tab's content is in the DOM but
+  // before the browser paints (useLayoutEffect → no flash of the wrong scroll):
+  // a file link with a #fragment jumps to that heading; a fragment with no match
+  // falls back to the top; otherwise restore the tab's stashed reading position
+  // (a just-opened tab → the top).
+  useLayoutEffect(() => {
     const frag = pendingFragment.current;
+    pendingFragment.current = null;
     if (frag) {
-      pendingFragment.current = null;
-      previewRef.current?.scrollToAnchor(frag);
+      if (!previewRef.current?.scrollToAnchor(frag)) previewRef.current?.setScrollTop(0);
       return;
     }
     const top = activeId ? (previewScroll.current.get(activeId) ?? 0) : 0;

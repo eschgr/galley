@@ -20,8 +20,9 @@ export interface PreviewHandle {
   /** Raw scroll offset in px — used to stash/restore reading position per tab. */
   getScrollTop(): number;
   setScrollTop(px: number): void;
-  /** Jump to the heading whose slug is `id` (a file-link `#fragment` target). */
-  scrollToAnchor(id: string): void;
+  /** Jump to the heading whose slug is `id` (a file-link `#fragment` target).
+   *  Returns false if no such heading exists. */
+  scrollToAnchor(id: string): boolean;
 }
 
 interface PreviewProps {
@@ -80,9 +81,12 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
 
   // Scroll the heading whose slug is `id` to the top of the pane. Used by both
   // anchor-link clicks and (via the handle) a freshly opened file:fragment link.
-  const jumpToAnchor = (id: string, behavior: ScrollBehavior) => {
+  // Returns whether a matching heading was found.
+  const jumpToAnchor = (id: string, behavior: ScrollBehavior): boolean => {
     const target = contentRef.current?.querySelector(`[id="${CSS.escape(id)}"]`);
-    target?.scrollIntoView({ behavior, block: 'start' });
+    if (!target) return false;
+    target.scrollIntoView({ behavior, block: 'start' });
+    return true;
   };
 
   useImperativeHandle(ref, () => ({
