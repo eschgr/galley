@@ -18,6 +18,10 @@ export interface MenuActions {
   saveFile: () => void;
   /** File → Reload File (re-read the open file from disk; keeps the layout). */
   reloadFile: () => void;
+  /** File → Print… (open the OS print dialog for the active tab's preview, R53). */
+  print: () => void;
+  /** File → Export to PDF… (Save dialog, then write the preview as a PDF, R52). */
+  exportPdf: () => void;
   /** File → Close Tab (close the active tab; prompts if it has unsaved edits). */
   closeTab: () => void;
   /** Help → Galley Help (open the Help window, R48). */
@@ -39,6 +43,13 @@ export function buildAppMenu(actions: MenuActions): void {
         // here — and HMR is off (vite.renderer.config.ts) — so code changes need
         // a restart, never a silent in-place reload. (In File since View was removed.)
         { label: 'Reload File', accelerator: 'CmdOrCtrl+R', click: actions.reloadFile },
+        // Print / Export to PDF render only the active tab's preview (R52/R53).
+        // These are plain menu accelerators: unlike Ctrl+W (which Chromium binds
+        // to window-close and we intercept in main.ts via before-input-event),
+        // Ctrl+P / Ctrl+Shift+P have no default Electron/Chromium binding, so the
+        // accelerator alone fires the click.
+        { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: actions.print },
+        { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: actions.exportPdf },
         { type: 'separator' },
         // Ctrl/Cmd+W closes the active tab (with an unsaved-edits prompt), not
         // the window. The last tab closing returns to the welcome screen (R41/R46).

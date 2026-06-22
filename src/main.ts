@@ -1,7 +1,9 @@
 import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
+import { defaultPdfPath } from './main/pdfName';
 import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -93,6 +95,47 @@ function requestCloseTab(): void {
 // Help → Galley Help (R48): the Help window is a renderer modal, so ask it to open.
 function requestHelp(): void {
   targetWindow()?.webContents.send('menu:help');
+}
+
+// The active document's path per window, mirrored from the renderer purely so
+// Export to PDF can default its Save dialog beside the source (R52). This is the
+// only renderer→main signal for the print/PDF work — the print itself runs here
+// in main (webContents.print / printToPDF), not via a menu round-trip. Multi-
+// window safe, like readingWidth above; null on the welcome screen.
+const activeDocPath = new Map<number, string | null>();
+
+ipcMain.handle('window:setActiveDocPath', (event, p) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) activeDocPath.set(win.id, typeof p === 'string' ? p : null);
+});
+
+// File → Print… (R53): open the OS print dialog on the active tab's preview. The
+// @media print rules (src/renderer/print.css) strip the chrome and paginate the
+// whole document; printBackground pairs with the color-adjust rules.
+function requestPrint(): void {
+  targetWindow()?.webContents.print({ printBackground: true });
+}
+
+// File → Export to PDF… (R52): always show a native Save dialog pre-filled
+// beside the source (or Galley document.pdf in Documents with nothing open).
+// Write only on confirm; cancel writes nothing. IO/render errors surface as a
+// dialog, never a crash (mirrors the openPath error pattern).
+async function requestExportPdf(): Promise<void> {
+  const win = targetWindow();
+  if (!win) return;
+  const def = defaultPdfPath(activeDocPath.get(win.id) ?? null, app.getPath('documents'));
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Export to PDF',
+    defaultPath: def,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (canceled || !filePath) return;
+  try {
+    const data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+    await fs.writeFile(filePath, data);
+  } catch (err) {
+    dialog.showErrorBox('Could not export PDF', `${filePath}\n\n${String(err)}`);
+  }
 }
 
 // Save path (R29/R30/R34): the renderer sends content. A `force` write
@@ -245,6 +288,7 @@ const createWindow = () => {
   mainWindow.on('closed', () => {
     for (const p of watchedPaths) platform.unwatch(p);
     watchedPaths.clear();
+    activeDocPath.delete(mainWindow.id);
     void platform.closeChannel();
   });
 
@@ -338,6 +382,8 @@ app.on('ready', () => {
     openFile: openFileViaDialog,
     saveFile: requestSave,
     reloadFile: requestReload,
+    print: requestPrint,
+    exportPdf: requestExportPdf,
     closeTab: requestCloseTab,
     help: requestHelp,
   });

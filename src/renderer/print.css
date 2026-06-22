@@ -1,0 +1,27 @@
+@media print {
+  /* Release the fixed-height scroll chain so the whole doc paginates */
+  html, body, #root, .app, .split-view, .pane, .pane-preview, .preview-scroll {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .app, .split-view { display: block !important; }
+  .pane-preview { width: 100% !important; flex: none !important; }
+  .preview-scroll { padding: 0 !important; }
+
+  /* Hide everything that isn't the rendered active-tab preview */
+  .toolbar, .split-divider, .pane-editor, .sync-flag, .modal-overlay { display: none !important; }
+
+  /* Keep backgrounds (pairs with printBackground:true) */
+  .markdown-preview, .markdown-preview * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Page geometry + pagination */
+  @page { size: Letter; margin: 0.75in; }
+  .markdown-preview pre { white-space: pre-wrap; word-break: break-word; overflow: visible; break-inside: avoid; }
+  .markdown-preview table { width: 100% !important; break-inside: avoid; }
+  .markdown-preview blockquote, .markdown-preview img { break-inside: avoid; }
+  .markdown-preview h1, .markdown-preview h2, .markdown-preview h3 { break-after: avoid; }
+}

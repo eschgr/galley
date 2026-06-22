@@ -28,6 +28,8 @@ describe('shortcut groups (Help, R48)', () => {
     const items = shortcutGroups('win32').flatMap((g) => g.items);
     expect(items.find((s) => s.action === 'Bold')?.keys).toBe('Ctrl+B');
     expect(items.find((s) => s.action === 'Open file…')?.keys).toBe('Ctrl+O');
+    expect(items.find((s) => s.action === 'Print')?.keys).toBe('Ctrl+P');
+    expect(items.find((s) => s.action === 'Export to PDF')?.keys).toBe('Ctrl+Shift+P');
     expect(items.find((s) => s.action === 'Heading level 1–6')?.keys).toBe('Ctrl+1–Ctrl+6');
 
     const mac = shortcutGroups('darwin').flatMap((g) => g.items);

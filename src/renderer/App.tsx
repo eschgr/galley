@@ -18,6 +18,7 @@
  * Two choices only: take theirs (Load from disk) or keep yours (Keep mine).
  */
 import './app.css';
+import './print.css';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorState } from '@codemirror/state';
 import welcome from './welcome.md?raw';
@@ -360,6 +361,9 @@ export function App() {
   const activePath = activeTab?.path;
   useEffect(() => {
     document.title = activePath ? `${basename(activePath)} — Galley` : 'Galley';
+    // Mirror the active path to main so Export to PDF defaults beside the source
+    // (R52). null on the welcome screen.
+    window.mdtool?.setActiveDocPath(activePath ?? null);
   }, [activePath]);
 
   return (

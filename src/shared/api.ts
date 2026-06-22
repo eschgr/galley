@@ -43,6 +43,12 @@ export interface MdtoolApi {
    * (PRD R45). A no-op effect when the window is maximized/fullscreen.
    */
   setSourceVisible(visible: boolean): Promise<void>;
+  /**
+   * Mirror the active document's path to main so Export to PDF can default the
+   * Save dialog beside the source (R52). Fire-and-forget; null on the welcome
+   * screen.
+   */
+  setActiveDocPath(path: string | null): void;
 
   /**
    * Save content to a path (R29/R30). A checked save (default) refuses to write
