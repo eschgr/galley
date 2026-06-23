@@ -26,6 +26,7 @@ import { SplitView, type ViewMode } from './components/SplitView';
 import { ConflictDialog } from './components/ConflictDialog';
 import { LinkDialog } from './components/LinkDialog';
 import { TabStrip } from './components/TabStrip';
+import { reorderToIndex } from './reorderTabs';
 import { CloseTabDialog } from './components/CloseTabDialog';
 import { HelpDialog } from './components/HelpDialog';
 import type { EditorHandle, LinkContext } from './components/Editor';
@@ -244,6 +245,12 @@ export function App() {
     else editorRef.current?.setDoc(next.text);
   };
 
+  // #20: drag-reorder the tab strip. Reorders the array only — activeId is an id,
+  // not an index, so the active tab stays active and simply moves to its new slot.
+  const reorder = (draggedId: string, insertIndex: number) => {
+    commitTabs(reorderToIndex(tabsRef.current, draggedId, insertIndex));
+  };
+
   // R41: closing a tab with unsaved edits prompts first.
   const requestClose = (id: string) => {
     const t = tabById(id);
@@ -390,6 +397,7 @@ export function App() {
             activeId={activeId}
             onSelect={switchTo}
             onClose={requestClose}
+            onReorder={reorder}
             nameOf={(t) => basename(t.path)}
           />
         )}
