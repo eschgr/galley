@@ -45,6 +45,16 @@ const api: MdtoolApi = {
     ipcRenderer.on('menu:closeTab', listener);
     return () => ipcRenderer.removeListener('menu:closeTab', listener);
   },
+  onNextTab: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:nextTab', listener);
+    return () => ipcRenderer.removeListener('menu:nextTab', listener);
+  },
+  onPrevTab: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('menu:prevTab', listener);
+    return () => ipcRenderer.removeListener('menu:prevTab', listener);
+  },
   onHelp: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('menu:help', listener);

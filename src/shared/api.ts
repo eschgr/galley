@@ -77,6 +77,12 @@ export interface MdtoolApi {
   /** Subscribe to File → Close Tab (Ctrl/Cmd+W) — close the active tab, prompting
    *  if it has unsaved edits (R41). Returns unsubscribe. */
   onCloseTab(callback: () => void): () => void;
+  /** Subscribe to Ctrl+Tab — switch to the next tab (right, wrapping) (#19).
+   *  Returns unsubscribe. */
+  onNextTab(callback: () => void): () => void;
+  /** Subscribe to Ctrl+Shift+Tab — switch to the previous tab (left, wrapping)
+   *  (#19). Returns unsubscribe. */
+  onPrevTab(callback: () => void): () => void;
   /** Subscribe to Help → Galley Help — open the Help window (R48). Returns unsubscribe. */
   onHelp(callback: () => void): () => void;
   /**

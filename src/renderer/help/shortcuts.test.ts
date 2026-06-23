@@ -12,12 +12,26 @@ describe('shortcut chord formatting (Help, R48)', () => {
     expect(chord('darwin', 'Mod', 'B')).toBe('⌘B');
     expect(chord('darwin', 'Mod', 'Shift', 'X')).toBe('⌘⇧X');
   });
+
+  it('renders literal Ctrl+Tab chords per platform (#19)', () => {
+    expect(chord('win32', 'Ctrl', 'Tab')).toBe('Ctrl+Tab');
+    expect(chord('win32', 'Ctrl', 'Shift', 'Tab')).toBe('Ctrl+Shift+Tab');
+    // macOS: Control symbol ⌃ and Tab ⇥, never ⌘.
+    expect(chord('darwin', 'Ctrl', 'Tab')).toBe('⌃⇥');
+    expect(chord('darwin', 'Ctrl', 'Shift', 'Tab')).toBe('⌃⇧⇥');
+  });
 });
 
 describe('shortcut groups (Help, R48)', () => {
   it('lists the expected groups, each item with keys + action', () => {
     const groups = shortcutGroups('win32');
-    expect(groups.map((g) => g.title)).toEqual(['File', 'Editing', 'Formatting', 'Lists']);
+    expect(groups.map((g) => g.title)).toEqual([
+      'File',
+      'Tabs',
+      'Editing',
+      'Formatting',
+      'Lists',
+    ]);
     for (const s of groups.flatMap((g) => g.items)) {
       expect(s.keys.length).toBeGreaterThan(0);
       expect(s.action.length).toBeGreaterThan(0);
@@ -32,7 +46,12 @@ describe('shortcut groups (Help, R48)', () => {
     expect(items.find((s) => s.action === 'Export to PDF')?.keys).toBe('Ctrl+Shift+P');
     expect(items.find((s) => s.action === 'Heading level 1–6')?.keys).toBe('Ctrl+1–Ctrl+6');
 
+    expect(items.find((s) => s.action === 'Next tab')?.keys).toBe('Ctrl+Tab');
+    expect(items.find((s) => s.action === 'Previous tab')?.keys).toBe('Ctrl+Shift+Tab');
+
     const mac = shortcutGroups('darwin').flatMap((g) => g.items);
     expect(mac.find((s) => s.action === 'Heading level 1–6')?.keys).toBe('⌘1–⌘6');
+    expect(mac.find((s) => s.action === 'Next tab')?.keys).toBe('⌃⇥');
+    expect(mac.find((s) => s.action === 'Previous tab')?.keys).toBe('⌃⇧⇥');
   });
 });

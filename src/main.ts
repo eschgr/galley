@@ -345,6 +345,14 @@ const createWindow = () => {
       event.preventDefault();
       mainWindow.webContents.send('menu:closeTab');
     }
+    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs (issue #19). Always literal Ctrl,
+    // even on macOS — Cmd+Tab is reserved by the OS for app switching, and the
+    // CM6 editor can swallow Tab when focused, so intercept here. Never fire
+    // when Alt or Cmd are held.
+    if (input.control && !input.alt && !input.meta && input.key === 'Tab') {
+      event.preventDefault();
+      mainWindow.webContents.send(input.shift ? 'menu:prevTab' : 'menu:nextTab');
+    }
   });
 
   // Channel listener (R11–R15): when launched with `--channel <addr>`, open any
