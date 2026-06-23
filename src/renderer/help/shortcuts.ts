@@ -15,8 +15,10 @@ export interface ShortcutGroup {
   readonly items: readonly Shortcut[];
 }
 
-const MAC: Record<string, string> = { Mod: '⌘', Shift: '⇧', Alt: '⌥' };
-const OTHER: Record<string, string> = { Mod: 'Ctrl', Shift: 'Shift', Alt: 'Alt' };
+// `Ctrl`/`Tab` are literal on every platform — used by the tab-cycle chords
+// (#19), which are Control even on macOS (Cmd+Tab is reserved by the OS).
+const MAC: Record<string, string> = { Mod: '⌘', Shift: '⇧', Alt: '⌥', Ctrl: '⌃', Tab: '⇥' };
+const OTHER: Record<string, string> = { Mod: 'Ctrl', Shift: 'Shift', Alt: 'Alt', Ctrl: 'Ctrl' };
 
 /** Format a chord (e.g. `'Mod','Shift','X'`) for the platform. */
 export function chord(platform: string, ...parts: string[]): string {
@@ -37,6 +39,15 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
         { keys: k('Mod', 'P'), action: 'Print' },
         { keys: k('Mod', 'Shift', 'P'), action: 'Export to PDF' },
         { keys: k('Mod', 'W'), action: 'Close tab' },
+      ],
+    },
+    {
+      title: 'Tabs',
+      items: [
+        // Literal Ctrl on every platform (#19) — not Mod (⌘), since Cmd+Tab is
+        // the macOS app switcher.
+        { keys: k('Ctrl', 'Tab'), action: 'Next tab' },
+        { keys: k('Ctrl', 'Shift', 'Tab'), action: 'Previous tab' },
       ],
     },
     {
@@ -62,7 +73,7 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
     {
       title: 'Lists',
       items: [
-        { keys: 'Tab', action: 'Indent list item' },
+        { keys: k('Tab'), action: 'Indent list item' },
         { keys: k('Shift', 'Tab'), action: 'Outdent list item' },
       ],
     },

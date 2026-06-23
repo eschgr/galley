@@ -31,6 +31,7 @@ import { HelpDialog } from './components/HelpDialog';
 import type { EditorHandle, LinkContext } from './components/Editor';
 import type { PreviewHandle } from './components/Preview';
 import type { OpenedFile } from '../shared/api';
+import { cycleTabTarget, type CycleDirection } from './cycleTab';
 
 // R29: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
 const AUTOSAVE_MS =
@@ -310,12 +311,25 @@ export function App() {
       if (!t.conflict && !t.edited) reloadTab(t.id, diskFile); // in sync → refresh
       else flagDiverged(t.id, diskFile); // edits in progress / already flagged → surface
     });
+    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs with wraparound (#19).
+    const cycle = (direction: CycleDirection) => {
+      const target = cycleTabTarget(
+        tabsRef.current.map((t) => t.id),
+        activeIdRef.current,
+        direction,
+      );
+      if (target) switchTo(target);
+    };
+    const offNext = window.mdtool?.onNextTab(() => cycle('next'));
+    const offPrev = window.mdtool?.onPrevTab(() => cycle('prev'));
     const offHelp = window.mdtool?.onHelp(() => setShowHelp(true)); // R48
     return () => {
       offOpen?.();
       offSave?.();
       offReload?.();
       offClose?.();
+      offNext?.();
+      offPrev?.();
       offExternal?.();
       offHelp?.();
       for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
