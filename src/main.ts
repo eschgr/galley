@@ -112,8 +112,26 @@ ipcMain.handle('window:setActiveDocPath', (event, p) => {
 // File → Print… (R53): open the OS print dialog on the active tab's preview. The
 // @media print rules (src/renderer/print.css) strip the chrome and paginate the
 // whole document; printBackground pairs with the color-adjust rules.
+//
+// `silent` is left at its default (false) so the system print dialog appears.
+// On Windows 11 (22H2+) that modern OS dialog shows "This app doesn't support
+// print preview" in its preview pane for non-UWP surfaces like Electron — the
+// dialog is still fully functional (printer, copies, orientation, Print all
+// work), that line is just the OS declining to render a live thumbnail.
+//
+// Fire-and-forget by design — no completion callback. Unlike printToPDF below,
+// we cannot surface print failures here: in Electron 42 the print callback's
+// failureReason cannot distinguish a user cancel from a real failure. A normal
+// cancel reports "Print job canceled" (and "Print job failed" for Microsoft
+// Print to PDF on Windows, per electron/electron#36084) — string-identical to a
+// genuine failure — so any error box keyed on failureReason would false-alarm on
+// every cancel. The OS print dialog reports its own printer errors interactively,
+// and it appears without the callback in this Electron version, so dropping the
+// callback costs us nothing.
 function requestPrint(): void {
-  targetWindow()?.webContents.print({ printBackground: true });
+  const win = targetWindow();
+  if (!win) return;
+  win.webContents.print({ printBackground: true });
 }
 
 // File → Export to PDF… (R52): always show a native Save dialog pre-filled
