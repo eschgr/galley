@@ -34,6 +34,8 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
         { keys: k('Mod', 'O'), action: 'Open file…' },
         { keys: k('Mod', 'S'), action: 'Save (force-save)' },
         { keys: k('Mod', 'R'), action: 'Reload file from disk' },
+        { keys: k('Mod', 'P'), action: 'Print' },
+        { keys: k('Mod', 'Shift', 'P'), action: 'Export to PDF' },
         { keys: k('Mod', 'W'), action: 'Close tab' },
       ],
     },

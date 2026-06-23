@@ -15,6 +15,9 @@ const api: MdtoolApi = {
     void ipcRenderer.invoke('file:openLocal', { href, from: fromPath });
   },
   setSourceVisible: (visible: boolean) => ipcRenderer.invoke('window:setSourceVisible', visible),
+  setActiveDocPath: (path) => {
+    void ipcRenderer.invoke('window:setActiveDocPath', path);
+  },
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),

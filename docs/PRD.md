@@ -1,8 +1,8 @@
 # PRD: mdtool — Local Markdown Viewer & Editor
 
-**Status:** Draft v8
+**Status:** Draft v9
 **Owner:** (you)
-**Last updated:** 2026-06-19
+**Last updated:** 2026-06-22
 
 ---
 
@@ -39,6 +39,8 @@ This version targets a **working prototype**: built on Electron for fastest path
 - **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout.
 - **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype.)*
 - **Dynamically swapping the editor/preview pane order in-app** — the layout is fixed (**rendered view on the left, source editor on the right**); a runtime control to flip which side each pane is on is out of scope. It is a possible future nice-to-have, bound up with the i18n/RTL and accessibility work above. *(See §12.)*
+- **Page numbers / running headers / footers** in printed and exported PDFs — fixed defaults only this version *(future).*
+- **In-app page-size / margin chooser** — Export uses fixed Letter / 0.75in defaults; Print defers paper choices to the OS print dialog *(future).*
 
 ---
 
@@ -213,7 +215,7 @@ The governing principle: **both the write path (save) and the read path (load/re
 ### 5.9 Application menu & commands
 
 - **R47. Native menu bar.** Common operations are exposed through the **OS-native application menu** (not a custom command palette). At minimum:
-  - **File:** Open (R8), Save / force-save (R30), Reload File (R31a, `Ctrl/Cmd+R`), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
+  - **File:** Open (R8), Save / force-save (R30), Reload File (R31a, `Ctrl/Cmd+R`), Export to PDF (R52, `Ctrl/Cmd+Shift+P`), Print (R53, `Ctrl/Cmd+P`), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
   - **Edit:** Undo/redo (R20), Find & Replace (R21), and the formatting actions (R23) where appropriate.
   - **Help:** open the Help window (R48), and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
   - *(No **View** or **Window** menu: their only deliberate items — Reload File and window close — live in File; standard view items like zoom and full screen are omitted as unused clutter.)*
@@ -224,14 +226,25 @@ The governing principle: **both the write path (save) and the read path (load/re
 - **R48. Help window.** A Help window/dialog showing:
   - **Basic app info** — name, version, short description.
   - **License info** — the app's license plus bundled third-party attribution notice (satisfies the §10 attribution obligation in-app).
-  - **Keyboard shortcuts** — a readable reference of all shortcuts (formatting shortcuts R23, save/force-save, find & replace, menu operations), so the user has an in-app reminder.
+  - **Keyboard shortcuts** — a readable reference of all shortcuts (formatting shortcuts R23, save/force-save, find & replace, print & export-to-PDF R52/R53, menu operations), so the user has an in-app reminder.
+
+### 5.11 Print & Export to PDF
+
+Both features render **only the active tab's rendered preview** — never the toolbar, tab strip, source editor, split divider, out-of-sync banner, or any open dialog. They share one print stylesheet (`@media print`), since Electron renders both `webContents.print()` and `webContents.printToPDF()` with PRINT media. *(Numbering note: R49–R51 are the non-functional requirements in §6; these new functional requirements take R52/R53.)*
+
+- **R52. Export to PDF (`File → Export to PDF…`, `Ctrl/Cmd+Shift+P`).** Writes the active document's rendered preview to a PDF. Export **always** presents a native Save As dialog, pre-filled with a suggested filename and folder; the PDF is written only on explicit confirmation, and canceling writes nothing — the dialog is both a safety catch and a clear indication of where the file lands. The default is the source file's name with a `.pdf` extension (`notes.md` → `notes.pdf`) in **the source file's folder**; with no file open it is `Galley document.pdf` in the user's Documents folder. **Page size Letter, 0.75in margins, backgrounds preserved**; the full document paginates (never clipped to the viewport). Save/IO errors surface as an error dialog, not a crash. *(Priority feature.)*
+- **R53. Print (`File → Print…`, `Ctrl/Cmd+P`).** Opens the OS print dialog for the active document's rendered preview, with the same chrome-stripped, full-document, backgrounds-on rendering as R52. Paper, margins, and headers beyond the defaults are the OS dialog's concern.
+- **R52a / R53a. Shared print-rendering rules.** The print stylesheet must: (1) **release the fixed-height scroll chain** (`.app` / `.split-view` / `.pane` / `.preview-scroll` height + overflow) so the whole document flows across pages instead of clipping to the viewport; (2) **hide all non-preview chrome**; (3) **keep backgrounds** (`printBackground: true` plus `print-color-adjust: exact`); (4) apply sensible pagination — avoid breaking inside code blocks / tables, and wrap long code lines and wide tables so they do not run off the page.
+- **R52b. No new runtime dependencies** — printing and PDF export use Electron's built-in `webContents` APIs (supports the §6 self-contained goal).
+- **R52c. Wiring.** The menu handlers run in the main process and call `webContents.print()` / `printToPDF()` directly — printing is main-process work and needs no renderer round-trip. The one fact main lacks, the active document's path (for the save-dialog default), is supplied by a single one-way `setActiveDocPath` signal from the renderer (analogous to `setSourceVisible`). *(IPC follows data ownership: Save / Save-As bounce through the renderer because the buffer and post-write state are renderer-owned; Export reads the live page main already controls and mutates no document state, so it does not.)*
+- **Out of scope this version:** page numbers / running headers-footers, an in-app page-size or margin chooser, and opening the PDF after export (see §3 and §12).
 
 ---
 
 ## 6. Non-functional requirements
 
 - **R49. Cross-platform:** runs on Windows and macOS.
-- **R50. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app.)*
+- **R50. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
 - **R51. Prototype-appropriate footprint:** bundle size and memory are heavier than a native-webview approach (bundled engine), an accepted tradeoff for this version. See §9 for the migration path if footprint becomes a concern.
 
 ---
@@ -347,6 +360,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 - Possible future: a **dynamic in-app control to swap the editor/preview pane order** (the fixed default is rendered view left, source right) — nice-to-have, gated behind the internationalization/RTL and accessibility work that is out of scope this version (§3).
 - Possible future: internationalization/localization (incl. RTL) and a dedicated accessibility pass (§3).
 - Possible future: migrate shell to Tauri if footprint warrants (§9).
+- Print/export polish: page numbers / running headers-footers, an in-app page-size & margin chooser, and "open the PDF after export" (§5.11).
 - Keybinding-collision checks at implementation: `Cmd/Ctrl+E` (inline code) and `Cmd/Ctrl+K` (link) against editor defaults.
 
 ---
@@ -393,6 +407,11 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Build output | `.dmg` (macOS), `.exe`/`.msi` (Windows) via Electron Forge/electron-builder; per-OS build, CI for both |
 | Licensing | MIT/permissive; bundle attribution notice (also in Help); $0 for personal use |
 | New-file creation | Out of scope (future) |
+| Print / Export to PDF | Active tab's rendered preview only; live-window `@media print` (chrome stripped, full document paginated, backgrounds on); built-in Electron `webContents` APIs, no new deps (R52/R53) |
+| PDF export flow | Always a pre-filled **Save As** dialog (confirm-to-write, never silent); default = source folder + name `.pdf`, else `Galley document.pdf` in Documents; Letter, 0.75in margins (R52) |
+| Print/export wiring | Main-direct menu handlers call `webContents.print`/`printToPDF`; one one-way `setActiveDocPath` mirror feeds the save-dialog default; no renderer round-trip (R52c) |
+| Print/export shortcuts | Print `Ctrl/Cmd+P`; Export to PDF `Ctrl/Cmd+Shift+P` |
+| Page numbers / headers-footers | Out of scope this version (future) |
 
 ---
 
