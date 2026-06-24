@@ -102,55 +102,73 @@ test('scroll is synchronized both ways in split view (R18)', async ({ page }) =>
   await toggle(page).click();
   await expect(editorPane(page)).toBeVisible();
 
-  // Preview leads: a wheel over it makes it the active pane (hover no longer
-  // does — that let a hovered preview steal the lead while typing). Then scroll;
-  // the editor should follow. Re-dispatch inside the poll so the assertion is
-  // robust against the preview's anchor map still building (async ResizeObserver).
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const ps = document.querySelector<HTMLElement>('.preview-scroll')!;
-        ps.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-        ps.scrollTop = Math.round(ps.scrollHeight * 0.5);
-        ps.dispatchEvent(new Event('scroll'));
-        return document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop;
-      }),
-    )
-    .toBeGreaterThan(50);
+  // The new model picks the leader from a REAL pointer-over (onPointerEnter) or
+  // focus — a synthetic WheelEvent no longer makes a pane the leader. So drive
+  // each direction with a real hover + real wheel (page.mouse.wheel), the same
+  // way tab-switch-scroll.spec.ts does. Wheel a moderate amount, well clear of
+  // the bottom, so the #18 co-arrival blend doesn't skew the follower; poll
+  // because the anchor map builds async (ResizeObserver) and the wheel is
+  // incremental. Move the pointer off between directions so the prior leader
+  // doesn't linger.
 
-  // Editor leads: reset, then drive the editor; the preview should follow.
+  // Editor leads: hover the editor pane, wheel it down; the preview should follow.
+  await page.locator('.pane-editor').hover();
+  await expect
+    .poll(async () => {
+      const ed = await page.evaluate(
+        () => document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop,
+      );
+      if (ed < 700) await page.mouse.wheel(0, 400);
+      return page.evaluate(
+        () => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop,
+      );
+    })
+    .toBeGreaterThan(50);
+  await page.mouse.move(0, 0);
+
+  // Reset both panes to the top, then drive the OTHER direction.
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 0;
     document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop = 0;
   });
+
+  // Preview leads: hover the preview pane, wheel it down; the editor should follow.
+  await page.locator('.pane-preview').hover();
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const cm = document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!;
-        cm.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-        cm.scrollTop = Math.round(cm.scrollHeight * 0.4);
-        cm.dispatchEvent(new Event('scroll'));
-        return document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop;
-      }),
-    )
+    .poll(async () => {
+      const pv = await page.evaluate(
+        () => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop,
+      );
+      if (pv < 700) await page.mouse.wheel(0, 400);
+      return page.evaluate(
+        () => document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop,
+      );
+    })
     .toBeGreaterThan(50);
+  await page.mouse.move(0, 0);
 });
 
 test('keyboard-scrolling the reading pane syncs the editor (R18)', async ({ page }) => {
   await toggle(page).click();
   await expect(editorPane(page)).toBeVisible();
-  // A keydown in the preview makes it the lead pane (like arrows / Page Down),
-  // so scrolling it drives the editor. Re-dispatch inside the poll (see above).
+
+  // The new model's focus-fallback leader: with the pointer over neither pane,
+  // the leader is the FOCUSED pane. `.preview-scroll` is tabIndex=0, so giving
+  // it real focus fires onFocusCapture on .pane-preview (focusedPane='preview')
+  // and makes the reading pane keyboard-scrollable. A real keypress (Page Down)
+  // then scrolls it for real, and onPreviewScroll drives the editor. Poll
+  // because the anchor map builds async and each keypress advances incrementally.
+  await page.locator('.preview-scroll').focus();
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const ps = document.querySelector<HTMLElement>('.preview-scroll')!;
-        ps.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
-        ps.scrollTop = Math.round(ps.scrollHeight * 0.5);
-        ps.dispatchEvent(new Event('scroll'));
-        return document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop;
-      }),
-    )
+    .poll(async () => {
+      const pv = await page.evaluate(
+        () => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop,
+      );
+      if (pv < 700) await page.keyboard.press('PageDown');
+      return page.evaluate(
+        () => document.querySelector<HTMLElement>('.pane-editor .cm-scroller')!.scrollTop,
+      );
+    })
     .toBeGreaterThan(50);
 });
 

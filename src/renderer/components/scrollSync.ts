@@ -51,3 +51,41 @@ export function scrollTopFor(anchors: Anchor[], line: number): number {
   }
   return anchors[anchors.length - 1].top;
 }
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+/**
+ * Blend the follower's line-anchored scroll target toward the follower's OWN max
+ * scroll as the leader approaches its end, so the two panes CO-ARRIVE at the
+ * bottom (#18). In the middle, top-line→top-line alignment is exact; but at the
+ * leader's bottom that alignment can leave the follower's tail hidden when the
+ * follower's content past that line is taller (e.g. math renders taller than its
+ * source) or shorter.
+ *
+ * Over the leader's final `blendPx` of scroll, a weight `w` ramps 0→1; the target
+ * is `lineAnchoredTop + w*(followerMax - lineAnchoredTop)`. So in the middle
+ * (w=0) the line-anchored position is unchanged, and at the leader's exact end
+ * (w=1) the follower lands exactly at `followerMax`. If the follower is shorter,
+ * `followerMax` is small and it simply stays clamped at its own end.
+ *
+ * @param lineAnchoredTop The px scrollTop the follower's line-anchoring would set.
+ * @param followerMax     The follower's max scrollTop (scrollHeight - clientHeight).
+ * @param leaderTop       The leader's current scrollTop.
+ * @param leaderMax       The leader's max scrollTop.
+ * @param blendPx         Width of the convergence window, in px of leader scroll.
+ */
+export function blendedFollowerTop(
+  lineAnchoredTop: number,
+  followerMax: number,
+  leaderTop: number,
+  leaderMax: number,
+  blendPx: number,
+): number {
+  const anchored = clamp(lineAnchoredTop, 0, Math.max(followerMax, 0));
+  if (leaderMax <= 0) return 0;
+  if (blendPx <= 0) return anchored;
+  const w = clamp((leaderTop - (leaderMax - blendPx)) / blendPx, 0, 1);
+  return anchored + w * (followerMax - anchored);
+}

@@ -20,7 +20,7 @@
 import './app.css';
 import './print.css';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { EditorState } from '@codemirror/state';
+import type { EditorState, StateEffect } from '@codemirror/state';
 import welcome from './welcome.md?raw';
 import { SplitView, type ViewMode } from './components/SplitView';
 import { ConflictDialog } from './components/ConflictDialog';
@@ -80,6 +80,17 @@ export function App() {
   // Reading position (preview scroll, px) per tab, so switching away and back
   // restores where you were — and a freshly opened tab starts at the top.
   const previewScroll = useRef<Map<string, number>>(new Map());
+  // The editor's scroll position per tab, captured as a CM6 ScrollTarget effect
+  // (view.scrollSnapshot()) — anchored to a DOCUMENT POSITION + pixel offset, not
+  // a raw scrollTop (#18). On a switch we re-dispatch it AFTER setState so CM
+  // re-applies it INSIDE the measure cycle and re-anchors as off-viewport line
+  // heights settle — exactly what a raw-scrollTop/line align cannot do (it reads
+  // block.top from ESTIMATED above-line heights and lands on the wrong pixel,
+  // then drifts as heights refine, worst under lineWrapping). The raw scrollTop
+  // (px) the snapshot was captured at rides alongside it, so restoreScroll can
+  // bound its height-warming sweep to the restored DEPTH instead of warming the
+  // whole doc on every switch (#18 perf).
+  const editorScrollFx = useRef<Map<string, { fx: StateEffect<unknown>; top: number }>>(new Map());
   // A `#fragment` from a clicked file link, applied once the target tab renders.
   const pendingFragment = useRef<string | null>(null);
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -177,21 +188,35 @@ export function App() {
     if (st) editorStates.current.set(id, st);
     const top = previewRef.current?.getScrollTop();
     if (top != null) previewScroll.current.set(id, top);
+    const fx = editorRef.current?.scrollSnapshot();
+    if (fx) editorScrollFx.current.set(id, { fx, top: editorRef.current?.getScrollTop() ?? 0 });
   };
 
   // Switch the active tab, stashing the current view and restoring the target's
   // editor state (or loading its text fresh if not stashed yet). The preview
-  // reading position is restored by the [activeId] effect once it re-renders.
+  // reading position is restored by the [activeId] effect once it re-renders;
+  // the editor is restored from its OWN stashed CM6 scroll snapshot (#18), which
+  // re-applies through the measure cycle and survives height refinement — no
+  // cross-component race with the preview's anchor rebuild.
   const switchTo = (id: string) => {
     const cur = activeIdRef.current;
     if (cur === id) return;
     if (cur) stashActiveView(cur);
     setActive(id);
     const stashed = editorStates.current.get(id);
-    if (stashed) editorRef.current?.setState(stashed);
-    else {
+    if (stashed) {
+      editorRef.current?.setState(stashed);
+      // Restore the editor scroll from its OWN stashed snapshot, dispatched as a
+      // FRESH transaction AFTER setState (setState replaces the whole state, so
+      // the effect can't ride inside it). CM re-anchors as heights settle. A
+      // tab that was never stashed has no snapshot → leave it at the top. A
+      // `#fragment` open lands the PREVIEW via pendingFragment in the [activeId]
+      // layout effect; the editor restore is independent and doesn't fight it.
+      const snap = editorScrollFx.current.get(id);
+      if (snap) editorRef.current?.restoreScroll(snap.fx, snap.top);
+    } else {
       const t = tabById(id);
-      if (t) editorRef.current?.setDoc(t.text);
+      if (t) editorRef.current?.setDoc(t.text); // fresh doc → starts at the top
     }
   };
 
@@ -230,6 +255,7 @@ export function App() {
     clearAutosave(id);
     editorStates.current.delete(id);
     previewScroll.current.delete(id);
+    editorScrollFx.current.delete(id);
     const remaining = tabsRef.current.filter((x) => x.id !== id);
     commitTabs(remaining);
     if (activeIdRef.current !== id) return;
@@ -241,8 +267,13 @@ export function App() {
     const next = remaining[Math.min(idx, remaining.length - 1)];
     setActive(next.id);
     const stashed = editorStates.current.get(next.id);
-    if (stashed) editorRef.current?.setState(stashed);
-    else editorRef.current?.setDoc(next.text);
+    if (stashed) {
+      editorRef.current?.setState(stashed);
+      const snap = editorScrollFx.current.get(next.id); // restore from own snapshot (#18)
+      if (snap) editorRef.current?.restoreScroll(snap.fx, snap.top);
+    } else {
+      editorRef.current?.setDoc(next.text); // fresh doc → top
+    }
   };
 
   // #20: drag-reorder the tab strip. Reorders the array only — activeId is an id,
@@ -369,7 +400,12 @@ export function App() {
       return;
     }
     const top = activeId ? (previewScroll.current.get(activeId) ?? 0) : 0;
-    previewRef.current?.setScrollTop(top);
+    // Re-assert the preview's OWN stashed px through its reflow-settle window
+    // (#18): a one-shot setScrollTop is clamped too high before the new tab's
+    // data: images decode / KaTeX lays out, leaving the preview stranded near the
+    // top. restoreScrollTop keeps re-applying the px until the content has grown
+    // enough that it's no longer clamped (or a bounded deadline passes).
+    previewRef.current?.restoreScrollTop(top);
   }, [activeId]);
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;

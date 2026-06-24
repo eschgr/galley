@@ -11,14 +11,22 @@
  * switches (hidden with display:none, not unmounted) so edits, undo history, and
  * scroll position survive; it is re-measured when it becomes visible again.
  *
- * Scroll sync uses an "active pane" lead: only the pane the user is interacting
- * with (hover / focus) drives the other. This avoids the feedback loop a naive
- * two-way sync would create (programmatic scroll of B firing B's scroll handler
- * and echoing back), without timing hacks.
+ * Scroll sync uses a single "active leader" pane, chosen by user presence: the
+ * pane the pointer is over (covers wheel AND native scrollbar drag — both happen
+ * over that pane), falling back to the focused pane when the pointer is over
+ * neither (keyboard scrolling). ONLY the leader's scroll drives the follower; the
+ * follower's own scroll events — the programmatic echo, and the reflow-induced
+ * scrolls fired when images/math decode — are ignored, because the follower is
+ * never the pointer-over pane while you are driving. That immunity to
+ * follower-induced scrolls is what keeps it from feedback-jumping, with no
+ * suppress flags or timing hacks. (Trade-off: typing in the editor while the
+ * mouse hovers the preview won't drive the preview until the mouse moves — a
+ * minor edge, far better than the feedback jumping it replaces.)
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
+import { blendedFollowerTop } from './scrollSync';
 export type { PreviewHandle };
 
 export type ViewMode = 'split' | 'preview';
@@ -45,7 +53,13 @@ const MIN_PCT = 20;
 const MAX_PCT = 80;
 
 export function SplitView({ initialDoc, source, onSourceChange, editorRef, previewRef, viewMode, onLink, onOpenLocal }: SplitViewProps) {
-  const active = useRef<'editor' | 'preview' | null>(null);
+  // The active leader is the pane the pointer is over (covers wheel + scrollbar
+  // drag), falling back to the focused pane (keyboard) when the pointer is over
+  // neither. Only the leader drives the follower; the follower's own scroll
+  // events are ignored because it isn't the pointer-over pane — no feedback loop.
+  const pointerPane = useRef<'editor' | 'preview' | null>(null);
+  const focusedPane = useRef<'editor' | 'preview' | null>(null);
+  const activeLeader = () => pointerPane.current ?? focusedPane.current;
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -56,20 +70,28 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, previ
   const showPreview = true; // the rendered view is shown in both modes
   const showDivider = viewMode === 'split';
 
-  // When the editor returns to view, re-measure it and align it to the line the
-  // preview is currently showing — otherwise it reveals at its old scroll
-  // position and only re-syncs on the next scroll.
+  // Re-align the editor to the line the preview is currently showing when the
+  // editor returns to view (reveal) — otherwise it comes back from display:none
+  // showing its old scroll position and only re-syncs on the next scroll.
   //
-  // Timing is awkward: the editor must re-measure (it was display:none), and the
-  // preview reflows a beat later — its pane changes width and, in the real app,
-  // the window also doubles on reveal (async, via the main process). So align
-  // immediately, on the next frame, and again whenever the preview reports its
-  // layout has settled (see onPreviewLayout) for a short window after reveal —
-  // reading the preview's current top line each time so the editor lands on the
-  // preview's final position.
+  // This is REVEAL-ONLY (keyed on [showEditor]). The tab-switch editor restore
+  // lives in App, which restores the editor from its OWN stashed CM6 scroll
+  // snapshot (view.scrollSnapshot(), #18) — decoupled from the preview's async
+  // anchor rebuild and surviving CM6's height refinement. Deriving the editor's
+  // line from preview.getTopLine() on a switch raced that rebuild and landed the
+  // editor on the OLD tab's geometry; App's own-stash restore removes the race,
+  // so the switch case is no longer here.
+  //
+  // Timing on reveal is awkward: the editor must re-measure (it was
+  // display:none), and the preview reflows a beat later — its pane changes width
+  // and, in the real app, the window also doubles on reveal (async, via the main
+  // process). So align immediately, on the next frame, and again whenever the
+  // preview reports its layout has settled (see onPreviewLayout) for a short
+  // window — reading the preview's current top line each time so the editor
+  // lands on its final spot.
   const realignUntil = useRef(0);
   useEffect(() => {
-    if (!showEditor) return;
+    if (!showEditor) return; // preview-only: never scroll the hidden editor
     const ed = editorRef.current;
     const pv = previewRef.current;
     if (!ed) return;
@@ -91,13 +113,38 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, previ
     editorRef.current?.alignTo(previewRef.current?.getTopLine() ?? 0);
   };
 
+  // Drive the follower from the leader: keep the line-anchored alignment in the
+  // middle, but blend the follower toward its OWN max over the leader's final
+  // screenful so both panes reach the bottom together (#18). blendPx = the
+  // leader's viewport height (one screenful), but capped at leaderMax so the
+  // blend window never extends above scrollTop 0 — otherwise a leader whose
+  // content barely exceeds its viewport (clientHeight > maxScroll) would pull the
+  // follower off its top even at leaderTop=0.
+  const syncFollower = (
+    leader: EditorHandle | PreviewHandle,
+    follower: EditorHandle | PreviewHandle,
+  ) => {
+    const lineAnchoredTop = follower.scrollTopForLine(leader.getTopLine());
+    const followerMax = follower.maxScroll();
+    const leaderMax = leader.maxScroll();
+    const blendPx = Math.max(1, Math.min(leader.clientHeight(), leaderMax));
+    const target = blendedFollowerTop(lineAnchoredTop, followerMax, leader.getScrollTop(), leaderMax, blendPx);
+    // Skip a no-op write; the follower's resulting echo scroll is ignored anyway
+    // (it isn't the active leader), so no flag is needed.
+    if (Math.abs(target - follower.getScrollTop()) >= 1) follower.setScrollTop(target);
+  };
+
   const onEditorScroll = () => {
-    if (viewMode !== 'split' || active.current !== 'editor') return;
-    previewRef.current?.scrollToLine(editorRef.current?.getTopLine() ?? 0);
+    if (viewMode !== 'split' || activeLeader() !== 'editor') return;
+    const ed = editorRef.current;
+    const pv = previewRef.current;
+    if (ed && pv) syncFollower(ed, pv);
   };
   const onPreviewScroll = () => {
-    if (viewMode !== 'split' || active.current !== 'preview') return;
-    editorRef.current?.scrollToLine(previewRef.current?.getTopLine() ?? 0);
+    if (viewMode !== 'split' || activeLeader() !== 'preview') return;
+    const ed = editorRef.current;
+    const pv = previewRef.current;
+    if (ed && pv) syncFollower(pv, ed);
   };
 
   const onDividerDown = (e: React.PointerEvent) => {
@@ -121,12 +168,9 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, previ
       <div
         className="pane pane-preview"
         style={{ display: showPreview ? 'block' : 'none' }}
-        // Lead on a deliberate scroll of this pane, not mere hover — otherwise
-        // hovering the preview while typing in the editor would steal the lead
-        // and the two would drift out of sync. Wheel or keyboard (arrows /
-        // Page Up-Down) both count.
-        onWheelCapture={() => (active.current = 'preview')}
-        onKeyDownCapture={() => (active.current = 'preview')}
+        onPointerEnter={() => (pointerPane.current = 'preview')}
+        onPointerLeave={() => { if (pointerPane.current === 'preview') pointerPane.current = null; }}
+        onFocusCapture={() => (focusedPane.current = 'preview')}
       >
         <Preview
           ref={previewRef}
@@ -151,11 +195,9 @@ export function SplitView({ initialDoc, source, onSourceChange, editorRef, previ
           display: showEditor ? 'block' : 'none',
           width: viewMode === 'split' ? `${editorPct}%` : '100%',
         }}
-        // Typing or arrow-key navigation (which can scroll the editor) makes the
-        // editor the lead pane, so the preview follows the cursor.
-        onKeyDownCapture={() => (active.current = 'editor')}
-        onWheelCapture={() => (active.current = 'editor')}
-        onFocusCapture={() => (active.current = 'editor')}
+        onPointerEnter={() => (pointerPane.current = 'editor')}
+        onPointerLeave={() => { if (pointerPane.current === 'editor') pointerPane.current = null; }}
+        onFocusCapture={() => (focusedPane.current = 'editor')}
       >
         <Editor
           ref={editorRef}
