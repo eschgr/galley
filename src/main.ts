@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
+import { registerAppVersionIpc } from './main/appVersion';
 import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -104,15 +105,10 @@ function requestHelp(): void {
 // window safe, like readingWidth above; null on the welcome screen.
 const activeDocPath = new Map<number, string | null>();
 
-// App version for the Help window (R48). Sourced from app.getVersion(), which
-// reads package.json in dev and the packaged app's baked-in version in a release
-// — so Help always shows the real version. (The old preload fallback to
-// process.env.npm_package_version showed a stale hardcoded 0.1.0 in packaged
-// builds, where that env var is absent.) Synchronous so the preload can expose
-// `window.mdtool.version` as a plain string at load time.
-ipcMain.on('app:version', (event) => {
-  event.returnValue = app.getVersion();
-});
+// App version for the Help window (R48) — synchronous `app:version` channel
+// returning app.getVersion(); see src/main/appVersion.ts (extracted so the
+// handler is unit-testable). The preload exposes it as `window.mdtool.version`.
+registerAppVersionIpc(ipcMain, app);
 
 ipcMain.handle('window:setActiveDocPath', (event, p) => {
   const win = BrowserWindow.fromWebContents(event.sender);
