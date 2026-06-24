@@ -104,6 +104,16 @@ function requestHelp(): void {
 // window safe, like readingWidth above; null on the welcome screen.
 const activeDocPath = new Map<number, string | null>();
 
+// App version for the Help window (R48). Sourced from app.getVersion(), which
+// reads package.json in dev and the packaged app's baked-in version in a release
+// — so Help always shows the real version. (The old preload fallback to
+// process.env.npm_package_version showed a stale hardcoded 0.1.0 in packaged
+// builds, where that env var is absent.) Synchronous so the preload can expose
+// `window.mdtool.version` as a plain string at load time.
+ipcMain.on('app:version', (event) => {
+  event.returnValue = app.getVersion();
+});
+
 ipcMain.handle('window:setActiveDocPath', (event, p) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) activeDocPath.set(win.id, typeof p === 'string' ? p : null);
