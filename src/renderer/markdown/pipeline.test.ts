@@ -60,6 +60,25 @@ describe('link rendering policy (validateLink)', () => {
   });
 });
 
+describe('image sources (#25 — remote web images)', () => {
+  it('renders a remote https image as an <img> with its src', () => {
+    const html = renderMarkdown('![a cat](https://example.com/cat.png)');
+    expect(html).toContain('<img');
+    expect(html).toContain('src="https://example.com/cat.png"');
+    expect(html).toContain('alt="a cat"');
+  });
+
+  it('still renders an inline data: image', () => {
+    const html = renderMarkdown('![dot](data:image/png;base64,iVBORw0KGgo=)');
+    expect(html).toContain('src="data:image/png;base64,iVBORw0KGgo="');
+  });
+
+  it('does not emit a javascript: image src', () => {
+    const html = renderMarkdown('![x](javascript:alert(1))');
+    expect(html).not.toContain('src="javascript:');
+  });
+});
+
 describe('GFM rendering (R1)', () => {
   it('renders tables', () => {
     const html = renderMarkdown('| A | B |\n|---|---|\n| 1 | 2 |');

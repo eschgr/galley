@@ -5,12 +5,18 @@
     <!--
       Content-Security-Policy: lock the renderer down. No remote code, no inline
       script. 'unsafe-inline' for styles is permitted because KaTeX and the
-      preview inject inline style attributes. Tighten further once the styling
-      approach is settled.
+      preview inject inline style attributes.
+
+      img-src allows https: so Markdown can display remote web images (#25), plus
+      data: (inline base64) and 'self'. Trade-off: a remote image leaks the
+      viewer's IP to its host and can act as a tracking pixel in untrusted docs —
+      accepted in exchange for showing web images. http: is intentionally
+      excluded (insecure); add it here only if non-TLS images are needed.
+      script-src stays 'self' — code execution is NOT loosened.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
     />
     <title>Galley</title>
   </head>
