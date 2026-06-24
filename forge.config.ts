@@ -57,11 +57,19 @@ const config: ForgeConfig = {
     // at package time, before code signing the application
     new FusesPlugin({
       version: FuseVersion.V1,
+      // Re-apply an ad-hoc signature after flipping fuses. On Apple Silicon any
+      // fuse flip modifies the binary and invalidates Electron's ad-hoc code
+      // signature, so an unsigned arm64 build is killed on launch — this resets
+      // it. https://www.electronjs.org/docs/latest/tutorial/fuses
+      resetAdHocDarwinSignature: true,
       [FuseV1Options.RunAsNode]: false,
       [FuseV1Options.EnableCookieEncryption]: true,
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      // OFF: with this on, the packaged app instantly exits on macOS
+      // (electron/fuses#7). We don't code-sign/notarize, so the ASAR integrity
+      // header isn't validated reliably on macOS; keep it off so the build runs.
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: false,
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
