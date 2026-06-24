@@ -85,15 +85,17 @@ jobs:
           name: Galley ${{ github.ref_name }}
           fail_on_unmatched_files: true
           files: dist/**/*
+          # Auto-build the "What's Changed" changelog from PRs merged since the
+          # previous tag. The `body` below is PRE-PENDED to those generated notes
+          # (softprops/action-gh-release behaviour), so the download/install help
+          # sits above the changelog. Keeps the unsigned-launch steps users need
+          # while the per-release changelog stays automatic.
+          generate_release_notes: true
           body: |
-            Galley — a local markdown viewer & editor for reviewing and correcting LLM-generated markdown.
+            **Downloads** — pick the build for your machine:
+            - **Windows (x64):** the `*-Setup.exe` installer.
+            - **macOS (Apple Silicon):** the `*-darwin-arm64-*.zip` — unzip and move **Galley.app** to Applications.
 
-            Download the build for your machine:
-            - **Windows (x64):** the `*-Setup.exe` installer — download and run.
-            - **macOS (Apple Silicon):** the `*-darwin-arm64-*.zip`
-
-            Everything is bundled — no Node, npm, or dependencies to download on the target machine. On macOS, unzip and move **Galley.app** to Applications.
-
-            **These builds are unsigned**, so the OS warns on first launch:
+            Builds are **unsigned**, so the OS warns on first launch:
             - Windows SmartScreen → **More info → Run anyway**.
             - macOS Gatekeeper → right-click the app → **Open** and confirm (or run `xattr -dr com.apple.quarantine Galley.app`).
