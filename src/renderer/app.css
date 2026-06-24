@@ -69,6 +69,29 @@
   background: #ffffff;
   border-color: #d0d7de;
 }
+.tab[draggable='true'] {
+  cursor: grab;
+}
+/* #20: while dragging, the dragged tab is rendered in its prospective landing
+ * slot as a translucent "shadow" so the drop position is obvious. The other
+ * tabs occupy their shifted positions around it. */
+.tab.shadow {
+  opacity: 0.4;
+  background: #eaeef2;
+  border-color: #d0d7de;
+  border-style: dashed;
+}
+/* #20: while a drag is in progress, make the inner buttons non-interactive so
+ * every dragover/dragenter lands on the `.tab`/`.tab-strip` directly. This stops
+ * the native drag target from churning across the `.tab-label`/`.tab-close`
+ * child boundaries (notably the rightmost × at the tab's end), which was making
+ * Chromium flash the not-allowed (red [x]) cursor before the container handler
+ * could reassert dropEffect='move'. Reverts when the drag ends and the class is
+ * removed; has no effect on normal (non-drag) clicking of the label or ×. */
+.tab-strip.is-dragging .tab-label,
+.tab-strip.is-dragging .tab-close {
+  pointer-events: none;
+}
 .tab-label {
   display: flex;
   align-items: center;
