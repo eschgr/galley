@@ -21,17 +21,15 @@ function cspDirectives(): Record<string, string> {
 }
 
 describe('renderer Content-Security-Policy (index.html)', () => {
-  it('allows remote https images, plus inline data: and self (#25)', () => {
+  it('allows remote web images (http + https), plus inline data: and self (#25)', () => {
     const img = cspDirectives()['img-src'];
     expect(img).toContain("'self'");
     expect(img).toContain('data:');
     expect(img).toContain('https:');
-  });
-
-  it('does NOT allow insecure http images (intentional)', () => {
-    // 'https:' does not contain the substring 'http:' — so this only trips if
-    // an explicit http: source is added.
-    expect(cspDirectives()['img-src']).not.toContain('http:');
+    // a local document viewer should show whatever an image link points at,
+    // incl. non-TLS / LAN hosts. 'https:' does not contain the 'http:' token,
+    // so this only passes when http: is explicitly listed.
+    expect(img).toContain('http:');
   });
 
   it('keeps code execution locked: script-src is self only', () => {
