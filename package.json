@@ -1,7 +1,7 @@
 {
   "name": "mdtool",
   "productName": "Galley",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local markdown viewer & editor — live split-view preview, GFM + LaTeX math, per-project tabs.",
   "main": ".vite/build/main.js",
   "private": true,
