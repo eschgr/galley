@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
+import { registerAppVersionIpc } from './main/appVersion';
 import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -103,6 +104,11 @@ function requestHelp(): void {
 // in main (webContents.print / printToPDF), not via a menu round-trip. Multi-
 // window safe, like readingWidth above; null on the welcome screen.
 const activeDocPath = new Map<number, string | null>();
+
+// App version for the Help window (R48) — synchronous `app:version` channel
+// returning app.getVersion(); see src/main/appVersion.ts (extracted so the
+// handler is unit-testable). The preload exposes it as `window.mdtool.version`.
+registerAppVersionIpc(ipcMain, app);
 
 ipcMain.handle('window:setActiveDocPath', (event, p) => {
   const win = BrowserWindow.fromWebContents(event.sender);

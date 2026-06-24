@@ -9,7 +9,10 @@ import type { MdtoolApi, OpenedFile } from './shared/api';
 
 const api: MdtoolApi = {
   platform: process.platform,
-  version: process.env.npm_package_version ?? '0.1.0',
+  // App version for the Help window — sourced from main's app.getVersion() (reads
+  // package.json in dev / the packaged version in a release), so it tracks every
+  // release with no manual edits. sendSync is fine here: one tiny call at load.
+  version: ipcRenderer.sendSync('app:version') as string,
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   openLocalFile: (href: string, fromPath: string) => {
     void ipcRenderer.invoke('file:openLocal', { href, from: fromPath });
