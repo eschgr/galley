@@ -17,6 +17,10 @@ USAGE
   Paths may be absolute or relative (relative resolves against the current
   directory). Passing several files opens several tabs; the first is focused.
 
+  Note: "galley" above stands for however the Galley executable is launched on
+  this machine — the installed Galley.exe / Galley.app, or `npm start --` in a
+  dev checkout. There is not necessarily a command named "galley" on your PATH.
+
 DRIVING GALLEY FROM AN LLM — the launcher contract
   Galley is NOT a singleton and does NOT coordinate instances. Each window is one
   process listening on one "channel". The CALLER (you), not the app, owns the
@@ -25,9 +29,10 @@ DRIVING GALLEY FROM AN LLM — the launcher contract
   - One project => one channel => one window. Keep a project's documents in a
     single window by always using the SAME channel for that project; keep two
     projects apart by using two different channels.
-  - Derive the channel NAME from a stable key — normally a short, stable,
-    filesystem-safe hash of the project's ABSOLUTE ROOT DIRECTORY. Same root =>
-    same name => same window, even in a later session. Do NOT key on PID.
+  - Derive the channel NAME as a short, filesystem-safe token from the project's
+    ABSOLUTE ROOT DIRECTORY — e.g. the first 8 hex characters of its SHA-256.
+    Use the SAME recipe every time so the same project always maps to the same
+    name => the same window, even in a later session. Do NOT key on PID.
   - The channel name maps to an OS transport address (derive it the same way the
     app does):
         Windows:        \\.\pipe\mdtool-<name>      (named pipe)
@@ -44,6 +49,15 @@ DRIVING GALLEY FROM AN LLM — the launcher contract
     5. Always use ABSOLUTE paths. Re-sending an already-open file just focuses
        its tab (no duplicate). Launching with --channel but no file opens an
        empty window bound to that channel, ready to receive files.
+
+  Probe + send concretely (no extra tools; <address> is the pipe/socket above):
+    - Portable, via Node — this is exactly how Galley's own channel test drives
+      it. A failed connect is the probe (exit non-zero => nothing listening, so
+      LAUNCH instead); a successful connect sends the path and exits 0:
+        node -e "const n=require('net'),s=n.connect(process.argv[1],()=>s.end(process.argv[2]+'\n'));s.on('error',()=>process.exit(1))" "<address>" "<absolute_path>"
+    - Windows-native (PowerShell, no Node) — Connect(timeoutMs) throwing is the
+      probe; otherwise write the path + newline:
+        powershell -c "$p=[IO.Pipes.NamedPipeClientStream]::new('.','mdtool-<name>','Out');try{$p.Connect(300)}catch{exit 1};$w=[IO.StreamWriter]::new($p);$w.WriteLine('<absolute_path>');$w.Dispose();$p.Dispose()"
 
 WHAT GALLEY RENDERS
   GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks), LaTeX

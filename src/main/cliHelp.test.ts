@@ -49,6 +49,16 @@ describe('buildCliHelp', () => {
     expect(help.toLowerCase()).toContain('absolute');
   });
 
+  it('gives a concrete, executable probe/send recipe (Node + Windows-native)', () => {
+    expect(help).toContain('node -e'); // portable one-liner
+    expect(help).toContain('NamedPipeClientStream'); // Windows-native, no Node
+  });
+
+  it('pins a canonical channel-name recipe and flags "galley" as a placeholder', () => {
+    expect(help).toContain('SHA-256'); // concrete, reproducible name derivation
+    expect(help).toContain('PATH'); // "galley" is not necessarily a PATH command
+  });
+
   it('explains what it is for (LLM-generates / human-reviews)', () => {
     expect(help.toLowerCase()).toContain('markdown');
     expect(help).toMatch(/LLM/);
