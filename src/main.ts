@@ -5,12 +5,26 @@ import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
 import { registerAppVersionIpc } from './main/appVersion';
+import { buildCliHelp, wantsHelp } from './main/cliHelp';
 import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+// `--help` / `-h` (issue #38): print the LLM-oriented usage to stdout and exit
+// before opening any window. Handled here, as early as possible, so a `galley
+// --help` never flashes a window. The text (src/main/cliHelp.ts) is geared at an
+// LLM driving the app and mirrors the PRD Appendix A launcher contract.
+//
+// Caveat: a Windows GUI-subsystem packaged build may not attach to the parent
+// console, so stdout can be lost there; it works from a dev launch
+// (`npm start -- --help`) and any console-attached invocation.
+if (wantsHelp(process.argv)) {
+  process.stdout.write(buildCliHelp(app.getVersion()) + '\n');
+  app.exit(0);
 }
 
 // All OS-touching file work goes through the platform seam (PRD §7/§9).
