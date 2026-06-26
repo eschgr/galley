@@ -17,6 +17,10 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual trigger: run the build + macOS signature verify on a branch to confirm
+  # a fix before merging. No release is published on a manual run (the `release`
+  # job is gated to tag pushes below).
+  workflow_dispatch:
 
 permissions:
   contents: write # needed to create the Release and upload assets
@@ -45,20 +49,48 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: Build distributables
+      # --- Windows: Squirrel make, then stage the installer ---
+      - name: Build distributables (Windows)
+        if: runner.os == 'Windows'
         run: npm run make
 
-      # Collect just the user-facing installer/archive into a flat dist/ folder.
-      # find/basename keeps this robust to Forge's per-OS output paths; spaces in
-      # the Windows installer name are normalised to hyphens.
-      - name: Stage artifacts
+      - name: Stage artifacts (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p dist
           find out/make -name '*.exe' | while read -r f; do
             cp "$f" "dist/$(basename "$f" | tr ' ' '-')"
           done
-          find out/make -name '*.zip' -exec cp {} dist/ \;
+          ls -la dist
+
+      # --- macOS: package, DEEP ad-hoc re-sign the bundle, verify, then zip ---
+      # The fuse flip + the asar-integrity write into Info.plist invalidate
+      # Electron's prebuilt ad-hoc signature. resetAdHocDarwinSignature re-signs
+      # the binary but does NOT seal the bundle's Info.plist ("Info.plist not
+      # bound"), so the .app is rejected as "damaged" on Apple Silicon (#34). A
+      # deep bundle re-sign fixes it; `codesign --verify` then GATES the build so a
+      # broken seal fails CI here instead of shipping. (npm run package applies the
+      # fuses first; we re-sign after, then zip the signed .app ourselves.)
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: npm run package
+
+      - name: Deep ad-hoc sign + verify + zip (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app="$(find out -maxdepth 2 -name 'Galley.app' -type d | head -1)"
+          if [ -z "$app" ]; then echo "Galley.app not found under out/"; exit 1; fi
+          echo "Signing: $app"
+          codesign --force --deep --sign - "$app"
+          # Gate: a valid (even ad-hoc) seal must verify, or the build fails here.
+          codesign --verify --deep --verbose=2 "$app"
+          echo "Signature verified OK."
+          mkdir -p dist
+          ver="${GITHUB_REF_NAME//\//-}" # tag (v0.2.2) on a release; sanitised branch on manual runs
+          # ditto preserves the signature, symlinks, and resource forks in the zip.
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist/Galley-darwin-arm64-${ver}.zip"
           ls -la dist
 
       - uses: actions/upload-artifact@v6
@@ -70,6 +102,9 @@ jobs:
   release:
     name: Publish Release
     needs: build
+    # Publish only on a real version tag — a manual workflow_dispatch run builds
+    # and verifies the macOS signature but does NOT create a release.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v7
