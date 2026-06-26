@@ -1,0 +1,59 @@
+Galley {{VERSION}} — a local Markdown viewer & editor.
+
+Galley renders and edits Markdown files on your machine. It exists for a workflow
+where an LLM (e.g. Claude) GENERATES Markdown and a human REVIEWS and corrects it:
+the LLM writes a file to disk and opens it in Galley; the human reads the rendered
+view, edits if needed, and Galley auto-saves. Galley also auto-refreshes an open
+file when it changes on disk, so when the LLM regenerates that file the visible
+tab updates on its own. The file on disk is the shared medium between the two —
+you (the LLM) produce files; the human reads and corrects them here.
+
+USAGE
+  galley [file ...]                   Open one or more Markdown files, each in a tab.
+  galley --channel <name> [file ...]  Also listen on a channel for more files (below).
+  galley --devtools                   Open developer tools on launch.
+  galley --help, -h                   Print this help and exit.
+
+  Paths may be absolute or relative (relative resolves against the current
+  directory). Passing several files opens several tabs; the first is focused.
+
+DRIVING GALLEY FROM AN LLM — the launcher contract
+  Galley is NOT a singleton and does NOT coordinate instances. Each window is one
+  process listening on one "channel". The CALLER (you), not the app, owns the
+  lifecycle and decides whether to reuse a window or launch a new one.
+
+  - One project => one channel => one window. Keep a project's documents in a
+    single window by always using the SAME channel for that project; keep two
+    projects apart by using two different channels.
+  - Derive the channel NAME from a stable key — normally a short, stable,
+    filesystem-safe hash of the project's ABSOLUTE ROOT DIRECTORY. Same root =>
+    same name => same window, even in a later session. Do NOT key on PID.
+  - The channel name maps to an OS transport address (derive it the same way the
+    app does):
+        Windows:        \\.\pipe\mdtool-<name>      (named pipe)
+        macOS / Linux:  <tmpdir>/mdtool-<name>.sock     (Unix-domain socket)
+
+  To show a file:
+    1. Compute the channel name from the project root, and its address.
+    2. Probe: try to connect to that address.
+    3. If a window IS listening  -> SEND the file's absolute path over the
+       channel, terminated by a newline ("<absolute_path>\n"). It opens as a new
+       tab, or focuses the tab if that file is already open.
+    4. If NOTHING is listening   -> LAUNCH a window bound to the channel and give
+       it the file:   galley --channel <name> <absolute_path>
+    5. Always use ABSOLUTE paths. Re-sending an already-open file just focuses
+       its tab (no duplicate). Launching with --channel but no file opens an
+       empty window bound to that channel, ready to receive files.
+
+WHAT GALLEY RENDERS
+  GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks), LaTeX
+  math via KaTeX ($...$, $$...$$, \(...\), \[...\]), and syntax-highlighted
+  fenced code. Remote https and inline data: images load; links open in the
+  system browser. Aimed at faithfully matching typical LLM Markdown output.
+
+THE APP
+  A source editor beside a live preview with synchronized scrolling; tabs for
+  multiple documents; Show/Hide Source; formatting shortcuts (bold, italic, link,
+  headings, lists). Edits auto-save (debounced); external changes auto-refresh
+  with conflict handling that never silently discards unsaved edits. Print and
+  Export to PDF live in the File menu.
