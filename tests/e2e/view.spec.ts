@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { installMockBridge, openFile } from './mockBridge';
 
 // Helpers run in the page context to read scroll/line geometry the same way the
 // app does (data-source-line anchors for the preview; the gutter for the editor).
@@ -195,19 +196,20 @@ test('revealing the source aligns the editor to the line being read (regression)
 
 test('clicking an in-page anchor link jumps to that heading (R4)', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 320 }); // short, so the target is below the fold
+  // Seed the doc through the app's REAL open-file path (no typing). Building this
+  // fixture by typing into the editor used to leave the editor as the scroll-sync
+  // leader and reset the preview by hand — a race the open path avoids: a freshly
+  // opened doc renders with the preview at the top, link in view, target below the
+  // fold. (The other view.spec tests run the real welcome page with no bridge, so
+  // the bridge is installed ONLY here, not in beforeEach.)
+  await installMockBridge(page);
   await page.goto('/');
-  await toggle(page).click(); // Show Source
-  await expect(editorPane(page)).toBeVisible();
-  await page.locator('.cm-content').click();
-  await page.keyboard.press('Control+a');
   const filler = Array.from({ length: 16 }, (_, i) => `Filler paragraph number ${i}.`).join('\n\n');
-  await page.keyboard.type(`[jump to target](#target-heading)\n\n${filler}\n\n## Target heading\n`);
+  const content = `[jump to target](#target-heading)\n\n${filler}\n\n## Target heading\n`;
+  await openFile(page, { path: 'C:\\docs\\anchor.md', content, hash: 'h' });
 
   const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
-  // Typing left the cursor (and the preview) at the bottom; reset to the top so
-  // the link is in view and the target heading is below the fold.
-  await page.evaluate(() => (document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 0));
-  expect(await scrollTop()).toBe(0);
+  await expect.poll(scrollTop).toBe(0); // a freshly opened doc starts at the top
   await page.locator('.markdown-preview a', { hasText: 'jump to target' }).click();
   await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the heading
 });
