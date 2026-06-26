@@ -76,7 +76,9 @@ async function installMockBridge(
         return () => (harness.helpCb = null);
       },
       // #19 tab cycling — App subscribes on mount, so the mock must provide these
-      // or its startup effect throws. No test here fires them; no-op is enough.
+      // or its startup effect throws. This file covers open/edit/save/close, not
+      // cycling; the Ctrl+Tab path (App.cycle -> switchTo) is exercised in
+      // tab-switch-scroll.spec.ts, which fires these callbacks. No-op here.
       onNextTab: () => () => {},
       onPrevTab: () => () => {},
       onExternalChange: (cb: (f: MockFile) => void) => {

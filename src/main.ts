@@ -5,7 +5,8 @@ import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
 import { registerAppVersionIpc } from './main/appVersion';
-import { createPlatformBridge, channelAddress, type SaveResult, type FileSnapshot } from './main/platform';
+import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
+import { readStartupFiles } from './main/startupFiles';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -193,19 +194,16 @@ ipcMain.handle('file:write', async (_event, args: unknown): Promise<SaveResult> 
 // a dialog and is skipped, never fatal to the remaining files.
 ipcMain.handle('file:getStartup', async (event) => {
   const paths = startupFilePaths;
-  startupFilePaths = [];
+  startupFilePaths = []; // pulled once
   const win = BrowserWindow.fromWebContents(event.sender);
-  const snapshots: FileSnapshot[] = [];
-  for (const absPath of paths) {
-    try {
-      const snapshot = await platform.readFile(absPath);
+  return readStartupFiles(
+    paths,
+    (absPath) => platform.readFile(absPath),
+    (absPath) => {
       if (win) watchFile(win, absPath);
-      snapshots.push(snapshot);
-    } catch (err) {
-      dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
-    }
-  }
-  return snapshots;
+    },
+    (absPath, err) => dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`),
+  );
 });
 
 // Read a file on demand (R31a reload, and opening a file already known to the
