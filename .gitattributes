@@ -1,0 +1,8 @@
+# Empty the auto-generated GitHub "Source code (zip/tar.gz)" release archives.
+# GitHub builds those from the tag with `git archive`, which honours
+# `export-ignore`, so excluding the whole tree leaves those (unremovable) links
+# pointing at empty downloads — the source isn't distributed via Releases.
+#
+# This only affects `git archive` output. `git clone` / `actions/checkout`
+# ignore export-ignore, so the CI build still checks out the full source.
+* export-ignore
