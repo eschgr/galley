@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import type { MdtoolApi } from '../../src/shared/api';
 
 // The renderer's open/edit/save flow, driven through a MOCK main-process bridge
 // installed before the app loads. The real file IO (read/write/hash, CLI parse)
@@ -43,6 +44,11 @@ async function installMockBridge(
       },
       openLocalFile: (href: string, from: string) => harness.openLocalCalls.push({ href, from }),
       setSourceVisible: async () => {},
+      // App mirrors the active doc path to main (for the Export-to-PDF default) on
+      // every tab change; the renderer calls window.mdtool?.setActiveDocPath(...),
+      // and `?.` only guards mdtool being null — a MISSING method still throws and
+      // crashes <App> on mount. So the mock must implement the whole bridge.
+      setActiveDocPath: () => {},
       getStartupFiles: async () => startupFiles,
       saveFile: async (path: string, content: string, force?: boolean) => {
         harness.saveCalls.push({ path, content, force: !!force });
@@ -85,7 +91,10 @@ async function installMockBridge(
         harness.extCb = cb;
         return () => (harness.extCb = null);
       },
-    };
+      // `satisfies` makes a missing/renamed bridge method a COMPILE error here,
+      // instead of a runtime "X is not a function" crash that only surfaces in a
+      // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
+    } satisfies MdtoolApi;
   }, startup);
 }
 
