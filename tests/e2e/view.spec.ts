@@ -205,7 +205,12 @@ test('clicking an in-page anchor link jumps to that heading (R4)', async ({ page
 
   const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
   // Typing left the cursor (and the preview) at the bottom; reset to the top so
-  // the link is in view and the target heading is below the fold.
+  // the link is in view and the target heading is below the fold. First take the
+  // leader away from the editor — pointer off both panes, focus on the preview —
+  // so a TRAILING editor scroll from the last keystroke can't re-run follow-sync
+  // and drive the preview back off 0 after we reset it (a sub-1% race otherwise).
+  await page.mouse.move(0, 0);
+  await page.locator('.preview-scroll').focus();
   await page.evaluate(() => (document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 0));
   expect(await scrollTop()).toBe(0);
   await page.locator('.markdown-preview a', { hasText: 'jump to target' }).click();
