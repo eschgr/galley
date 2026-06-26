@@ -15,24 +15,27 @@ export function hashContent(content: string): string {
 }
 
 /**
- * Pick the file path to open from a process argv (R7: `mdtool <file>`).
+ * Pick the file paths to open from a process argv (R7: `mdtool <file> [file …]`).
  *
- * Returns the first non-flag argument (resolved to absolute), or null. Skips the
- * executable (and, in dev, the app-path argv[1]) and known value-taking flags
- * (`--channel <addr>`). `packaged` distinguishes a packaged launch
- * (`mdtool.exe <file>`) from a dev launch (`electron . <file>`).
+ * Returns EVERY non-flag argument, each resolved to absolute, in command-line
+ * order — so `mdtool a.md b.md c.md` opens all three. Skips the executable (and,
+ * in dev, the app-path argv[1]) and known value-taking flags (`--channel <addr>`
+ * also skips its value); other flags (`--devtools`, `--help`, `-h`) are simply
+ * ignored. `packaged` distinguishes a packaged launch (`mdtool.exe …`) from a dev
+ * launch (`electron . …`). Returns an empty array when no file was given.
  */
-export function parseCliFileArg(argv: readonly string[], packaged: boolean): string | null {
+export function parseCliFileArgs(argv: readonly string[], packaged: boolean): string[] {
   const rest = argv.slice(packaged ? 1 : 2);
+  const files: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
       if (arg === '--channel') i++; // skip its address value
       continue;
     }
-    return path.resolve(arg);
+    files.push(path.resolve(arg));
   }
-  return null;
+  return files;
 }
 
 /**

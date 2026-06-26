@@ -58,10 +58,11 @@ export type SaveResult =
 export interface PlatformBridge {
   // --- CLI (R7) -----------------------------------------------------------
   /**
-   * Absolute file path passed on the command line at launch, if any.
-   * `packaged` distinguishes `mdtool.exe <file>` from a dev `electron . <file>`.
+   * Absolute file paths passed on the command line at launch (R7), in order;
+   * empty if none. `mdtool a.md b.md` opens both. `packaged` distinguishes
+   * `mdtool.exe …` from a dev `electron . …`.
    */
-  parseCliFileArg(argv: readonly string[], packaged: boolean): string | null;
+  parseCliFileArgs(argv: readonly string[], packaged: boolean): string[];
   /** The `--channel <addr>` address passed at launch, if any (R11). */
   parseCliChannelArg(argv: readonly string[], packaged: boolean): string | null;
 
@@ -124,7 +125,7 @@ export function createPlatformBridge(): PlatformBridge {
   };
 
   return {
-    parseCliFileArg: fileIo.parseCliFileArg,
+    parseCliFileArgs: fileIo.parseCliFileArgs,
     resolveLocalLink: fileIo.resolveLocalLink,
     parseCliChannelArg: fileIo.parseCliChannelArg,
 

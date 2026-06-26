@@ -150,7 +150,7 @@ async function installMockBridge(page: Page): Promise<void> {
       openLocalFile: () => {},
       setSourceVisible: async () => {},
       setActiveDocPath: () => {},
-      getStartupFile: async () => null,
+      getStartupFiles: async () => [],
       saveFile: async (path: string, content: string) => ({
         conflict: false,
         file: { path, content, hash: 'mock-hash' },
