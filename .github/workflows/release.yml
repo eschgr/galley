@@ -1,5 +1,9 @@
 name: Release
 
+# Per-run title shown in the Actions tab: "Release v0.2.1" for tag v0.2.1
+# (github.ref_name is the pushed tag). Without this, runs show the commit subject.
+run-name: Release ${{ github.ref_name }}
+
 # Build the desktop app natively on each OS and publish a GitHub Release whenever
 # a version tag (vX.Y.Z) is pushed. macOS builds are produced on macOS runners, so
 # this repo never has to be cloned or built on a personal Mac — you just download
@@ -81,15 +85,5 @@ jobs:
           name: Galley ${{ github.ref_name }}
           fail_on_unmatched_files: true
           files: dist/**/*
-          body: |
-            Galley — a local markdown viewer & editor for reviewing and correcting LLM-generated markdown.
-
-            Download the build for your machine:
-            - **Windows (x64):** the `*-Setup.exe` installer — download and run.
-            - **macOS (Apple Silicon):** the `*-darwin-arm64-*.zip`
-
-            Everything is bundled — no Node, npm, or dependencies to download on the target machine. On macOS, unzip and move **Galley.app** to Applications.
-
-            **These builds are unsigned**, so the OS warns on first launch:
-            - Windows SmartScreen → **More info → Run anyway**.
-            - macOS Gatekeeper → right-click the app → **Open** and confirm (or run `xattr -dr com.apple.quarantine Galley.app`).
+          # "What's Changed" auto-built from PRs merged since the previous tag.
+          generate_release_notes: true
