@@ -5,7 +5,7 @@ import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
 import { registerAppVersionIpc } from './main/appVersion';
-import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
+import { createPlatformBridge, channelAddress, type SaveResult, type FileSnapshot } from './main/platform';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -15,10 +15,10 @@ if (started) {
 // All OS-touching file work goes through the platform seam (PRD §7/§9).
 const platform = createPlatformBridge();
 
-// A file passed on the command line (R7) is held here and pulled by the renderer
+// Files passed on the command line (R7) are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
-// renderer has registered its listener.
-let startupFilePath: string | null = null;
+// renderer has registered its listener. `mdtool a.md b.md` opens both.
+let startupFilePaths: string[] = [];
 
 // Files delivered over the channel (R11) before the renderer has mounted are
 // queued here and flushed once the page finishes loading.
@@ -187,20 +187,25 @@ ipcMain.handle('file:write', async (_event, args: unknown): Promise<SaveResult> 
   return platform.saveChecked(absPath, content);
 });
 
-// R7: the renderer pulls the command-line file (if any) once on mount.
+// R7: the renderer pulls the command-line files (if any) once on mount. Reads
+// each, watches it, and returns the snapshots in command-line order — the
+// renderer opens them as tabs and focuses the first. An unreadable path surfaces
+// a dialog and is skipped, never fatal to the remaining files.
 ipcMain.handle('file:getStartup', async (event) => {
-  if (!startupFilePath) return null;
-  const absPath = startupFilePath;
-  startupFilePath = null;
-  try {
-    const snapshot = await platform.readFile(absPath);
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) watchFile(win, absPath);
-    return snapshot;
-  } catch (err) {
-    dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
-    return null;
+  const paths = startupFilePaths;
+  startupFilePaths = [];
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const snapshots: FileSnapshot[] = [];
+  for (const absPath of paths) {
+    try {
+      const snapshot = await platform.readFile(absPath);
+      if (win) watchFile(win, absPath);
+      snapshots.push(snapshot);
+    } catch (err) {
+      dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
+    }
   }
+  return snapshots;
 });
 
 // Read a file on demand (R31a reload, and opening a file already known to the
@@ -403,8 +408,8 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools();
   }
 
-  // R7: record a command-line file for the renderer to pull on mount.
-  startupFilePath = platform.parseCliFileArg(process.argv, app.isPackaged);
+  // R7: record the command-line files for the renderer to pull on mount.
+  startupFilePaths = platform.parseCliFileArgs(process.argv, app.isPackaged);
 };
 
 // This method will be called when Electron has finished initialization and is

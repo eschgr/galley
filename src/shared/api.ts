@@ -61,8 +61,10 @@ export interface MdtoolApi {
   readFile(filePath: string): Promise<OpenedFile | null>;
   /** Tell the main process a tab closed so it stops watching that file (R41). */
   notifyClosed(filePath: string): void;
-  /** Pull the file passed on the command line at launch (R7), once. */
-  getStartupFile(): Promise<OpenedFile | null>;
+  /** Pull the files passed on the command line at launch (R7), once. Returned in
+   *  command-line order; empty if none. The renderer opens each as a tab and
+   *  focuses the first. */
+  getStartupFiles(): Promise<OpenedFile[]>;
   /**
    * Subscribe to "a file was opened" (via CLI at launch, or File → Open).
    * The renderer opens it in a tab, or focuses the tab if already open (R39).

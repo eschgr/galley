@@ -27,7 +27,7 @@ const api: MdtoolApi = {
   notifyClosed: (filePath: string) => {
     void ipcRenderer.invoke('file:closed', filePath);
   },
-  getStartupFile: () => ipcRenderer.invoke('file:getStartup'),
+  getStartupFiles: () => ipcRenderer.invoke('file:getStartup'),
   onOpenFile: (callback: (file: OpenedFile) => void) => {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);
     ipcRenderer.on('file:opened', listener);

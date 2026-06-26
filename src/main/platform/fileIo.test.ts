@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArg, parseCliChannelArg, readFile, resolveLocalLink, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliChannelArg, readFile, resolveLocalLink, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links, R4)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -51,27 +51,36 @@ describe('hashContent', () => {
   });
 });
 
-describe('parseCliFileArg', () => {
-  it('returns the file arg as an absolute path (packaged launch)', () => {
-    const r = parseCliFileArg(['mdtool.exe', 'notes.md'], true);
-    expect(r).toBe(path.resolve('notes.md'));
-    expect(path.isAbsolute(r!)).toBe(true);
+describe('parseCliFileArgs', () => {
+  it('returns the single file arg as an absolute path (packaged launch)', () => {
+    const r = parseCliFileArgs(['mdtool.exe', 'notes.md'], true);
+    expect(r).toEqual([path.resolve('notes.md')]);
+    expect(path.isAbsolute(r[0])).toBe(true);
+  });
+
+  it('returns EVERY file arg, in command-line order, each absolute (#37)', () => {
+    expect(parseCliFileArgs(['mdtool.exe', 'a.md', 'b.md', 'c.md'], true)).toEqual([
+      path.resolve('a.md'),
+      path.resolve('b.md'),
+      path.resolve('c.md'),
+    ]);
   });
 
   it('skips the app-path argv[1] in a dev launch', () => {
-    expect(parseCliFileArg(['electron.exe', '.', 'notes.md'], false)).toBe(path.resolve('notes.md'));
+    expect(parseCliFileArgs(['electron.exe', '.', 'notes.md'], false)).toEqual([path.resolve('notes.md')]);
   });
 
-  it('skips flags and the --channel <addr> value', () => {
-    expect(parseCliFileArg(['mdtool.exe', '--devtools', 'notes.md'], true)).toBe(path.resolve('notes.md'));
-    expect(parseCliFileArg(['mdtool.exe', '--channel', '\\\\.\\pipe\\x', 'notes.md'], true)).toBe(
-      path.resolve('notes.md'),
-    );
+  it('skips flags and the --channel <addr> value, keeping the rest of the files', () => {
+    expect(parseCliFileArgs(['mdtool.exe', '--devtools', 'notes.md'], true)).toEqual([path.resolve('notes.md')]);
+    // --channel consumes its value; the files on either side still come through.
+    expect(
+      parseCliFileArgs(['mdtool.exe', 'a.md', '--channel', '\\\\.\\pipe\\x', 'b.md'], true),
+    ).toEqual([path.resolve('a.md'), path.resolve('b.md')]);
   });
 
-  it('returns null when no file argument is present', () => {
-    expect(parseCliFileArg(['mdtool.exe'], true)).toBeNull();
-    expect(parseCliFileArg(['mdtool.exe', '--devtools'], true)).toBeNull();
+  it('returns an empty array when no file argument is present', () => {
+    expect(parseCliFileArgs(['mdtool.exe'], true)).toEqual([]);
+    expect(parseCliFileArgs(['mdtool.exe', '--devtools'], true)).toEqual([]);
   });
 });
 

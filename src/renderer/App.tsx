@@ -320,8 +320,14 @@ export function App() {
 
   // Pull a command-line file (R7) and subscribe to opens / save / reload / change.
   useEffect(() => {
-    void window.mdtool?.getStartupFile().then((file) => {
-      if (file) openTab(file);
+    void window.mdtool?.getStartupFiles().then((files) => {
+      files.forEach((file) => openTab(file));
+      // openTab leaves the LAST-opened tab active; when several files were passed
+      // on the command line, re-assert the FIRST (leftmost) as the focused tab.
+      if (files.length > 1) {
+        const first = tabsRef.current.find((t) => t.path === files[0].path);
+        if (first) switchTo(first.id);
+      }
     });
     const offOpen = window.mdtool?.onOpenFile((file) => openTab(file));
     const offSave = window.mdtool?.onMenuSave(() => {

@@ -8,8 +8,12 @@ import { test, expect, type Page } from '@playwright/test';
 
 type MockFile = { path: string; content: string; hash: string };
 
-async function installMockBridge(page: Page, startup: MockFile | null = null): Promise<void> {
-  await page.addInitScript((startupFile) => {
+async function installMockBridge(
+  page: Page,
+  startup: MockFile | MockFile[] | null = null,
+): Promise<void> {
+  await page.addInitScript((startupArg) => {
+    const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: {
       openCb: ((f: MockFile) => void) | null;
       saveCb: (() => void) | null;
@@ -39,7 +43,7 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
       },
       openLocalFile: (href: string, from: string) => harness.openLocalCalls.push({ href, from }),
       setSourceVisible: async () => {},
-      getStartupFile: async () => startupFile,
+      getStartupFiles: async () => startupFiles,
       saveFile: async (path: string, content: string, force?: boolean) => {
         harness.saveCalls.push({ path, content, force: !!force });
         if (!force && harness.nextSaveConflict) {
@@ -71,6 +75,10 @@ async function installMockBridge(page: Page, startup: MockFile | null = null): P
         harness.helpCb = cb;
         return () => (harness.helpCb = null);
       },
+      // #19 tab cycling — App subscribes on mount, so the mock must provide these
+      // or its startup effect throws. No test here fires them; no-op is enough.
+      onNextTab: () => () => {},
+      onPrevTab: () => () => {},
       onExternalChange: (cb: (f: MockFile) => void) => {
         harness.extCb = cb;
         return () => (harness.extCb = null);
@@ -106,6 +114,20 @@ test('loads a command-line file on startup, in a tab (R7/R39)', async ({ page })
   await page.goto('/');
   await expect(activeTabName(page)).toHaveText('startup.md');
   await expect(page.locator('.markdown-preview')).toContainText('Loaded at launch');
+});
+
+test('opens multiple command-line files as tabs, first focused (#37)', async ({ page }) => {
+  await installMockBridge(page, [
+    { path: 'C:\\docs\\a.md', content: '# Alpha\n\nfirst doc.\n', hash: 'h1' },
+    { path: 'C:\\docs\\b.md', content: '# Bravo\n\nsecond doc.\n', hash: 'h2' },
+    { path: 'C:\\docs\\c.md', content: '# Charlie\n\nthird doc.\n', hash: 'h3' },
+  ]);
+  await page.goto('/');
+  // All three open, in command-line order...
+  await expect(tabNames(page)).toHaveText(['a.md', 'b.md', 'c.md']);
+  // ...and the FIRST is the focused tab, showing its content.
+  await expect(activeTabName(page)).toHaveText('a.md');
+  await expect(page.locator('.markdown-preview')).toContainText('first doc');
 });
 
 test('the welcome screen shows until a file is opened in a tab (R8/R46)', async ({ page }) => {
