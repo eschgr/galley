@@ -14,11 +14,20 @@
  *
  * Exposes an imperative handle (getTopLine / scrollToLine) in 0-based fractional
  * line units — the same units the preview's data-source-line anchors use — so
- * SplitView can keep the two panes aligned (R18). Calls onScroll on user scroll
- * and onChange on edits.
+ * the split view can keep the two panes aligned (R18). Calls onScroll on user
+ * scroll and onChange on edits.
+ *
+ * The editor is UNCONTROLLED: it is initialised from `initialDoc` once on mount
+ * and never reset from a prop change (CM6 would clobber the cursor/undo). When a
+ * tab is RELOADED from disk (Ctrl+R / external refresh / keep-mine) the host
+ * pushes the new text down imperatively via setDoc(); ordinary edits flow up
+ * through onChange and never round-trip back. Since every open tab now owns its
+ * OWN Editor (one CodeMirror per TabView, #26), the per-tab state-swap machinery
+ * that used to live here — getState/setState + the #18 scrollSnapshot/restoreScroll
+ * warm-sweep — is gone: switching tabs just toggles which TabView is visible.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { EditorState, Prec, type Extension, type StateEffect } from '@codemirror/state';
+import { EditorState, Prec, type Extension } from '@codemirror/state';
 import {
   EditorView,
   lineNumbers,
@@ -60,6 +69,8 @@ export interface LinkContext {
 }
 
 export interface EditorHandle {
+  /** The editor's current document text (the source of truth while mounted). */
+  getText(): string;
   /** Top of the viewport as a 0-based fractional source line. */
   getTopLine(): number;
   /** Scroll so a 0-based fractional source line sits at the viewport top. */
@@ -84,39 +95,12 @@ export interface EditorHandle {
    * known.
    */
   alignTo(line: number): void;
-  /** Replace the whole document (e.g. when a file is opened) with fresh undo
-   *  history, so undo can't reach back into the previous file. */
+  /** Replace the whole document (e.g. when a file is reloaded from disk) with
+   *  fresh undo history, so undo can't reach back into the previous content.
+   *  Ordinary edits never call this — they flow up through onChange. */
   setDoc(content: string): void;
-  /** Snapshot the full editor state (doc + undo history + selection) so a tab
-   *  switch can restore it later (R39). NOTE: a CM6 EditorState does NOT carry
-   *  scrollTop (that lives on view.scrollDOM.scrollTop), so setState() alone
-   *  won't restore the scroll position — App stashes a CM6 scroll snapshot per
-   *  tab (scrollSnapshot()) and re-applies it via restoreScroll() after setState
-   *  (#18). */
-  getState(): EditorState | null;
-  /** Restore a state captured by getState() when returning to a tab. */
-  setState(state: EditorState): void;
-  /**
-   * Capture the current scroll position as a CM6 ScrollTarget effect anchored to
-   * a DOCUMENT POSITION + pixel offset (not a raw scrollTop). Stash this per tab
-   * before leaving it; on return, dispatch it via restoreScroll() to re-anchor
-   * the scroll THROUGH the measure cycle so it survives CM6's height refinement
-   * (#18). Returns null if the view isn't mounted.
-   */
-  scrollSnapshot(): StateEffect<unknown> | null;
-  /**
-   * Re-apply a scroll snapshot captured by scrollSnapshot(). MUST be dispatched
-   * as its OWN transaction AFTER setState (setState replaces the whole state, so
-   * the effect can't ride along inside it). CM re-applies it inside the measure
-   * cycle and re-anchors as heights settle (#18).
-   *
-   * `targetTop` is the raw scrollTop (px) the snapshot was captured at; the
-   * height-warming sweep stops once it has warmed the bands up to that depth
-   * (plus one extra screenful of safety margin) instead of warming the WHOLE
-   * doc, so restoring a tab near the top of a huge doc is ~1-2 measure passes
-   * rather than hundreds (#18). Omit it to warm the whole doc (legacy behavior).
-   */
-  restoreScroll(effect: StateEffect<unknown>, targetTop?: number): void;
+  /** Move keyboard focus into the editor (e.g. after a tab becomes visible). */
+  focus(): void;
   /** Snapshot the link context at the cursor and remember the target range so a
    *  later applyLink/removeLink edits the right span (R27). */
   requestLink(): LinkContext | null;
@@ -417,6 +401,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   onLinkRef.current = onLink;
 
   useImperativeHandle(ref, () => ({
+    getText: () => viewRef.current?.state.doc.toString() ?? '',
     getTopLine: () => (viewRef.current ? getTopLine(viewRef.current) : 0),
     scrollToLine: (line) => {
       if (viewRef.current) scrollToLine(viewRef.current, line);
@@ -445,76 +430,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       if (!v) return;
       v.setState(EditorState.create({ doc: content, extensions: buildExtensions(onChangeRef, onScrollRef, onLinkRef) }));
     },
-    getState: () => viewRef.current?.state ?? null,
-    setState: (state) => viewRef.current?.setState(state),
-    scrollSnapshot: () => viewRef.current?.scrollSnapshot() ?? null,
-    restoreScroll: (effect, targetTop) => {
-      const v = viewRef.current;
-      if (!v) return;
-      // EditorView.measure() flushes CM's measure loop synchronously (re-measures
-      // line heights, re-applies any scroll target, converging in one shot). It's
-      // a real method but isn't in @codemirror/view's published .d.ts, so reach it
-      // through a narrow typed view. This relies on @codemirror/view ^6.43's
-      // internal measure(). Guard the cast: if a future CM6 renames/removes it,
-      // skip the warm sweep and just dispatch the snapshot (snapshot alone still
-      // re-anchors on CM's own next measure) rather than throwing inside the
-      // tab-switch handler.
-      const measureFn = (v as unknown as { measure?: (flush?: boolean) => void }).measure;
-      if (typeof measureFn !== 'function') {
-        v.dispatch({ effects: effect });
-        return;
-      }
-      const flushMeasure = () => measureFn.call(v);
-      // A CM6 scroll snapshot anchors to a DOCUMENT POSITION + viewport offset, so
-      // dispatching it lands the editor on the RIGHT visible line and keeps it
-      // there as heights settle (unlike a raw-scrollTop align, which drifts —
-      // #18). But the resulting scrollDOM.scrollTop is `lineBlockAt(anchor).top -
-      // offset`, and `block.top` is the cumulative height of the lines ABOVE the
-      // anchor. Right after setState those above-viewport lines carry CM's rough
-      // per-row ESTIMATE (worst under lineWrapping), and they never re-measure on
-      // their own because they stay off-screen above — so the absolute scrollTop
-      // (and the scrollbar) would sit short of where the snapshot was captured.
-      //
-      // Warm the height map first: sweep the viewport from the top down past the
-      // target in clientHeight steps so every above-anchor line renders once and
-      // gets its true height measured. Then dispatch the snapshot and measure — it
-      // now resolves against REAL above-heights, so the editor lands on the exact
-      // captured pixel. The sweep is synchronous (no paint between the steps and
-      // the final snapshot apply), so the intermediate scroll positions never show.
-      const dom = v.scrollDOM;
-      // In preview-only mode the editor is display:none → clientHeight 0 and no
-      // real geometry to measure. Skip the warm sweep (it can't measure a hidden
-      // element and would just spin); dispatch the snapshot anyway — CM stores it
-      // and applies it on the next real measure, and SplitView's reveal-time
-      // [showEditor] realign is the backstop. Harmless either way (no crash).
-      if (dom.clientHeight > 0) {
-        const step = dom.clientHeight;
-        // Only the lines ABOVE the restored anchor affect block.top (and thus the
-        // resolved scrollTop), so warm only DOWN TO the restored depth rather than
-        // the whole doc — a tab restored near the top of a multi-thousand-line doc
-        // is then ~1-2 measure passes instead of hundreds. We warm ONE extra
-        // clientHeight band PAST the target (the `top - step >= targetTop` guard
-        // runs the loop body for the band that contains targetTop AND the next
-        // one) so the final band's heights are fully measured before the snapshot
-        // resolves — keeps 0-rAF restore exact (±25px) even at the boundary.
-        // When targetTop is undefined, fall back to warming the whole doc.
-        // scrollHeight itself starts estimated and GROWS as the sweep measures
-        // real (taller, wrapped) line heights, so re-read the bound each step and
-        // cap the iterations so a pathological doc can't loop unbounded.
-        const MAX_STEPS = 2000;
-        for (let top = 0, i = 0; i < MAX_STEPS; top += step, i++) {
-          dom.scrollTop = top;
-          flushMeasure(); // render+measure this band of lines
-          // Reached the bottom of the (re-measured) doc — nothing more to warm.
-          if (top >= Math.max(0, dom.scrollHeight - dom.clientHeight)) break;
-          // Warmed up to and one band past the restored depth — stop early.
-          if (targetTop != null && top - step >= targetTop) break;
-        }
-      }
-      // Apply the captured snapshot against the warmed (real) height map.
-      v.dispatch({ effects: effect });
-      flushMeasure();
-    },
+    focus: () => viewRef.current?.focus(),
     requestLink: () => {
       const v = viewRef.current;
       if (!v) return null;
@@ -574,22 +490,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       }),
     });
     viewRef.current = view;
-    // TEST SEAM (regression #18 only): expose a READ-ONLY probe of the editor's
-    // current top source line, computed by CodeMirror itself from its live height
-    // map (the same getTopLine() the app uses). The e2e tab-switch race test reads
-    // this to learn where the editor ACTUALLY landed after a switch — paint-
-    // independent, so it is valid even at 0 rAF when the gutter DOM hasn't repainted
-    // and a DOM scrape would be unreliable. This only READS view geometry: it never
-    // dispatches, scrolls, or measures, so it cannot affect the very timing under
-    // test, and it changes NO product behavior whether or not the test reads it.
-    // (It is always installed because it is purely an inert read accessor; nothing
-    // in production calls it.)
-    (window as unknown as { __mdtoolTestEditorTopLine?: () => number }).__mdtoolTestEditorTopLine =
-      () => (viewRef.current ? getTopLine(viewRef.current) : -1);
     return () => {
       view.destroy();
       viewRef.current = null;
-      delete (window as unknown as { __mdtoolTestEditorTopLine?: () => number }).__mdtoolTestEditorTopLine;
     };
     // initialDoc is intentionally only read on mount (uncontrolled editor).
     // eslint-disable-next-line react-hooks/exhaustive-deps

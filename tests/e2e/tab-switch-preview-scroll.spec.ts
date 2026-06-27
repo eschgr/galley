@@ -1,61 +1,33 @@
 import { test, expect, type Page } from '@playwright/test';
 import { deflateSync } from 'node:zlib';
 
-// REGRESSION (issue #18, split-view tab switch — the PREVIEW pane jump):
+// PREVIEW scroll across a tab switch (#26 — per-tab kept-mounted views).
 //
-// The user's real complaint is that in SPLIT view, switching tabs lands the
-// rendered PREVIEW pane at the WRONG scroll position (the editor pane is fine).
-// The prior suite (tab-switch-scroll.spec.ts) MISSED this: it only asserted the
-// EDITOR, and used text-only fixtures whose preview height is final at HTML
-// commit, so the preview never reflowed and the clamp never bit.
+// Originally (#18) this proved the single shared preview, whose HTML App swapped
+// on every switch, landed at the WRONG scroll position: the one-shot restore was
+// CLAMPED while the new tab's tall data: images / KaTeX were still laying out, and
+// nothing re-asserted the saved px, so the preview was stranded too high.
 //
-// Root cause (this test exercises it): the preview restore is a one-shot,
-// synchronous `previewRef.setScrollTop(savedPx)` in App's [activeId]
-// useLayoutEffect (App.tsx:388-397 -> Preview.tsx:107-109, a NATIVE
-// `.preview-scroll` scrollTop assignment). On a tab switch the whole preview HTML
-// is swapped (`dangerouslySetInnerHTML` on a new `source`), so the scroller's
-// children are brand-new nodes. The restore fires in that SAME synchronous frame,
-// BEFORE the newly-committed large images and KaTeX blocks have been laid out at
-// their full height, so the scroller's scrollHeight is still SMALLER than its
-// final height. The browser CLAMPS the assignment to (scrollHeight - clientHeight)
-// — short of the saved px. Layout then settles and the content grows back to full
-// height, but NOTHING re-asserts the saved px (SplitView.onPreviewLayout only
-// re-aligns the EDITOR to the preview, never the preview to its own stash), so the
-// preview is left STRANDED far ABOVE where it belongs. The miss is largest at deep
-// / near-bottom positions (the clamp eats the most) and is visible at every
-// observation delay because, once stranded, nothing recovers it.
+// #26 removes that whole class of bug by construction: every open tab owns its OWN
+// Preview, and all stay mounted (the inactive ones are display:none, not swapped).
+// Switching tabs is just a visibility flip — the preview's scroller keeps its
+// scrollTop the whole time, so there is no HTML re-swap to clamp and no restore to
+// re-assert. This test now asserts that GUARANTEE directly: A's preview scroll
+// survives A->B->A unchanged, at every observation delay, with NO settle/rAF
+// recovery window (the old clamp-recovery assertions no longer apply).
 //
-// The fixtures below make the preview's height NOT-yet-final at the synchronous
-// restore: several LARGE `data:image/png` images (a tall base64 PNG, default
-// 2000x6000, with NO width/height attributes) interleaved THROUGH the doc — above
-// and within the restored region — plus KaTeX display math. At that bitmap size
-// the new <img> elements are not laid out at full height in the restore's frame,
-// which is what triggers the clamp. (Small images lay out synchronously from cache
-// and do NOT reproduce it — verified by probing; 2000x6000 reliably does.) The two
-// tabs get DIFFERENT image/math placement so a clamp lands them on visibly
-// different wrong positions.
-//
-// This test asserts the PREVIEW's OWN stashed scrollTop/top line is restored —
-// NOT "editor matches preview". It MUST currently FAIL: the preview comes back
-// clamped too high after a switch and stays there through the reflow window.
-//
-// A correct fix re-asserts the preview's OWN saved px through its reflow-settle
-// window (image decode/onload + a bounded re-apply on each preview layout-settle
-// until scrollHeight has grown enough that the px is no longer clamped), staying
-// INDEPENDENT of the editor. That fix makes the preview land on the stashed px at
-// every observation delay (once content has laid out) and stay there — satisfying
-// the assertions below.
+// The wrap-/image-heavy fixtures are kept (and B is warmed once) so the assertion
+// is meaningful: if a switch ever re-swapped or re-clamped the preview, these tall
+// async-laying-out images would expose it. The position must simply be preserved.
 
 type MockFile = { path: string; content: string; hash: string };
 
 // --- A tall base64 PNG with NO width/height attributes -----------------------
-// Generated in-process (node:zlib, no extra deps). Intrinsic size 2000x6000 with
-// max-width:100% in the preview => it scales to the pane width but stays THOUSANDS
-// of px tall. It carries NO width/height attribute in the markdown, so its box
-// height is only known once the bitmap is laid out. At this size the new <img>
-// nodes created by the tab-switch HTML swap are not laid out at full height in the
-// same synchronous frame as App's one-shot restore, so the scroller is briefly
-// SHORT and the saved scrollTop is clamped — the bug under test.
+// Intrinsic size 2000x6000 with max-width:100% in the preview => it scales to the
+// pane width but stays THOUSANDS of px tall, and lays out asynchronously. Under
+// the OLD shared-preview model that async growth is exactly what clamped the
+// one-shot restore; under #26 it must not matter, because the scroller is never
+// rebuilt on a switch.
 function crc32(buf: Buffer): number {
   let c = ~0;
   for (let i = 0; i < buf.length; i++) {
@@ -72,14 +44,6 @@ function pngChunk(type: string, data: Buffer): Buffer {
   crc.writeUInt32BE(crc32(Buffer.concat([t, data])) >>> 0);
   return Buffer.concat([len, t, data, crc]);
 }
-// A distinct tall PNG per `seed` so the browser can't share one decoded image
-// across all <img> tags (each must lay out independently). The images are LARGE
-// (default 2000x6000) on purpose: at that bitmap size, when the preview's HTML is
-// swapped on a tab switch the new <img> elements are not laid out at their full
-// height in the SAME synchronous frame as App's one-shot setScrollTop(savedPx),
-// so the scroller is briefly SHORT and the assignment is clamped too high. Smaller
-// images (600x900) lay out synchronously from cache and do NOT reproduce the bug;
-// 2000x6000 reliably does. (Probed empirically — see the spec history.)
 function tallPngDataUrl(seed: number, w = 2000, h = 6000): string {
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdr = Buffer.alloc(13);
@@ -100,16 +64,6 @@ function tallPngDataUrl(seed: number, w = 2000, h = 6000): string {
 }
 
 // --- Reflowing fixtures ------------------------------------------------------
-// A long doc (scrolls a couple screens) whose PREVIEW grows after HTML commit:
-//   * tall data: images on their OWN lines (block paragraphs → own anchor, and
-//     each grows from ~0 to its full height on decode), placed at `imgEvery`
-//     paragraphs — interleaved THROUGH the doc so growth happens both ABOVE and
-//     WITHIN the restored region;
-//   * KaTeX display-math blocks ($$...$$) at `mathEvery` paragraphs — these also
-//     lay out after commit, adding height.
-// Tab A and tab B use DIFFERENT image/math placement (different `imgSeed` start
-// and cadence), so an identical clamped scrollTop maps to visibly different wrong
-// reading positions per tab — a clamp can't coincidentally look right on both.
 const PARAS = 40;
 function reflowDoc(label: string, imgEvery: number, mathEvery: number, imgSeed: number): string {
   const out: string[] = [`# ${label}`, ''];
@@ -118,9 +72,6 @@ function reflowDoc(label: string, imgEvery: number, mathEvery: number, imgSeed: 
     out.push(`P${i} ${label}: a paragraph of body text that anchors a source line for the preview.`);
     out.push('');
     if (i % imgEvery === 0) {
-      // Image on its own line → its own block paragraph + data-source-line anchor.
-      // NO width/height attribute → its box height is only set once the (large)
-      // bitmap lays out, after the synchronous restore — which is what clamps it.
       out.push(`![fig ${label} ${i}](${tallPngDataUrl(seed++)})`);
       out.push('');
     }
@@ -134,7 +85,7 @@ function reflowDoc(label: string, imgEvery: number, mathEvery: number, imgSeed: 
   return out.join('\n') + '\n';
 }
 
-// --- Mock main-process bridge (mirrors tab-switch-scroll.spec.ts) ------------
+// --- Mock main-process bridge ------------------------------------------------
 async function installMockBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const harness: {
@@ -194,38 +145,39 @@ async function fireNextTab(page: Page): Promise<void> {
 const tabByName = (page: Page, name: string) => page.locator('.tab', { hasText: name });
 const activeTabName = (page: Page) => page.locator('.tab.is-active .tab-name');
 
+// The VISIBLE tab's preview scroller (each tab owns its own, #26).
+const VIS = '.tab-view:not([hidden]) .preview-scroll';
+
 async function setupSplit(page: Page, aContent: string, bContent: string): Promise<void> {
   await openFile(page, { path: 'C:\\docs\\alpha.md', content: aContent, hash: 'ha' });
   await openFile(page, { path: 'C:\\docs\\bravo.md', content: bContent, hash: 'hb' });
   await page.locator('.source-toggle').click(); // Show Source → split view
-  await expect(page.locator('.pane-editor')).toBeVisible();
+  await expect(page.locator('.pane-editor').first()).toBeVisible();
 }
 
-// --- PREVIEW geometry helpers ------------------------------------------------
-
-/** Raw scroll offset of the rendered PREVIEW pane (what the bug strands). */
+// --- PREVIEW geometry helpers (scoped to the visible tab) --------------------
 const previewScrollTop = (page: Page) =>
-  page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  page.evaluate((sel) => document.querySelector<HTMLElement>(sel)!.scrollTop, VIS);
 
 const previewScrollHeight = (page: Page) =>
-  page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollHeight);
+  page.evaluate((sel) => document.querySelector<HTMLElement>(sel)!.scrollHeight, VIS);
 
 const previewMaxScroll = (page: Page) =>
-  page.evaluate(() => {
-    const ps = document.querySelector<HTMLElement>('.preview-scroll')!;
+  page.evaluate((sel) => {
+    const ps = document.querySelector<HTMLElement>(sel)!;
     return Math.max(0, ps.scrollHeight - ps.clientHeight);
-  });
+  }, VIS);
 
 const previewClientHeight = (page: Page) =>
-  page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.clientHeight);
+  page.evaluate((sel) => document.querySelector<HTMLElement>(sel)!.clientHeight, VIS);
 
-/** The (fractional) 0-based source line shown at the top of the PREVIEW. */
+/** The (fractional) 0-based source line shown at the top of the VISIBLE preview. */
 async function previewTopLine(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const ps = document.querySelector<HTMLElement>('.preview-scroll');
+  return page.evaluate((sel) => {
+    const ps = document.querySelector<HTMLElement>(sel);
     if (!ps) return 0;
     const base = ps.getBoundingClientRect().top - ps.scrollTop;
-    const a = [...document.querySelectorAll<HTMLElement>('.markdown-preview [data-source-line]')]
+    const a = [...ps.querySelectorAll<HTMLElement>('[data-source-line]')]
       .map((el) => ({ line: +el.getAttribute('data-source-line')!, top: el.getBoundingClientRect().top - base }))
       .sort((x, y) => x.line - y.line || x.top - y.top);
     const st = ps.scrollTop;
@@ -239,32 +191,29 @@ async function previewTopLine(page: Page): Promise<number> {
       }
     }
     return a[a.length - 1].line;
-  });
+  }, VIS);
 }
 
-// Drive the PREVIEW (as the leader) to a target scrollTop with a real pointer
-// hover + wheel (SplitView picks the leader from onPointerEnter, so a synthetic
-// wheel wouldn't make a pane the leader). The editor follows; we don't care where
-// the editor lands — only the preview is under test here. Stops when the preview
-// reaches the requested scrollTop, saturates at its own max, or stalls.
+// Drive the VISIBLE preview (as the leader) to a target scrollTop with a real
+// pointer hover + wheel. The editor follows; we only care about the preview here.
 async function previewLedTo(page: Page, targetPx: number): Promise<void> {
-  await page.evaluate(() => {
-    document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 0;
-    const cm = document.querySelector<HTMLElement>('.pane-editor .cm-scroller');
+  await page.evaluate((sel) => {
+    document.querySelector<HTMLElement>(sel)!.scrollTop = 0;
+    const cm = document.querySelector<HTMLElement>('.tab-view:not([hidden]) .cm-scroller');
     if (cm) cm.scrollTop = 0;
-  });
-  await page.locator('.pane-preview').hover(); // pointer-over preview → it leads
+  }, VIS);
+  await page.locator('.tab-view:not([hidden]) .pane-preview').hover(); // pointer-over → it leads
   let prev = -1;
   let stall = 0;
   await expect
     .poll(
       async () => {
-        const g = await page.evaluate(() => {
-          const ps = document.querySelector<HTMLElement>('.preview-scroll')!;
+        const g = await page.evaluate((sel) => {
+          const ps = document.querySelector<HTMLElement>(sel)!;
           return { top: ps.scrollTop, max: ps.scrollHeight - ps.clientHeight, client: ps.clientHeight };
-        });
+        }, VIS);
         if (g.top >= targetPx) return g.top;
-        if (g.max - g.top <= 2) return g.top; // saturated at preview's own max
+        if (g.max - g.top <= 2) return g.top; // saturated at the preview's own max
         if (g.top > prev + 2) stall = 0;
         else stall++;
         prev = g.top;
@@ -276,12 +225,10 @@ async function previewLedTo(page: Page, targetPx: number): Promise<void> {
       { timeout: 30_000, intervals: [50] },
     )
     .toBeGreaterThan(0);
-  await page.mouse.move(0, 0); // pointer off the preview so it doesn't lead during switches
+  await page.mouse.move(0, 0); // pointer off so it doesn't lead during switches
 }
 
-// Observe at a chosen number of rAFs (0 = synchronous, before decode runs) plus
-// an optional ms tail. 0/1/2 rAF catch the clamp at its worst (images not yet
-// decoded); the ms tail catches whether the preview STAYS correct after reflow.
+// Observe at a chosen number of rAFs (0 = synchronous) plus an optional ms tail.
 async function observeAfter(page: Page, rafs: number, ms: number): Promise<void> {
   if (rafs > 0) {
     await page.evaluate(
@@ -297,9 +244,7 @@ async function observeAfter(page: Page, rafs: number, ms: number): Promise<void>
   if (ms > 0) await page.waitForTimeout(ms);
 }
 
-// Fully settle the PREVIEW: wait until its scrollHeight stops changing (all
-// data: images decoded + KaTeX laid out), so a reference read reflects the
-// fully-grown height.
+// Fully settle the VISIBLE preview: wait until its scrollHeight stops changing.
 async function settlePreview(page: Page): Promise<void> {
   await expect
     .poll(
@@ -316,25 +261,21 @@ async function settlePreview(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
-  // This spec sweeps depth × observation-timing over LARGE data: images (async
-  // decode + settle per cycle), which legitimately exceeds the 30s default —
-  // scope the larger budget to this spec rather than the whole config.
   test.setTimeout(180_000);
   await installMockBridge(page);
   await page.goto('/');
 });
 
-// REGRESSION (issue #18 — the PREVIEW pane lands at the WRONG scroll position on
-// tab switch). Sweeps depth × observation-timing across many A->B->A cycles via
-// BOTH the TabStrip click and Ctrl+Tab paths, and asserts the PREVIEW returns to
-// its OWN stashed scrollTop/top line — including a near-bottom depth (largest
-// clamp miss) and pre-settle observations (0/1/2 rAF, ~16/50ms) plus a 250-400ms
-// tail (must STAY correct after reflow, not land-then-drift).
-test('split view: switching tabs restores the PREVIEW scroll position through image/math reflow (#18)', async ({
+// #26: switching tabs PRESERVES the preview's scroll position. With per-tab
+// kept-mounted views the inactive preview keeps its scrollTop (display:none does
+// not reset a scroll container in Chromium), so A's reading position survives
+// A->B->A unchanged — at every observation delay, with NO settle/rAF recovery
+// window. Swept across depths (incl. near-bottom) and both switch paths.
+test('split view: switching tabs preserves the PREVIEW scroll position (kept-mounted views, #26)', async ({
   page,
 }) => {
-  // DIFFERENT image/math placement per tab so a clamped scrollTop maps to
-  // visibly different wrong positions on the two tabs.
+  // DIFFERENT image/math placement per tab, so if a switch ever re-swapped or
+  // re-clamped the preview the two tabs would diverge visibly.
   await setupSplit(page, reflowDoc('Alpha', 6, 9, 1), reflowDoc('Bravo', 4, 7, 500));
 
   // Land on tab A and FULLY settle so its preview reaches final (fully-decoded)
@@ -342,8 +283,8 @@ test('split view: switching tabs restores the PREVIEW scroll position through im
   await tabByName(page, 'alpha.md').locator('.tab-label').click();
   await expect(activeTabName(page)).toHaveText('alpha.md');
   await settlePreview(page);
-  // Warm tab B's images too (open it once, settle, return), so the difference we
-  // observe after a switch is the RESTORE clamp, not first-ever decode of B.
+  // Warm tab B's images once (open it, settle, return) so any difference we see
+  // after a switch is a scroll change, not first-ever decode of B.
   await tabByName(page, 'bravo.md').locator('.tab-label').click();
   await expect(activeTabName(page)).toHaveText('bravo.md');
   await settlePreview(page);
@@ -362,15 +303,15 @@ test('split view: switching tabs restores the PREVIEW scroll position through im
     { label: 'near-bottom', target: Math.max(0, maxScroll - Math.round(clientH * 0.6)) },
   ];
 
-  // Pre-settle observations (clamp worst, before decode) + a post-settle tail
-  // (must STAY correct after reflow).
+  // Observe at 0/1/2 rAF and 16/50/350ms — preservation must hold immediately and
+  // stay held; there is NO recovery window to wait for anymore.
   const OBS: Array<{ rafs: number; ms: number }> = [
     { rafs: 0, ms: 0 },
     { rafs: 1, ms: 0 },
     { rafs: 2, ms: 0 },
     { rafs: 0, ms: 16 },
     { rafs: 0, ms: 50 },
-    { rafs: 0, ms: 350 }, // post-reflow tail
+    { rafs: 0, ms: 350 },
   ];
   const DWELL = [0, 60, 200];
   const CYCLES_PER_DEPTH = OBS.length;
@@ -383,8 +324,7 @@ test('split view: switching tabs restores the PREVIEW scroll position through im
 
     const refScroll = await previewScrollTop(page);
     const refLine = await previewTopLine(page);
-    const refScrollHeight = await previewScrollHeight(page);
-    const near = `depth=${depth.label}(target≈${depth.target}/max=${maxScroll}) refScroll=${refScroll} refLine=${refLine.toFixed(1)} refSH=${refScrollHeight}`;
+    const near = `depth=${depth.label}(target≈${depth.target}/max=${maxScroll}) refScroll=${refScroll} refLine=${refLine.toFixed(1)}`;
     expect(refScroll, `precondition: A preview scrolled deep — ${near}`).toBeGreaterThan(200);
 
     for (let i = 0; i < CYCLES_PER_DEPTH; i++) {
@@ -407,53 +347,21 @@ test('split view: switching tabs restores the PREVIEW scroll position through im
 
       const afterScroll = await previewScrollTop(page);
       const afterLine = await previewTopLine(page);
-      const afterSH = await previewScrollHeight(page);
-      const afterMax = await previewMaxScroll(page);
 
       const detail =
         `${near} cycle=${i} obs=${obs.rafs}raf+${obs.ms}ms dwellB=${dwell}ms path=${i % 2 === 0 ? 'click' : 'ctrlTab'} ` +
         `expectedScroll=${refScroll} receivedScroll=${afterScroll} dScroll=${afterScroll - refScroll} ` +
-        `expectedLine=${refLine.toFixed(1)} receivedLine=${afterLine.toFixed(1)} ` +
-        `refScrollHeight=${refScrollHeight} afterScrollHeight=${afterSH} afterMaxScroll=${afterMax}`;
+        `expectedLine=${refLine.toFixed(1)} receivedLine=${afterLine.toFixed(1)}`;
 
-      // Diagnostic confirming the failure is the CLAMP, not a setup error. Two
-      // shapes of the same one-shot-restore bug:
-      //   * EARLY observations (0/1/2 rAF, ~16/50ms): scrollHeight has not yet
-      //     grown to its reference height, so the saved px is clamped LIVE to a
-      //     shorter (scrollHeight - clientHeight) — received ≈ afterMaxScroll here.
-      //   * LATER/tail observations: the height has since grown back to reference,
-      //     but the one-shot restore already landed at the earlier clamped px and
-      //     NOTHING re-asserts the saved px, so it stays stranded BELOW reference.
-      // Either way the preview is left short of its own stashed position.
-      if (process.env.DIAG) {
-        // eslint-disable-next-line no-console
-        console.log(`[#18 DIAG] ${detail} dLine=${(afterLine - refLine).toFixed(1)}`);
-      }
-      if (afterScroll < refScroll - 10) {
-        const liveClamped = afterMax < refScroll - 10 && Math.abs(afterScroll - afterMax) <= 30;
-        // eslint-disable-next-line no-console
-        console.log(
-          `[#18 PREVIEW CLAMP] ${detail} => ` +
-            (liveClamped
-              ? `LIVE-CLAMP: scrollHeight not yet grown (afterMaxScroll ${afterMax} < reference ${refScroll}); ` +
-                `received(${afterScroll}) pinned to current clampMax(${afterMax}).`
-              : `STRANDED: height regrew (afterMaxScroll ${afterMax} >= reference ${refScroll}) but the one-shot restore ` +
-                `was not re-asserted; received(${afterScroll}) left ${refScroll - afterScroll}px short of reference(${refScroll}).`),
-        );
-      }
-
-      if (process.env.DIAG) continue; // DIAG: survey every cycle, don't fail-fast
-
-      // (a) The PREVIEW must return to its OWN stashed px (±10), not a clamped-high
-      // position. This is the bug's direct signal.
+      // (a) The PREVIEW kept its OWN scroll position (±10), immediately.
       expect(
         Math.abs(afterScroll - refScroll),
-        `PREVIEW scrollTop NOT restored — clamped-too-high reflow jump: ${detail}`,
+        `PREVIEW scroll not preserved across the switch: ${detail}`,
       ).toBeLessThanOrEqual(10);
-      // (b) ...and on its OWN stashed top line (±1).
+      // (b) ...and the same top line (±1).
       expect(
         Math.abs(afterLine - refLine),
-        `PREVIEW restored to the WRONG top line (vs its own stash): ${detail}`,
+        `PREVIEW top line not preserved across the switch: ${detail}`,
       ).toBeLessThanOrEqual(1);
     }
   }

@@ -9,6 +9,14 @@ import { installMockBridge, fire, type MockFile } from './mockBridge';
 // tests/e2e/mockBridge.ts (one type-checked copy); `installMockBridge`/`fire`/
 // `MockFile` are imported above.
 
+// Every open tab now renders its OWN editor/preview pair (one TabView per tab,
+// #26); all stay mounted, only the active one is visible (the rest display:none
+// via `hidden`). So selectors that target "the current document's" pane scope to
+// the VISIBLE TabView, otherwise they'd match every open tab's copy.
+const VIS = '.tab-view:not([hidden])';
+const activePreview = (page: Page) => page.locator(`${VIS} .markdown-preview`);
+const activeEditor = (page: Page) => page.locator(`${VIS} .cm-content`);
+
 // The unsaved-changes dot now lives on the active tab; out-of-sync is a banner.
 const dirtyDot = (page: Page) => page.locator('.tab.is-active .tab-dot');
 const syncFlag = (page: Page) => page.locator('.sync-flag');
@@ -38,7 +46,7 @@ test('opens multiple command-line files as tabs, first focused (#37)', async ({ 
   await expect(tabNames(page)).toHaveText(['a.md', 'b.md', 'c.md']);
   // ...and the FIRST is the focused tab, showing its content.
   await expect(activeTabName(page)).toHaveText('a.md');
-  await expect(page.locator('.markdown-preview')).toContainText('first doc');
+  await expect(activePreview(page)).toContainText('first doc');
 });
 
 test('the welcome screen shows until a file is opened in a tab (R8/R46)', async ({ page }) => {
@@ -310,11 +318,11 @@ test('opens multiple files in tabs and switches between them (R39)', async ({ pa
   await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: '# Doc B\n', hash: 'h' });
   await expect(tabNames(page)).toHaveText(['a.md', 'b.md']);
   await expect(activeTabName(page)).toHaveText('b.md');
-  await expect(page.locator('.markdown-preview')).toContainText('Doc B');
+  await expect(activePreview(page)).toContainText('Doc B');
 
   await tabByName(page, 'a.md').locator('.tab-label').click();
   await expect(activeTabName(page)).toHaveText('a.md');
-  await expect(page.locator('.markdown-preview')).toContainText('Doc A');
+  await expect(activePreview(page)).toContainText('Doc A');
 });
 
 test('reopening an already-open file focuses its tab — no duplicate (R39)', async ({ page }) => {
@@ -333,8 +341,8 @@ test('per-tab dirty indicator marks only the edited tab (R40)', async ({ page })
   await fire(page, 'openCb', { path: 'C:\\docs\\a.md', content: 'aaa\n', hash: 'h' });
   await fire(page, 'openCb', { path: 'C:\\docs\\b.md', content: 'bbb\n', hash: 'h' }); // active b
   await page.locator('.source-toggle').click();
-  await expect(page.locator('.pane-editor')).toBeVisible();
-  await page.locator('.cm-content').click();
+  await expect(activeEditor(page)).toBeVisible();
+  await activeEditor(page).click();
   await page.keyboard.type(' EDIT');
   await expect(tabByName(page, 'b.md').locator('.tab-dot')).toBeVisible();
   await expect(tabByName(page, 'a.md').locator('.tab-dot')).toBeHidden();
@@ -454,9 +462,14 @@ test('preview reading position is preserved per tab; a new tab opens at the top 
   const longDoc = '# Doc A\n\n' + Array.from({ length: 80 }, (_, i) => `Paragraph ${i} of doc A.`).join('\n\n');
   await fire(page, 'openCb', { path: 'C:\\docs\\long-a.md', content: longDoc, hash: 'ha' });
 
+  // The VISIBLE tab's preview scroller (each tab owns its own; the hidden ones
+  // keep their scrollTop but mustn't be the one we read, #26).
+  const scrollTop = () =>
+    page.evaluate(() => document.querySelector<HTMLElement>('.tab-view:not([hidden]) .preview-scroll')!.scrollTop);
   // Scroll doc A's preview well down the page.
-  await page.evaluate(() => (document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop = 1200));
-  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  await page.evaluate(
+    () => (document.querySelector<HTMLElement>('.tab-view:not([hidden]) .preview-scroll')!.scrollTop = 1200),
+  );
   expect(await scrollTop()).toBeGreaterThan(200);
 
   // Open a different file in a new tab — it must start at the top, not inherit A's offset.
@@ -485,7 +498,8 @@ test('a file link with a #fragment jumps to that heading in the opened tab (R4)'
   await fire(page, 'openCb', { path: 'C:/docs/sibling.md', content: sibling, hash: 'hs' });
 
   await expect(activeTabName(page)).toHaveText('sibling.md');
-  const scrollTop = () => page.evaluate(() => document.querySelector<HTMLElement>('.preview-scroll')!.scrollTop);
+  const scrollTop = () =>
+    page.evaluate(() => document.querySelector<HTMLElement>('.tab-view:not([hidden]) .preview-scroll')!.scrollTop);
   await expect.poll(scrollTop).toBeGreaterThan(20); // jumped down to the Intro heading, not left at the top
 });
 
