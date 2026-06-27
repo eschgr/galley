@@ -1,11 +1,15 @@
 /**
- * Root component. Owns the open tabs and the view-mode switch, and hosts the
- * split editor/preview view (PRD R45).
+ * Root component. Owns the open tabs and the view-mode switch, and hosts a
+ * per-tab split editor/preview view (PRD R45, #26).
  *
  * Tabs (R39): each open file is a tab with its own buffer, baseline, dirty state,
- * conflict state, and editor state (undo/scroll/selection, stashed on switch).
- * One CodeMirror instance is shared; switching tabs swaps its state. When no tab
- * is open the editor shows the built-in welcome sandbox (R46 empty state).
+ * and conflict state. As of #26 each open tab also renders its OWN self-contained
+ * TabView (its own CodeMirror editor + preview + split layout + scroll-sync). All
+ * open tabs' TabViews stay mounted; only the active one is visible (the rest are
+ * display:none). Switching tabs just changes which one is visible — no re-parse,
+ * no DOM rebuild, no editor/preview state-swap. When no tab is open a dedicated
+ * welcome TabView shows the built-in sandbox (R46 empty state), editable but
+ * ephemeral.
  *
  * Document lifecycle per tab: a file arrives via the command line (R7) or
  * File → Open (R8); edits mark the tab dirty and trigger a debounced auto-save
@@ -16,27 +20,35 @@
  * pops one loud modal then a passive flag; a background tab's divergence is
  * tracked silently (its tab shows a marker) and surfaces when you switch to it.
  * Two choices only: take theirs (Load from disk) or keep yours (Keep mine).
+ *
+ * Text source of truth: the active tab's editor while mounted; Tab.text MIRRORS
+ * it via onSourceChange (driving that tab's preview). A reload from disk pushes
+ * the new text DOWN to the editor by bumping the tab's `docVersion` (TabView
+ * watches it and re-seeds the editor); ordinary edits never bump it.
  */
 import './app.css';
 import './print.css';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { EditorState, StateEffect } from '@codemirror/state';
+import { useEffect, useRef, useState } from 'react';
 import welcome from './welcome.md?raw';
-import { SplitView, type ViewMode } from './components/SplitView';
+import { type ViewMode } from './components/SplitView';
+import { TabView, type TabViewHandle } from './components/TabView';
 import { ConflictDialog } from './components/ConflictDialog';
 import { LinkDialog } from './components/LinkDialog';
 import { TabStrip } from './components/TabStrip';
 import { reorderToIndex } from './reorderTabs';
 import { CloseTabDialog } from './components/CloseTabDialog';
 import { HelpDialog } from './components/HelpDialog';
-import type { EditorHandle, LinkContext } from './components/Editor';
-import type { PreviewHandle } from './components/Preview';
+import type { LinkContext } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 import { cycleTabTarget, type CycleDirection } from './cycleTab';
 
 // R29: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
 const AUTOSAVE_MS =
   Number((window as unknown as { __galleyAutosaveMs?: number }).__galleyAutosaveMs) || 5000;
+
+// The welcome sandbox is rendered as a dedicated, always-present TabView keyed
+// here, so the empty state owns a real editor/preview pair like any open tab.
+const WELCOME_ID = '__welcome__';
 
 function basename(p: string): string {
   const parts = p.split(/[\\/]/);
@@ -45,7 +57,8 @@ function basename(p: string): string {
 
 /** One open document (R39). The buffer (`text`) is the source of truth; `saved`
  *  is the last loaded/saved baseline. `conflict`/`noticed`/`showModal`/`edited`
- *  carry the per-tab out-of-sync state (R34–R36). */
+ *  carry the per-tab out-of-sync state (R34–R36). `docVersion` is bumped on a
+ *  reload-from-disk so the tab's editor re-seeds (it never changes on an edit). */
 export interface Tab {
   id: string;
   path: string;
@@ -56,12 +69,10 @@ export interface Tab {
   conflict: OpenedFile | null;
   noticed: boolean;
   showModal: boolean;
+  docVersion: number;
 }
 
 export function App() {
-  const editorRef = useRef<EditorHandle>(null);
-  const previewRef = useRef<PreviewHandle>(null);
-
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const showingSource = viewMode === 'split';
 
@@ -76,22 +87,12 @@ export function App() {
   const tabsRef = useRef<Tab[]>([]);
   const activeIdRef = useRef<string | null>(null);
   const welcomeTextRef = useRef(welcome);
-  const editorStates = useRef<Map<string, EditorState>>(new Map());
-  // Reading position (preview scroll, px) per tab, so switching away and back
-  // restores where you were — and a freshly opened tab starts at the top.
-  const previewScroll = useRef<Map<string, number>>(new Map());
-  // The editor's scroll position per tab, captured as a CM6 ScrollTarget effect
-  // (view.scrollSnapshot()) — anchored to a DOCUMENT POSITION + pixel offset, not
-  // a raw scrollTop (#18). On a switch we re-dispatch it AFTER setState so CM
-  // re-applies it INSIDE the measure cycle and re-anchors as off-viewport line
-  // heights settle — exactly what a raw-scrollTop/line align cannot do (it reads
-  // block.top from ESTIMATED above-line heights and lands on the wrong pixel,
-  // then drifts as heights refine, worst under lineWrapping). The raw scrollTop
-  // (px) the snapshot was captured at rides alongside it, so restoreScroll can
-  // bound its height-warming sweep to the restored DEPTH instead of warming the
-  // whole doc on every switch (#18 perf).
-  const editorScrollFx = useRef<Map<string, { fx: StateEffect<unknown>; top: number }>>(new Map());
-  // A `#fragment` from a clicked file link, applied once the target tab renders.
+  // One TabView handle per rendered view (open tabs + the welcome sandbox), so App
+  // can drive the ACTIVE tab (link dialog, top line, fragment jump, focus). Set
+  // via each TabView's ref callback; pruned as tabs close.
+  const viewRefs = useRef<Map<string, TabViewHandle | null>>(new Map());
+  // A `#fragment` from a clicked file link, applied to the target tab's preview
+  // once it renders/activates.
   const pendingFragment = useRef<string | null>(null);
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const idSeq = useRef(0);
@@ -111,6 +112,8 @@ export function App() {
     welcomeTextRef.current = next;
     setWelcomeText(next);
   };
+  // The TabView handle for the currently active tab (or the welcome sandbox).
+  const activeView = () => viewRefs.current.get(activeIdRef.current ?? WELCOME_ID) ?? null;
 
   const clearAutosave = (id: string) => {
     const timer = autosaveTimers.current.get(id);
@@ -154,17 +157,12 @@ export function App() {
     }
   };
 
-  // Load disk content into a tab (open, reload, or silent refresh). Resets the
-  // tab to a clean, in-sync baseline; the stashed editor state is dropped so the
-  // editor rebuilds from the new text.
+  // Load disk content into a tab (open, reload, or silent refresh). Resets the tab
+  // to a clean, in-sync baseline and bumps `docVersion` so the tab's TabView
+  // re-seeds its editor from the new text (keeping the reading line, R31a).
   const reloadTab = (id: string, file: OpenedFile) => {
     clearAutosave(id);
-    editorStates.current.delete(id);
-    // R31a: a reload (Ctrl+R or a silent external refresh) keeps the reading
-    // position instead of jumping to the top. Capture the line before swapping
-    // the doc, then restore it on the new content.
-    const isActive = activeIdRef.current === id;
-    const keepLine = isActive ? (editorRef.current?.getTopLine() ?? 0) : 0;
+    const t = tabById(id);
     updateTab(id, {
       path: file.path,
       text: file.content,
@@ -174,50 +172,16 @@ export function App() {
       conflict: null,
       noticed: false,
       showModal: false,
+      docVersion: (t?.docVersion ?? 0) + 1,
     });
-    if (isActive) {
-      editorRef.current?.setDoc(file.content);
-      editorRef.current?.scrollToLine(keepLine); // synchronous → the reset-to-top never paints
-    }
   };
 
-  // Stash the active tab's editor state and reading position before leaving it,
-  // so returning restores both.
-  const stashActiveView = (id: string) => {
-    const st = editorRef.current?.getState();
-    if (st) editorStates.current.set(id, st);
-    const top = previewRef.current?.getScrollTop();
-    if (top != null) previewScroll.current.set(id, top);
-    const fx = editorRef.current?.scrollSnapshot();
-    if (fx) editorScrollFx.current.set(id, { fx, top: editorRef.current?.getScrollTop() ?? 0 });
-  };
-
-  // Switch the active tab, stashing the current view and restoring the target's
-  // editor state (or loading its text fresh if not stashed yet). The preview
-  // reading position is restored by the [activeId] effect once it re-renders;
-  // the editor is restored from its OWN stashed CM6 scroll snapshot (#18), which
-  // re-applies through the measure cycle and survives height refinement — no
-  // cross-component race with the preview's anchor rebuild.
+  // Switch the active tab. With per-tab kept-mounted views this is just a
+  // visibility flip — no stash/restore. A pending #fragment is applied to the
+  // now-active tab's preview once it's visible (see the [activeId] effect).
   const switchTo = (id: string) => {
-    const cur = activeIdRef.current;
-    if (cur === id) return;
-    if (cur) stashActiveView(cur);
+    if (activeIdRef.current === id) return;
     setActive(id);
-    const stashed = editorStates.current.get(id);
-    if (stashed) {
-      editorRef.current?.setState(stashed);
-      // Restore the editor scroll from its OWN stashed snapshot, dispatched as a
-      // FRESH transaction AFTER setState (setState replaces the whole state, so
-      // the effect can't ride inside it). CM re-anchors as heights settle. A
-      // tab that was never stashed has no snapshot → leave it at the top. A
-      // `#fragment` open lands the PREVIEW via pendingFragment in the [activeId]
-      // layout effect; the editor restore is independent and doesn't fight it.
-      const snap = editorScrollFx.current.get(id);
-      if (snap) editorRef.current?.restoreScroll(snap.fx, snap.top);
-    } else {
-      const t = tabById(id);
-      if (t) editorRef.current?.setDoc(t.text); // fresh doc → starts at the top
-    }
   };
 
   // Open a file in a tab (R39): focus + refresh if already open, else add a tab.
@@ -239,12 +203,10 @@ export function App() {
       conflict: null,
       noticed: false,
       showModal: false,
+      docVersion: 0,
     };
-    const cur = activeIdRef.current;
-    if (cur) stashActiveView(cur);
     commitTabs([...tabsRef.current, tab]);
     setActive(id);
-    editorRef.current?.setDoc(file.content);
   };
 
   const closeTab = (id: string) => {
@@ -253,27 +215,16 @@ export function App() {
     const t = tabsRef.current[idx];
     window.mdtool?.notifyClosed(t.path); // R41: stop watching its file
     clearAutosave(id);
-    editorStates.current.delete(id);
-    previewScroll.current.delete(id);
-    editorScrollFx.current.delete(id);
+    viewRefs.current.delete(id);
     const remaining = tabsRef.current.filter((x) => x.id !== id);
     commitTabs(remaining);
     if (activeIdRef.current !== id) return;
     if (remaining.length === 0) {
-      setActive(null);
-      editorRef.current?.setDoc(welcomeTextRef.current); // back to the welcome sandbox
+      setActive(null); // back to the welcome sandbox
       return;
     }
     const next = remaining[Math.min(idx, remaining.length - 1)];
     setActive(next.id);
-    const stashed = editorStates.current.get(next.id);
-    if (stashed) {
-      editorRef.current?.setState(stashed);
-      const snap = editorScrollFx.current.get(next.id); // restore from own snapshot (#18)
-      if (snap) editorRef.current?.restoreScroll(snap.fx, snap.top);
-    } else {
-      editorRef.current?.setDoc(next.text); // fresh doc → top
-    }
   };
 
   // #20: drag-reorder the tab strip. Reorders the array only — activeId is an id,
@@ -289,9 +240,12 @@ export function App() {
     else closeTab(id);
   };
 
-  const onSourceChange = (next: string) => {
-    const id = activeIdRef.current;
-    if (!id) {
+  // An edit in a tab's editor (or the welcome sandbox) — mirror it into state. The
+  // editor is the source of truth; this keeps Tab.text (which drives the preview)
+  // in step and runs the dirty/auto-save bookkeeping. Never bumps docVersion, so
+  // the editor is not re-seeded from its own edit.
+  const onSourceChange = (id: string, next: string) => {
+    if (id === WELCOME_ID) {
       setWelcome(next); // editing the welcome sandbox — ephemeral, not saved
       return;
     }
@@ -383,7 +337,7 @@ export function App() {
 
   // Cmd/Ctrl+K (R27): snapshot the link context at the cursor, then open the dialog.
   const openLinkDialog = () => {
-    const ctx = editorRef.current?.requestLink();
+    const ctx = activeView()?.requestLink() ?? null;
     if (ctx) setLinkCtx(ctx);
   };
 
@@ -393,29 +347,20 @@ export function App() {
     void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
-  // Position the preview the moment the active tab's content is in the DOM but
-  // before the browser paints (useLayoutEffect → no flash of the wrong scroll):
-  // a file link with a #fragment jumps to that heading; a fragment with no match
-  // falls back to the top; otherwise restore the tab's stashed reading position
-  // (a just-opened tab → the top).
-  useLayoutEffect(() => {
+  // Apply a pending #fragment to the now-active tab's preview once it is visible
+  // (a file link with a #fragment jumps to that heading; no match → the top). The
+  // active TabView keeps its own reading position when no fragment is pending, so
+  // there is nothing else to restore on a switch.
+  useEffect(() => {
     const frag = pendingFragment.current;
     pendingFragment.current = null;
-    if (frag) {
-      if (!previewRef.current?.scrollToAnchor(frag)) previewRef.current?.setScrollTop(0);
-      return;
-    }
-    const top = activeId ? (previewScroll.current.get(activeId) ?? 0) : 0;
-    // Re-assert the preview's OWN stashed px through its reflow-settle window
-    // (#18): a one-shot setScrollTop is clamped too high before the new tab's
-    // data: images decode / KaTeX lays out, leaving the preview stranded near the
-    // top. restoreScrollTop keeps re-applying the px until the content has grown
-    // enough that it's no longer clamped (or a bounded deadline passes).
-    previewRef.current?.restoreScrollTop(top);
+    if (!frag) return;
+    const view = activeView();
+    if (!view) return;
+    if (!view.jumpToFragment(frag)) view.scrollPreviewTop();
   }, [activeId]);
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
-  const source = activeTab ? activeTab.text : welcomeText;
   const conflict = activeTab?.conflict ?? null;
   const showModal = activeTab?.showModal ?? false;
 
@@ -468,24 +413,41 @@ export function App() {
           </button>
         </div>
       )}
-      <SplitView
-        initialDoc={welcome}
-        source={source}
-        onSourceChange={onSourceChange}
-        editorRef={editorRef}
-        previewRef={previewRef}
-        viewMode={viewMode}
-        onLink={openLinkDialog}
-        onOpenLocal={(href) => {
-          // Resolve the link against the active file's folder (host side); a
-          // local link only makes sense when a real file is open.
-          if (!activeTab) return;
-          // Remember a #fragment so we can jump to it once the target tab opens.
-          const hash = href.indexOf('#');
-          pendingFragment.current = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)) || null : null;
-          window.mdtool?.openLocalFile(href, activeTab.path);
-        }}
-      />
+      {/* One TabView per open tab plus the welcome sandbox; all stay mounted, only
+          the active one is visible (the rest are display:none). A local link is
+          resolved against the active file's folder (host side). */}
+      {tabs.map((t) => (
+        <TabView
+          key={t.id}
+          ref={(h) => viewRefs.current.set(t.id, h)}
+          initialText={t.text}
+          text={t.text}
+          docVersion={t.docVersion}
+          viewMode={viewMode}
+          hidden={t.id !== activeId}
+          onSourceChange={(next) => onSourceChange(t.id, next)}
+          onLink={openLinkDialog}
+          onOpenLocal={(href) => onOpenLocalLink(href, t.path)}
+        />
+      ))}
+      {/* The welcome sandbox: editable but ephemeral, shown only when no tab is
+          open (R46). Mounted/unmounted with the empty state rather than kept
+          hidden behind open tabs — its buffer lives in App's welcomeText, so it
+          re-seeds from there each time, and not rendering it while tabs are open
+          keeps exactly ONE editor/preview pair in the DOM at a time. */}
+      {activeId === null && (
+        <TabView
+          key={WELCOME_ID}
+          ref={(h) => viewRefs.current.set(WELCOME_ID, h)}
+          initialText={welcomeText}
+          text={welcomeText}
+          docVersion={0}
+          viewMode={viewMode}
+          hidden={false}
+          onSourceChange={(next) => onSourceChange(WELCOME_ID, next)}
+          onLink={openLinkDialog}
+        />
+      )}
       {showHelp && (
         <HelpDialog
           version={window.mdtool?.version ?? '0.0.0'}
@@ -520,11 +482,11 @@ export function App() {
         <LinkDialog
           initial={linkCtx}
           onConfirm={(t, u) => {
-            editorRef.current?.applyLink(t, u);
+            activeView()?.applyLink(t, u);
             setLinkCtx(null);
           }}
           onRemove={() => {
-            editorRef.current?.removeLink();
+            activeView()?.removeLink();
             setLinkCtx(null);
           }}
           onCancel={() => setLinkCtx(null)}
@@ -532,4 +494,13 @@ export function App() {
       )}
     </div>
   );
+
+  // Resolve a clicked local link against the active file's folder (host side); a
+  // local link only makes sense when a real file is open. Remember a #fragment so
+  // we can jump to it once the target tab opens/activates.
+  function onOpenLocalLink(href: string, fromPath: string) {
+    const hash = href.indexOf('#');
+    pendingFragment.current = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)) || null : null;
+    window.mdtool?.openLocalFile(href, fromPath);
+  }
 }
