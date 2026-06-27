@@ -306,7 +306,7 @@ ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
   win.setBounds({ x: Math.round(nx), y, width: target, height: h });
 });
 
-const createWindow = (project: string | null = null, files: string[] = []) => {
+const createWindow = (project: string | null = null, files: string[] = [], channelId: string | null = null) => {
   const mainWindow = new BrowserWindow({
     // Portrait-ish by default — most documents read better tall than wide.
     // Resizable, so widening for side-by-side editing is one drag away.
@@ -389,8 +389,8 @@ const createWindow = (project: string | null = null, files: string[] = []) => {
     rendererReady = true;
     for (const f of pendingChannelFiles.splice(0)) void openPath(mainWindow, f);
   });
-  if (project) {
-    platform.listenOnChannel(project, (absPath) => {
+  if (project && channelId) {
+    platform.listenOnChannel(project, channelId, (absPath) => {
       if (mainWindow.isDestroyed()) return;
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus(); // R14: the delivered file's tab is focused
@@ -440,15 +440,27 @@ app.on('ready', async () => {
   const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
   const files = platform.parseCliFileArgs(process.argv, app.isPackaged);
   if (project) {
-    const action = decideStartupAction(
-      await platform.claimProject(project, { appVersion: app.getVersion() }),
-      files,
-    );
+    const claim = await platform.claimProject(project, { appVersion: app.getVersion() });
+    const action = decideStartupAction(claim, files);
     if (action.kind === 'handoff') {
-      for (const f of action.files) platform.sendToChannel(project, f);
+      // Address each file to the live owner's channel, then exit (no 2nd window).
+      for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f);
       app.quit();
       return;
     }
+    if (action.kind === 'incompatible') {
+      // A different-major Galley owns this project; writing to it would pollute a
+      // queue it can't parse. Surface and exit rather than fail silently (R11–R15).
+      dialog.showErrorBox(
+        'Galley version mismatch',
+        `Another, incompatible version of Galley (channel protocol ${action.ownerProtocol}) already owns ` +
+          `project "${project}". Close that window and try again, or open the file with that version.`,
+      );
+      app.exit(1);
+      return;
+    }
+    createWindow(project, files, claim.owner.id); // we own it — listen on our own channel
+    return;
   }
   createWindow(project, files);
 });

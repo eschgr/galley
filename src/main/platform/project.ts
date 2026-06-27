@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PROTOCOL_VERSION } from './protocol';
 
 /** Filename prefix for a project's scratch dir under the temp dir. */
 const DIR_PREFIX = 'mdtool-';
@@ -31,6 +32,13 @@ export interface ProjectOwner {
   readonly pid: number;
   /** When that instance claimed the project (epoch ms) — disambiguates pid reuse. */
   readonly startedAt: number;
+  /**
+   * Channel name addressing this owner: `<pid>-<startedAt>`. Senders stamp their
+   * message filenames with this so only the intended owner consumes them.
+   */
+  readonly id: string;
+  /** Channel protocol version this owner speaks (e.g. "1.0"); a sender checks it before sending. */
+  readonly protocol: string;
   /** Hostname the pid is meaningful on — a pid only proves liveness on its own host. */
   readonly host: string;
   /** The project name (the `--project` value). */
@@ -39,6 +47,11 @@ export interface ProjectOwner {
   readonly dropDir: string;
   /** App version that wrote the record (debugging / future format changes). */
   readonly appVersion?: string;
+}
+
+/** The channel name addressing a given instance. */
+export function channelId(pid: number, startedAt: number): string {
+  return `${pid}-${startedAt}`;
 }
 
 /** Outcome of `claimProject`: either we now own it, or a live owner already does. */
@@ -117,12 +130,12 @@ function writeOwnerAtomic(dir: string, owner: ProjectOwner): void {
 /** Dependencies for `acquireProject`, injected so the decision is unit-testable. */
 export interface AcquireDeps {
   /**
-   * Confirm a window is actually CONSUMING the project's channel (the file
-   * handshake in `channel.ts#pingChannel`). This is what makes the claim safe
-   * against PID reuse: a recycled-but-unrelated PID looks alive to
+   * Confirm a window is actually CONSUMING a specific owner's channel (the file
+   * handshake in `channel.ts#pingChannel`), addressed to `targetId`. This makes
+   * the claim safe against PID reuse: a recycled-but-unrelated PID looks alive to
    * `isProcessAlive` but consumes nothing, so it never acks.
    */
-  ping: (project: string) => Promise<boolean>;
+  ping: (project: string, targetId: string) => Promise<boolean>;
   /** PID-existence probe (fast short-circuit before the handshake). */
   alive?: AliveFn;
 }
@@ -153,9 +166,12 @@ export async function acquireProject(
   const alive = deps.alive ?? isProcessAlive;
   const dir = projectDir(project);
   fs.mkdirSync(dir, { recursive: true });
+  const startedAt = Date.now();
   const self: ProjectOwner = {
     pid: process.pid,
-    startedAt: Date.now(),
+    startedAt,
+    id: channelId(process.pid, startedAt),
+    protocol: PROTOCOL_VERSION,
     host: os.hostname(),
     project,
     dropDir: dir,
@@ -166,7 +182,8 @@ export async function acquireProject(
     const existing = readProjectOwner(project);
     if (existing && existing.host === self.host && existing.pid !== self.pid && alive(existing.pid)) {
       // PID exists — but a recycled PID would too. Only a live consumer acks.
-      if (await deps.ping(project)) {
+      const targetId = existing.id ?? channelId(existing.pid, existing.startedAt);
+      if (await deps.ping(project, targetId)) {
         return { owned: false, owner: existing, dropDir: dir };
       }
       // PID alive yet nothing is consuming the channel → stale; fall through.

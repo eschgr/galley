@@ -99,13 +99,14 @@ export interface PlatformBridge {
    * window. A successful claim is remembered so `closeChannel` releases it.
    */
   claimProject(project: string, opts?: { appVersion?: string }): Promise<ClaimResult>;
-  /** Drop one file into the project's channel for the owning window to open. */
-  sendToChannel(project: string, absPath: string): void;
+  /** Drop one file into the channel addressed to owner `targetId` (its `owner.id`). */
+  sendToChannel(project: string, targetId: string, absPath: string): void;
   /**
-   * Start consuming the project's channel; each delivered absolute path is
-   * handed to `onFile`. Reconciles commands queued before this window mounted.
+   * Start consuming the channel addressed to `channelId` (this window's own
+   * `owner.id`); each delivered absolute path is handed to `onFile`. Reconciles
+   * messages queued before this window mounted.
    */
-  listenOnChannel(project: string, onFile: (absPath: string) => void): void;
+  listenOnChannel(project: string, channelId: string, onFile: (absPath: string) => void): void;
   /** Stop consuming the channel and release the project (ownership-guarded). */
   closeChannel(): Promise<void>;
 }
@@ -192,17 +193,19 @@ export function createPlatformBridge(): PlatformBridge {
     // (taking over a stale owner), and either become its window or — when a live
     // owner exists — drop files into its channel. See ./project and ./channel.
     async claimProject(project, opts) {
-      const result = await acquireProjectFs(project, opts ?? {}, { ping: (p) => pingChannelFs(p) });
+      const result = await acquireProjectFs(project, opts ?? {}, {
+        ping: (p, id) => pingChannelFs(p, id),
+      });
       if (result.owned) claimedProject = project; // remember so closeChannel releases it
       return result;
     },
 
-    sendToChannel(project, absPath) {
-      sendToChannelFs(project, absPath);
+    sendToChannel(project, targetId, absPath) {
+      sendToChannelFs(project, targetId, absPath);
     },
 
-    listenOnChannel(project, onFile) {
-      channelListener = listenOnChannelFs(project, onFile);
+    listenOnChannel(project, channelId, onFile) {
+      channelListener = listenOnChannelFs(project, channelId, onFile);
     },
 
     async closeChannel() {

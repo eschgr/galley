@@ -3,38 +3,38 @@
  * R11–R15).
  *
  * The channel is the *messaging* half of the per-project machinery (the project
- * scratch dir + `owner.json` live in `project.ts`). A caller "sends" by dropping
- * a one-line command file holding an absolute path; the owning window watches
- * the directory, reads each command, and opens the file. This replaces the old
- * Unix-socket / named-pipe transport, which a sandboxed launcher could not
- * `listen()` on — a file write + a file watch are both permitted where a socket
- * `listen()` is denied (EPERM).
+ * scratch dir + `owner.json` live in `project.ts`). A launching peer "sends" by
+ * dropping a message file into the project dir; the owning window watches the
+ * dir and acts on each message. This replaces the old socket/named-pipe
+ * transport, which a sandboxed launcher could not `listen()` on — file write +
+ * file watch are both permitted where a socket `listen()` is denied (EPERM).
  *
- * Command-file lifecycle (both are CHANNEL files, owned here):
- *   <unique>.tmp   in-flight write; atomically renamed → .open so the watcher
- *                  never observes a half-written path. A crashed sender may
- *                  orphan one; the stale-`.tmp` reaper cleans those up.
- *   <unique>.open  a committed command: one absolute path. Read, delivered to
- *                  `onFile`, then deleted. Re-delivering an open file just
- *                  focuses its tab (R15), so duplicate drops are harmless.
- *   <unique>.ping  a liveness probe from a launching instance; the owner answers
- *   <unique>.pong  with the matching `.pong`. Lets a new launch tell a real live
- *                  owner from a stale `owner.json` whose PID was recycled.
+ * Addressing — the "channel name". Every file is named `<channelId>.<unique>.<ext>`
+ * where `channelId = <pid>-<startedAt>` identifies the owning instance (the PID
+ * aids debugging; `startedAt` makes it unique even if the PID is later reused).
+ * A watcher only ever touches files carrying ITS channelId, so even if two
+ * owners transiently coexist a message reaches exactly its intended target — no
+ * double-delivery, no wrong-window delivery. The current owner's channelId is
+ * published in `owner.json`, so a sender addresses the live owner.
  *
- * The watcher only ever delivers `.open` (and answers `.ping`), so the project's
- * `owner.json`, an in-flight `.tmp`, and `.pong` files are never opened as docs.
+ * File lifecycle (all CHANNEL files, owned here):
+ *   <id>.<u>.tmp    in-flight write; atomically renamed → `.msg` so a reader
+ *                   never sees a half-written message. Crashed-sender orphans
+ *                   are reaped.
+ *   <id>.<u>.msg    a committed message: a versioned JSON envelope
+ *                   `{ v, type, ... }` (see ./protocol). Read, dispatched, deleted.
+ *   <id>.<u>.ping   a liveness probe addressed to owner <id>; the owner answers
+ *   <id>.<u>.pong   by RENAMING the ping to `.pong` (one file's lifecycle, not
+ *                   two). Distinguishes a live owner from a stale owner.json.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
 import { projectDir } from './project';
+import { PROTOCOL_VERSION, isCompatibleWith } from './protocol';
 
 const TMP_EXT = '.tmp';
-const OPEN_EXT = '.open';
-// Liveness handshake (PID-reuse defence): a probing launch drops a `.ping`; the
-// owner's watcher answers with a `.pong`. This tests whether a window is really
-// CONSUMING the channel, which a recycled-but-unrelated PID is not — so it
-// distinguishes a live owner from a stale `owner.json` left by a hard kill.
+const MSG_EXT = '.msg';
 const PING_EXT = '.ping';
 const PONG_EXT = '.pong';
 /** Transient files older than this are orphans (crashed sender / abandoned probe). */
@@ -48,20 +48,33 @@ let seq = 0;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** A message addressed to a given channel: `<channelId>.<unique>`. */
+function messageBase(dir: string, channelId: string): string {
+  return path.join(dir, `${channelId}.${process.pid}-${seq++}-${process.hrtime.bigint()}`);
+}
+
+/** Atomically place `body` at `finalPath` (write a `.tmp`, then rename over it). */
+function atomicWrite(base: string, ext: string, body: string): void {
+  const tmp = base + TMP_EXT;
+  fs.writeFileSync(tmp, body);
+  fs.renameSync(tmp, base + ext);
+}
+
 /**
- * Drop one command into a project's channel: write the absolute path to a
- * `.tmp` file, then atomically rename it to `.open`. The rename is what the
- * watcher sees, so a reader never catches a partial write. Safe to call whether
- * or not a window is currently consuming the directory (an unconsumed command
- * waits and is picked up by the next claim's startup reconcile).
+ * Drop an "open this file" message addressed to the owner `targetId`. Body is a
+ * versioned JSON envelope so the channel can carry more message types later
+ * without a format break. Safe to call whether or not a window is currently
+ * consuming; an unconsumed message waits for the owner's startup reconcile.
+ *
+ * The caller is responsible for protocol compatibility (it has the owner's
+ * version from `owner.json` and must not write to a different-major owner — see
+ * `startup.decideStartupAction`); the receiver re-checks defensively.
  */
-export function sendToChannel(project: string, absPath: string): void {
+export function sendToChannel(project: string, targetId: string, absPath: string): void {
   const dir = projectDir(project);
   fs.mkdirSync(dir, { recursive: true });
-  const base = `msg-${process.pid}-${seq++}-${process.hrtime.bigint()}`;
-  const tmp = path.join(dir, base + TMP_EXT);
-  fs.writeFileSync(tmp, absPath + '\n');
-  fs.renameSync(tmp, path.join(dir, base + OPEN_EXT));
+  const envelope = JSON.stringify({ v: PROTOCOL_VERSION, type: 'open', path: absPath });
+  atomicWrite(messageBase(dir, targetId), MSG_EXT, envelope);
 }
 
 /** Handle returned by `listenOnChannel`; close it to stop watching. */
@@ -70,22 +83,28 @@ export interface ChannelListener {
 }
 
 /**
- * Start consuming a project's channel. Reconciles any `.open` commands already
- * present (delivered before this window mounted, or left by a prior launch),
- * reaps orphan `.tmp` files, then watches for new commands. Each command's path
- * is handed to `onFile`; the file is deleted once read.
+ * Start consuming the channel for owner `channelId`. Reconciles messages/pings
+ * already addressed to us (queued before this window mounted, or left by a prior
+ * launch), reaps orphans, then watches for new ones. Each `open` message's path
+ * is handed to `onFile`. Only files carrying OUR channelId are touched.
  *
  * Uses chokidar with `usePolling` for robustness across launch contexts (incl.
  * sandboxes, where native FS events may not fire). chokidar v4 has no glob
- * support, so the directory is watched and `.open` is filtered in code.
+ * support, so the directory is watched and the channelId prefix filtered in code.
  */
-export function listenOnChannel(project: string, onFile: (absPath: string) => void): ChannelListener {
+export function listenOnChannel(
+  project: string,
+  channelId: string,
+  onFile: (absPath: string) => void,
+): ChannelListener {
   const dir = projectDir(project);
   fs.mkdirSync(dir, { recursive: true });
+  const mine = channelId + '.';
 
   reapStale(dir);
   for (const name of safeReaddir(dir)) {
-    if (name.endsWith(OPEN_EXT)) consume(path.join(dir, name), onFile);
+    if (!name.startsWith(mine)) continue;
+    if (name.endsWith(MSG_EXT)) consumeMessage(path.join(dir, name), onFile);
     else if (name.endsWith(PING_EXT)) ackPing(path.join(dir, name)); // answer a probe that beat us here
   }
 
@@ -97,53 +116,75 @@ export function listenOnChannel(project: string, onFile: (absPath: string) => vo
     awaitWriteFinish: { stabilityThreshold: 80, pollInterval: 20 },
   });
   watcher.on('add', (p) => {
-    if (p.endsWith(OPEN_EXT)) consume(p, onFile);
-    else if (p.endsWith(PING_EXT)) ackPing(p); // a probing launch is checking we're alive
+    const name = path.basename(p);
+    if (!name.startsWith(mine)) return; // addressed to a different owner — not ours to touch
+    if (name.endsWith(MSG_EXT)) consumeMessage(p, onFile);
+    else if (name.endsWith(PING_EXT)) ackPing(p); // a launching peer is checking we're alive
   });
-  // A watcher error is logged, not surfaced as a dialog — under the file-drop
-  // transport there is no per-launch bind that can fail the way a socket did.
   watcher.on('error', (err) => console.error('[mdtool] channel watch error:', err));
 
   return { close: () => watcher.close() };
 }
 
-/** Read a command file, delete it, and deliver its (trimmed) path if non-empty. */
-function consume(filePath: string, onFile: (absPath: string) => void): void {
-  let content: string;
+/** Read, delete, and dispatch one message envelope. */
+function consumeMessage(filePath: string, onFile: (absPath: string) => void): void {
+  let raw: string;
   try {
-    content = fs.readFileSync(filePath, 'utf8');
+    raw = fs.readFileSync(filePath, 'utf8');
   } catch {
-    return; // already consumed by a concurrent reader / vanished
+    return; // vanished / raced — fine
   }
   try {
     fs.unlinkSync(filePath);
   } catch {
-    /* already gone — fine */
+    /* already gone */
   }
-  const line = content.trim();
-  if (line) onFile(line);
+
+  let msg: { v?: unknown; type?: unknown; path?: unknown };
+  try {
+    msg = JSON.parse(raw);
+  } catch {
+    console.error('[mdtool] channel: unparseable message dropped:', filePath);
+    return;
+  }
+
+  // Defense-in-depth: a sender should have gated on owner.json's version. If an
+  // incompatible-major message lands anyway, surface it — don't fail silently.
+  if (!isCompatibleWith(msg.v)) {
+    console.error(
+      `[mdtool] channel: incompatible protocol ${JSON.stringify(msg.v)} (this build ${PROTOCOL_VERSION}); message ignored`,
+    );
+    return;
+  }
+
+  switch (msg.type) {
+    case 'open':
+      if (typeof msg.path === 'string' && msg.path) onFile(msg.path);
+      return;
+    default:
+      // Unknown verb under a compatible major = a newer-minor capability we lack.
+      // Graceful forward-compat: skip (logged), don't error.
+      console.warn(`[mdtool] channel: unsupported message type ${JSON.stringify(msg.type)}; ignored`);
+  }
 }
 
 /**
- * Probe whether a window is actively consuming the project's channel (R11–R15
- * liveness). Drops a `.ping` (atomic appear, so the owner's watcher sees it
- * whole) and waits for the owner to write the matching `.pong`. Returns true iff
- * acknowledged within the timeout — a far stronger signal than "the recorded PID
- * exists", since a recycled-but-unrelated PID consumes nothing and never acks.
- * Cleans up both files on the way out.
+ * Probe whether a window is actively consuming owner `targetId`'s channel
+ * (R11–R15 liveness). Drops a `.ping` addressed to that owner and waits for it
+ * to be renamed to `.pong`. A live owner answers; a recycled-but-unrelated PID
+ * consumes nothing and never does — so this is immune to PID reuse. Cleans up.
  */
 export async function pingChannel(
   project: string,
+  targetId: string,
   { timeoutMs = PING_TIMEOUT_MS, intervalMs = PING_INTERVAL_MS } = {},
 ): Promise<boolean> {
   const dir = projectDir(project);
   fs.mkdirSync(dir, { recursive: true });
-  const base = path.join(dir, `ping-${process.pid}-${seq++}-${process.hrtime.bigint()}`);
+  const base = messageBase(dir, targetId);
   const pingPath = base + PING_EXT;
   const pongPath = base + PONG_EXT;
-  const tmp = base + TMP_EXT;
-  fs.writeFileSync(tmp, '');
-  fs.renameSync(tmp, pingPath);
+  atomicWrite(base, PING_EXT, '');
 
   const deadline = Date.now() + timeoutMs;
   try {
@@ -161,23 +202,18 @@ export async function pingChannel(
     try {
       fs.unlinkSync(pingPath);
     } catch {
-      /* owner may have removed it */
+      /* owner already renamed it to .pong */
     }
   }
 }
 
-/** Owner-side: answer a probe by writing its `.pong`, then remove the `.ping`. */
+/** Owner-side ack: rename the probe's `.ping` to `.pong` (one file, no churn). */
 function ackPing(pingPath: string): void {
-  const base = pingPath.slice(0, -PING_EXT.length);
+  const pongPath = pingPath.slice(0, -PING_EXT.length) + PONG_EXT;
   try {
-    fs.writeFileSync(base + PONG_EXT, String(process.pid)); // existence is the signal; content is diagnostic
+    fs.renameSync(pingPath, pongPath);
   } catch {
-    /* prober vanished — fine */
-  }
-  try {
-    fs.unlinkSync(pingPath);
-  } catch {
-    /* already cleaned up */
+    /* prober gave up and removed it — fine */
   }
 }
 

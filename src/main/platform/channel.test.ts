@@ -1,12 +1,14 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { sendToChannel, listenOnChannel, pingChannel, type ChannelListener } from './channel';
 import { projectDir } from './project';
+import { PROTOCOL_VERSION, PROTOCOL } from './protocol';
 
-// The channel transport (R11–R15) over the file-drop directory: a caller writes
-// a command file holding an absolute path; the watcher reads each and hands it
-// to onFile. Replaces the old Unix-socket / named-pipe round-trip.
+// The channel transport (R11–R15): a launching peer writes a message file
+// addressed to the owning instance's channel id; the owner reads each, version-
+// checks it, and dispatches. Filenames carry the channel id, so a message only
+// ever reaches its intended owner.
 
 let seq = 0;
 const made: string[] = [];
@@ -16,9 +18,10 @@ function freshName(tag: string): string {
   made.push(name);
   return name;
 }
+const ID = 'own-1'; // this window's channel id in these tests
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function listen(name: string, onFile: (p: string) => void): Promise<ChannelListener> {
-  const l = listenOnChannel(name, onFile);
+async function listen(name: string, id: string, onFile: (p: string) => void): Promise<ChannelListener> {
+  const l = listenOnChannel(name, id, onFile);
   open.push(l);
   await sleep(120); // let the polling watcher settle before drops
   return l;
@@ -31,90 +34,153 @@ async function waitFor(fn: () => boolean, ms = 3000, step = 25): Promise<boolean
   }
   return false;
 }
-function openCount(name: string): number {
-  return fs.readdirSync(projectDir(name)).filter((n) => n.endsWith('.open')).length;
+function msgCount(name: string): number {
+  return fs.readdirSync(projectDir(name)).filter((n) => n.endsWith('.msg')).length;
+}
+/** Drop a raw envelope (atomic appear) addressed to `id`, to exercise the parser. */
+function dropRaw(name: string, id: string, envelope: unknown): void {
+  const dir = projectDir(name);
+  fs.mkdirSync(dir, { recursive: true });
+  const base = path.join(dir, `${id}.raw-${seq++}`);
+  fs.writeFileSync(base + '.tmp', JSON.stringify(envelope));
+  fs.renameSync(base + '.tmp', base + '.msg');
 }
 afterEach(async () => {
   for (const l of open.splice(0)) await l.close();
   for (const name of made.splice(0)) fs.rmSync(projectDir(name), { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 describe('channel file-drop transport (R11–R15)', () => {
-  it('delivers a dropped path and deletes the command file', async () => {
+  it('delivers an open message and deletes it', async () => {
     const name = freshName('rt');
     const got: string[] = [];
-    await listen(name, (p) => got.push(p));
+    await listen(name, ID, (p) => got.push(p));
 
-    sendToChannel(name, 'C:\\docs\\a.md');
+    sendToChannel(name, ID, 'C:\\docs\\a.md');
 
     expect(await waitFor(() => got.length === 1)).toBe(true);
     expect(got[0]).toBe('C:\\docs\\a.md');
-    expect(await waitFor(() => openCount(name) === 0)).toBe(true);
+    expect(await waitFor(() => msgCount(name) === 0)).toBe(true);
   });
 
-  it('delivers a burst of drops with no loss or duplication', async () => {
+  it('delivers a burst with no loss or duplication', async () => {
     const name = freshName('burst');
     const got: string[] = [];
-    await listen(name, (p) => got.push(p));
+    await listen(name, ID, (p) => got.push(p));
 
     const sent = Array.from({ length: 12 }, (_, i) => `C:\\f${i}.md`);
-    for (const p of sent) sendToChannel(name, p);
+    for (const p of sent) sendToChannel(name, ID, p);
 
     expect(await waitFor(() => got.length === sent.length, 6000)).toBe(true);
     expect(new Set(got)).toEqual(new Set(sent));
-    expect(await waitFor(() => openCount(name) === 0, 6000)).toBe(true);
+    expect(await waitFor(() => msgCount(name) === 0, 6000)).toBe(true);
   });
 
-  it('reconciles commands dropped before the watcher attaches', async () => {
+  it('reconciles messages dropped before the watcher attaches', async () => {
     const name = freshName('reconcile');
-    fs.mkdirSync(projectDir(name), { recursive: true });
-    sendToChannel(name, 'C:\\pre1.md');
-    sendToChannel(name, 'C:\\pre2.md');
+    sendToChannel(name, ID, 'C:\\pre1.md');
+    sendToChannel(name, ID, 'C:\\pre2.md');
 
     const got: string[] = [];
-    await listen(name, (p) => got.push(p));
+    await listen(name, ID, (p) => got.push(p));
 
     expect(await waitFor(() => got.length === 2)).toBe(true);
     expect(new Set(got)).toEqual(new Set(['C:\\pre1.md', 'C:\\pre2.md']));
   });
 
-  it('ignores non-command files in the directory (e.g. owner.json)', async () => {
-    const name = freshName('ignore');
-    const dir = projectDir(name);
-    fs.mkdirSync(dir, { recursive: true });
+  it('only consumes messages addressed to its own channel id', async () => {
+    const name = freshName('addr');
     const got: string[] = [];
-    await listen(name, (p) => got.push(p));
+    await listen(name, ID, (p) => got.push(p));
 
-    fs.writeFileSync(path.join(dir, 'owner.json'), '{"pid":1}');
-    fs.writeFileSync(path.join(dir, 'note.txt'), 'C:\\notacommand.md');
-    sendToChannel(name, 'C:\\real.md');
+    sendToChannel(name, 'someone-else', 'C:\\other.md'); // a different owner's message
+    sendToChannel(name, ID, 'C:\\mine.md');
 
     expect(await waitFor(() => got.length === 1)).toBe(true);
-    expect(got).toEqual(['C:\\real.md']); // the non-.open files never delivered
+    expect(got).toEqual(['C:\\mine.md']);
+    // the foreign message is left untouched for its owner
+    expect(fs.readdirSync(projectDir(name)).some((n) => n.startsWith('someone-else.'))).toBe(true);
+  });
+});
+
+describe('channel message format (versioned envelope)', () => {
+  it('tolerates unknown extra fields, defaults nothing it does not need', async () => {
+    const name = freshName('extra');
+    const got: string[] = [];
+    await listen(name, ID, (p) => got.push(p));
+    dropRaw(name, ID, { v: PROTOCOL_VERSION, type: 'open', path: 'C:\\x.md', future: { a: 1 } });
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got[0]).toBe('C:\\x.md');
+  });
+
+  it('skips an unknown message type (forward-compat), without delivering', async () => {
+    const name = freshName('unktype');
+    const got: string[] = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {
+      /* silence the expected diagnostic log */
+    });
+    await listen(name, ID, (p) => got.push(p));
+    dropRaw(name, ID, { v: PROTOCOL_VERSION, type: 'frobnicate', path: 'C:\\x.md' });
+    sendToChannel(name, ID, 'C:\\real.md'); // a known message after it
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got).toEqual(['C:\\real.md']); // the unknown type never delivered
+  });
+
+  it('surfaces (does not silently drop) an incompatible-major message', async () => {
+    const name = freshName('badmajor');
+    const got: string[] = [];
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {
+      /* silence the expected diagnostic log */
+    });
+    await listen(name, ID, (p) => got.push(p));
+    dropRaw(name, ID, { v: `${PROTOCOL.major + 1}.0`, type: 'open', path: 'C:\\x.md' });
+    sendToChannel(name, ID, 'C:\\real.md');
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got).toEqual(['C:\\real.md']); // incompatible message not delivered
+    expect(err).toHaveBeenCalled(); // but surfaced, not silent
+  });
+
+  it('does not deliver an open message with no path', async () => {
+    const name = freshName('nopath');
+    const got: string[] = [];
+    await listen(name, ID, (p) => got.push(p));
+    dropRaw(name, ID, { v: PROTOCOL_VERSION, type: 'open' });
+    sendToChannel(name, ID, 'C:\\real.md');
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got).toEqual(['C:\\real.md']);
   });
 });
 
 describe('channel liveness handshake (PID-reuse defence)', () => {
-  it('a listening owner acknowledges a ping', async () => {
+  it('a listening owner acknowledges a ping addressed to it', async () => {
     const name = freshName('ping-live');
-    await listen(name, () => {
-      /* file delivery isn't what these handshake tests exercise */
+    await listen(name, ID, () => {
+      /* delivery not exercised here */
     });
-    expect(await pingChannel(name)).toBe(true);
+    expect(await pingChannel(name, ID)).toBe(true);
+  });
+
+  it('an owner ignores a ping addressed to a different id (times out false)', async () => {
+    const name = freshName('ping-addr');
+    await listen(name, ID, () => {
+      /* delivery not exercised here */
+    });
+    // Probe a different channel id — our owner must not answer for someone else.
+    expect(await pingChannel(name, 'not-me', { timeoutMs: 400, intervalMs: 25 })).toBe(false);
   });
 
   it('an unconsumed channel does not ack (times out false)', async () => {
     const name = freshName('ping-dead');
-    // No listener attached — mimics a stale owner.json whose PID was recycled.
-    expect(await pingChannel(name, { timeoutMs: 400, intervalMs: 25 })).toBe(false);
+    expect(await pingChannel(name, ID, { timeoutMs: 400, intervalMs: 25 })).toBe(false);
   });
 
   it('leaves no ping/pong files behind after a handshake', async () => {
     const name = freshName('ping-clean');
-    await listen(name, () => {
-      /* file delivery isn't what these handshake tests exercise */
+    await listen(name, ID, () => {
+      /* delivery not exercised here */
     });
-    await pingChannel(name);
+    await pingChannel(name, ID);
     const leftovers = fs.readdirSync(projectDir(name)).filter((n) => n.endsWith('.ping') || n.endsWith('.pong'));
     expect(leftovers).toEqual([]);
   });

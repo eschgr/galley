@@ -136,12 +136,26 @@ describe('acquireProject', () => {
     expect(r.owned).toBe(true); // our own pid is not a foreign live owner
   });
 
-  it('records appVersion + host in the owner', async () => {
+  it('records appVersion, host, channel id, and protocol in the owner', async () => {
     const name = freshName('meta');
     await acquireProject(name, { appVersion: '9.9.9' }, { ping: pingTrue });
     const owner = readProjectOwner(name);
     expect(owner?.appVersion).toBe('9.9.9');
     expect(owner?.host).toBe(os.hostname());
+    expect(owner?.id).toBe(`${process.pid}-${owner?.startedAt}`); // channel name = pid-startedAt
+    expect(owner?.protocol).toMatch(/^\d+\.\d+$/); // protocol version, separate from app version
+  });
+
+  it('addresses the handshake to the existing owner id', async () => {
+    const name = freshName('addr');
+    writeOwner(name, { pid: 999999, startedAt: 5, id: '999999-5', project: name });
+    let pingedId: string | undefined;
+    await acquireProject(
+      name,
+      {},
+      { ping: async (_p, id) => ((pingedId = id), true), alive: alwaysAlive },
+    );
+    expect(pingedId).toBe('999999-5'); // probed the recorded owner's channel, not ours
   });
 });
 
