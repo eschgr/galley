@@ -19,14 +19,14 @@
 import * as fileIo from './fileIo';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
 import {
-  claimProject as claimProjectFs,
+  acquireProject as acquireProjectFs,
   releaseProject as releaseProjectFs,
-  isProjectLive as isProjectLiveFs,
   type ClaimResult,
 } from './project';
 import {
   sendToChannel as sendToChannelFs,
   listenOnChannel as listenOnChannelFs,
+  pingChannel as pingChannelFs,
   type ChannelListener,
 } from './channel';
 
@@ -93,13 +93,12 @@ export interface PlatformBridge {
   // --- Per-project channel (R11–R15) -------------------------------------
   /**
    * Claim the project for this process, taking over a stale/absent owner. When
-   * a *live* instance already owns it, returns `{ owned: false }` so the launch
-   * can hand its files off and exit instead of opening a duplicate window. A
-   * successful claim is remembered so `closeChannel` releases it.
+   * a *live* instance already owns it (confirmed via the channel handshake, so a
+   * recycled PID can't masquerade as one), resolves `{ owned: false }` so the
+   * launch can hand its files off and exit instead of opening a duplicate
+   * window. A successful claim is remembered so `closeChannel` releases it.
    */
-  claimProject(project: string, opts?: { appVersion?: string }): ClaimResult;
-  /** Whether a live instance currently owns the project (filesystem probe). */
-  isProjectLive(project: string): boolean;
+  claimProject(project: string, opts?: { appVersion?: string }): Promise<ClaimResult>;
   /** Drop one file into the project's channel for the owning window to open. */
   sendToChannel(project: string, absPath: string): void;
   /**
@@ -192,14 +191,10 @@ export function createPlatformBridge(): PlatformBridge {
     // Per-project channel (R11–R15). The app self-arbitrates: claim the project
     // (taking over a stale owner), and either become its window or — when a live
     // owner exists — drop files into its channel. See ./project and ./channel.
-    claimProject(project, opts) {
-      const result = claimProjectFs(project, opts);
+    async claimProject(project, opts) {
+      const result = await acquireProjectFs(project, opts ?? {}, { ping: (p) => pingChannelFs(p) });
       if (result.owned) claimedProject = project; // remember so closeChannel releases it
       return result;
-    },
-
-    isProjectLive(project) {
-      return isProjectLiveFs(project);
     },
 
     sendToChannel(project, absPath) {

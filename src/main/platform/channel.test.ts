@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sendToChannel, listenOnChannel, type ChannelListener } from './channel';
+import { sendToChannel, listenOnChannel, pingChannel, type ChannelListener } from './channel';
 import { projectDir } from './project';
 
 // The channel transport (R11–R15) over the file-drop directory: a caller writes
@@ -91,5 +91,31 @@ describe('channel file-drop transport (R11–R15)', () => {
 
     expect(await waitFor(() => got.length === 1)).toBe(true);
     expect(got).toEqual(['C:\\real.md']); // the non-.open files never delivered
+  });
+});
+
+describe('channel liveness handshake (PID-reuse defence)', () => {
+  it('a listening owner acknowledges a ping', async () => {
+    const name = freshName('ping-live');
+    await listen(name, () => {
+      /* file delivery isn't what these handshake tests exercise */
+    });
+    expect(await pingChannel(name)).toBe(true);
+  });
+
+  it('an unconsumed channel does not ack (times out false)', async () => {
+    const name = freshName('ping-dead');
+    // No listener attached — mimics a stale owner.json whose PID was recycled.
+    expect(await pingChannel(name, { timeoutMs: 400, intervalMs: 25 })).toBe(false);
+  });
+
+  it('leaves no ping/pong files behind after a handshake', async () => {
+    const name = freshName('ping-clean');
+    await listen(name, () => {
+      /* file delivery isn't what these handshake tests exercise */
+    });
+    await pingChannel(name);
+    const leftovers = fs.readdirSync(projectDir(name)).filter((n) => n.endsWith('.ping') || n.endsWith('.pong'));
+    expect(leftovers).toEqual([]);
   });
 });

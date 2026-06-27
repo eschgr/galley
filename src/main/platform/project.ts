@@ -114,23 +114,43 @@ function writeOwnerAtomic(dir: string, owner: ProjectOwner): void {
   fs.renameSync(tmp, path.join(dir, OWNER_FILE));
 }
 
+/** Dependencies for `acquireProject`, injected so the decision is unit-testable. */
+export interface AcquireDeps {
+  /**
+   * Confirm a window is actually CONSUMING the project's channel (the file
+   * handshake in `channel.ts#pingChannel`). This is what makes the claim safe
+   * against PID reuse: a recycled-but-unrelated PID looks alive to
+   * `isProcessAlive` but consumes nothing, so it never acks.
+   */
+  ping: (project: string) => Promise<boolean>;
+  /** PID-existence probe (fast short-circuit before the handshake). */
+  alive?: AliveFn;
+}
+
 /**
- * Claim the project for this process, taking over a stale/absent owner. Returns
- * `{ owned: true }` when we became the owner, or `{ owned: false, owner }` when
- * a *live* instance already owns it (the caller should hand its files off and
- * exit — see `decideStartupAction`).
+ * Claim the project for this process, taking over a stale/absent owner. Resolves
+ * `{ owned: true }` when we became the owner, or `{ owned: false, owner }` when a
+ * *live* instance already owns it (the launch should hand its files off and exit
+ * — see `decideStartupAction`).
  *
- * The no-owner case uses an exclusive create (`wx`, i.e. `O_EXCL`): if two
- * launches race, exactly one wins the create; the loser gets `EEXIST`, loops,
- * re-reads the now-live owner, and correctly reports `owned: false`. A stale
- * (dead-pid / our-own) record is overwritten via the atomic rename above; that
- * path is last-writer-wins, which is benign for the turn-based launcher.
+ * Liveness is decided in two steps so the common paths stay instant and only the
+ * ambiguous one pays for the handshake:
+ *  - no `owner.json`        → claim it (exclusive `wx`/`O_EXCL` create; a racing
+ *                             launch loses with `EEXIST`, loops, and re-evaluates).
+ *  - recorded PID is dead   → stale → take over immediately.
+ *  - recorded PID is alive  → could be the real owner OR an unrelated process
+ *                             that recycled the PID after a hard kill. Disambiguate
+ *                             with the channel handshake: ack ⇒ real owner (defer);
+ *                             no ack ⇒ recycled/stale ⇒ take over.
+ * A stale record is overwritten via the atomic rename above (last-writer-wins,
+ * benign for the turn-based launcher).
  */
-export function claimProject(
+export async function acquireProject(
   project: string,
-  opts: { appVersion?: string } = {},
-  alive: AliveFn = isProcessAlive,
-): ClaimResult {
+  opts: { appVersion?: string },
+  deps: AcquireDeps,
+): Promise<ClaimResult> {
+  const alive = deps.alive ?? isProcessAlive;
   const dir = projectDir(project);
   fs.mkdirSync(dir, { recursive: true });
   const self: ProjectOwner = {
@@ -145,7 +165,11 @@ export function claimProject(
   for (;;) {
     const existing = readProjectOwner(project);
     if (existing && existing.host === self.host && existing.pid !== self.pid && alive(existing.pid)) {
-      return { owned: false, owner: existing, dropDir: dir };
+      // PID exists — but a recycled PID would too. Only a live consumer acks.
+      if (await deps.ping(project)) {
+        return { owned: false, owner: existing, dropDir: dir };
+      }
+      // PID alive yet nothing is consuming the channel → stale; fall through.
     }
     if (!existing) {
       try {
@@ -158,7 +182,7 @@ export function claimProject(
         throw err;
       }
     }
-    // existing but stale (dead pid, other host, or our own prior record) → take over.
+    // existing but stale (dead/recycled PID, other host, or our own prior record) → take over.
     writeOwnerAtomic(dir, self);
     return { owned: true, owner: self, dropDir: dir };
   }

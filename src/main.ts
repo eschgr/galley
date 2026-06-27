@@ -421,7 +421,7 @@ const createWindow = (project: string | null = null, files: string[] = []) => {
 
 // This method will be called when Electron has finished initialization and is
 // ready to create browser windows. Some APIs can only be used after this event.
-app.on('ready', () => {
+app.on('ready', async () => {
   buildAppMenu({
     openFile: openFileViaDialog,
     saveFile: requestSave,
@@ -433,14 +433,15 @@ app.on('ready', () => {
   });
 
   // Self-arbitration (R11–R15): with `--project <name>`, claim the project. If a
-  // live window already owns it, drop our files into its channel and exit rather
-  // than open a duplicate; otherwise become its window. A plain launch (no
-  // --project) just opens a window with no channel.
+  // live window already owns it (confirmed by the channel handshake), drop our
+  // files into its channel and exit rather than open a duplicate; otherwise
+  // become its window. A plain launch (no --project) just opens a window with no
+  // channel.
   const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
   const files = platform.parseCliFileArgs(process.argv, app.isPackaged);
   if (project) {
     const action = decideStartupAction(
-      platform.claimProject(project, { appVersion: app.getVersion() }),
+      await platform.claimProject(project, { appVersion: app.getVersion() }),
       files,
     );
     if (action.kind === 'handoff') {

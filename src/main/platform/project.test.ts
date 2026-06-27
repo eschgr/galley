@@ -8,7 +8,7 @@ import {
   isProcessAlive,
   readProjectOwner,
   isProjectLive,
-  claimProject,
+  acquireProject,
   releaseProject,
   OWNER_FILE,
   type ProjectOwner,
@@ -88,44 +88,57 @@ describe('readProjectOwner', () => {
   });
 });
 
-describe('claimProject', () => {
-  const always = () => true;
-  const never = () => false;
+describe('acquireProject', () => {
+  const pingTrue = async () => true; // a live owner acks the handshake
+  const pingFalse = async () => false; // nothing is consuming the channel
+  const alwaysAlive = () => true;
+  const neverAlive = () => false;
 
-  it('claims a fresh project (owned, owner.json = our pid)', () => {
+  it('claims a fresh project (owned, owner.json = our pid)', async () => {
     const name = freshName('fresh');
-    const r = claimProject(name);
+    const r = await acquireProject(name, {}, { ping: pingTrue });
     expect(r.owned).toBe(true);
     expect(readProjectOwner(name)?.pid).toBe(process.pid);
   });
 
-  it('defers to a live owner (handoff path)', () => {
+  it('defers to a live owner that acks the handshake (handoff path)', async () => {
     const name = freshName('live');
     writeOwner(name, { pid: 999999, project: name });
-    const r = claimProject(name, {}, always);
+    const r = await acquireProject(name, {}, { ping: pingTrue, alive: alwaysAlive });
     expect(r.owned).toBe(false);
     expect(r.owner.pid).toBe(999999); // unchanged — we did not take over
     expect(readProjectOwner(name)?.pid).toBe(999999);
   });
 
-  it('takes over a stale owner (dead pid)', () => {
+  it('takes over when the recorded PID is alive but NOT consuming (PID reuse)', async () => {
+    // The crux: owner.json left by a hard-killed instance, its PID since recycled
+    // to an unrelated live process. alive() is true, but the handshake fails.
+    const name = freshName('reused');
+    writeOwner(name, { pid: 999999, project: name });
+    const r = await acquireProject(name, {}, { ping: pingFalse, alive: alwaysAlive });
+    expect(r.owned).toBe(true);
+    expect(readProjectOwner(name)?.pid).toBe(process.pid); // we took over
+  });
+
+  it('takes over a dead PID without bothering to handshake', async () => {
     const name = freshName('stale');
     writeOwner(name, { pid: 999999, project: name });
-    const r = claimProject(name, {}, never);
+    let pinged = false;
+    const r = await acquireProject(name, {}, { ping: async () => ((pinged = true), true), alive: neverAlive });
     expect(r.owned).toBe(true);
-    expect(readProjectOwner(name)?.pid).toBe(process.pid);
+    expect(pinged).toBe(false); // dead PID short-circuits — no handshake needed
   });
 
-  it('re-claims its own prior record', () => {
+  it('re-claims its own prior record', async () => {
     const name = freshName('self');
     writeOwner(name, { pid: process.pid, project: name });
-    const r = claimProject(name, {}, always); // even with "alive", our own pid isn't a foreign live owner
-    expect(r.owned).toBe(true);
+    const r = await acquireProject(name, {}, { ping: pingTrue, alive: alwaysAlive });
+    expect(r.owned).toBe(true); // our own pid is not a foreign live owner
   });
 
-  it('records appVersion + host in the owner', () => {
+  it('records appVersion + host in the owner', async () => {
     const name = freshName('meta');
-    claimProject(name, { appVersion: '9.9.9' });
+    await acquireProject(name, { appVersion: '9.9.9' }, { ping: pingTrue });
     const owner = readProjectOwner(name);
     expect(owner?.appVersion).toBe('9.9.9');
     expect(owner?.host).toBe(os.hostname());
@@ -151,9 +164,9 @@ describe('releaseProject (ownership guard)', () => {
     expect(releaseProject(name)).toBe(false);
     expect(fs.existsSync(projectDir(name))).toBe(true);
   });
-  it('removes the directory when we own it', () => {
+  it('removes the directory when we own it', async () => {
     const name = freshName('mine');
-    claimProject(name);
+    await acquireProject(name, {}, { ping: async () => true });
     expect(releaseProject(name)).toBe(true);
     expect(fs.existsSync(projectDir(name))).toBe(false);
   });
