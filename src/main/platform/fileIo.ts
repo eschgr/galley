@@ -19,7 +19,7 @@ export function hashContent(content: string): string {
  *
  * Returns EVERY non-flag argument, each resolved to absolute, in command-line
  * order — so `mdtool a.md b.md c.md` opens all three. Skips the executable (and,
- * in dev, the app-path argv[1]) and known value-taking flags (`--channel <addr>`
+ * in dev, the app-path argv[1]) and known value-taking flags (`--project <name>`
  * also skips its value); other flags (`--devtools`, `--help`, `-h`) are simply
  * ignored. `packaged` distinguishes a packaged launch (`mdtool.exe …`) from a dev
  * launch (`electron . …`). Returns an empty array when no file was given.
@@ -30,7 +30,7 @@ export function parseCliFileArgs(argv: readonly string[], packaged: boolean): st
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
-      if (arg === '--channel') i++; // skip its address value
+      if (arg === '--project') i++; // skip its name value
       continue;
     }
     files.push(path.resolve(arg));
@@ -64,16 +64,16 @@ export function resolveLocalLink(href: string, fromPath: string): string | null 
 }
 
 /**
- * Pick the channel address from a process argv (R11): `mdtool --channel <addr> …`
- * or `--channel=<addr>`. The address is whatever the caller chose (a named pipe
- * on Windows, a Unix-domain socket path on macOS); the app just listens on it.
- * Returns null when no channel was passed.
+ * Pick the project name from a process argv (R11): `mdtool --project <name> …`
+ * or `--project=<name>`. The name identifies the project whose window this file
+ * belongs to; the app derives the channel scratch dir from it (see
+ * `project.ts#projectDir`). Returns null when no project was passed.
  */
-export function parseCliChannelArg(argv: readonly string[], packaged: boolean): string | null {
+export function parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null {
   const rest = argv.slice(packaged ? 1 : 2);
   for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === '--channel' && i + 1 < rest.length) return rest[i + 1];
-    if (rest[i].startsWith('--channel=')) return rest[i].slice('--channel='.length);
+    if (rest[i] === '--project' && i + 1 < rest.length) return rest[i + 1];
+    if (rest[i].startsWith('--project=')) return rest[i].slice('--project='.length);
   }
   return null;
 }

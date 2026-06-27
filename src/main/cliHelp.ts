@@ -6,8 +6,8 @@
  * string-escaping noise and is easy to find/edit. It is written for an LLM (e.g.
  * Claude) told only that "Galley exists" and to read its help before driving the
  * app — keep it in sync with the launcher contract in docs/PRD.md Appendix A.
- * The transport-address forms in the text MUST match `channelAddress()` in
- * src/main/platform/index.ts.
+ * The `--project <name>` contract here MUST match the CLI parsing in
+ * src/main/platform/fileIo.ts and the self-arbitration flow in src/main.ts.
  */
 import helpText from './cliHelp.txt?raw';
 

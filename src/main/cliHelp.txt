@@ -9,10 +9,11 @@ tab updates on its own. The file on disk is the shared medium between the two �
 you (the LLM) produce files; the human reads and corrects them here.
 
 USAGE
-  galley [file ...]                   Open one or more Markdown files, each in a tab.
-  galley --channel <name> [file ...]  Also listen on a channel for more files (below).
-  galley --devtools                   Open developer tools on launch.
-  galley --help, -h                   Print this help and exit.
+  galley [file ...]                    Open one or more Markdown files, each in a tab.
+  galley --project <name> [file ...]   Open files in project <name>'s window,
+                                         reusing that window if it is already open.
+  galley --devtools                    Open developer tools on launch.
+  galley --help, -h                    Print this help and exit.
 
   Paths may be absolute or relative (relative resolves against the current
   directory). Passing several files opens several tabs; the first is focused.
@@ -22,42 +23,32 @@ USAGE
   dev checkout. There is not necessarily a command named "galley" on your PATH.
 
 DRIVING GALLEY FROM AN LLM — the launcher contract
-  Galley is NOT a singleton and does NOT coordinate instances. Each window is one
-  process listening on one "channel". The CALLER (you), not the app, owns the
-  lifecycle and decides whether to reuse a window or launch a new one.
+  Galley organizes windows by PROJECT. You do NOT manage windows, probe for a
+  running instance, or speak any wire protocol — Galley handles all of that
+  itself. To show a file you only ever run ONE command:
 
-  - One project => one channel => one window. Keep a project's documents in a
-    single window by always using the SAME channel for that project; keep two
-    projects apart by using two different channels.
-  - Derive the channel NAME as a short, filesystem-safe token from the project's
-    ABSOLUTE ROOT DIRECTORY — e.g. the first 8 hex characters of its SHA-256.
-    Use the SAME recipe every time so the same project always maps to the same
-    name => the same window, even in a later session. Do NOT key on PID.
-  - The channel name maps to an OS transport address (derive it the same way the
-    app does):
-        Windows:        \\.\pipe\mdtool-<name>      (named pipe)
-        macOS / Linux:  <tmpdir>/mdtool-<name>.sock     (Unix-domain socket)
+      galley --project <name> <absolute_file_path>
 
-  To show a file:
-    1. Compute the channel name from the project root, and its address.
-    2. Probe: try to connect to that address.
-    3. If a window IS listening  -> SEND the file's absolute path over the
-       channel, terminated by a newline ("<absolute_path>\n"). It opens as a new
-       tab, or focuses the tab if that file is already open.
-    4. If NOTHING is listening   -> LAUNCH a window bound to the channel and give
-       it the file:   galley --channel <name> <absolute_path>
-    5. Always use ABSOLUTE paths. Re-sending an already-open file just focuses
-       its tab (no duplicate). Launching with --channel but no file opens an
-       empty window bound to that channel, ready to receive files.
+  - One project => one window. Pass the SAME --project <name> every time for a
+    given project and all its files stay in the same window: the first call opens
+    the window, and each later call for that name opens a new tab in it (or
+    focuses the tab if that file is already open). Use DIFFERENT names for
+    different projects to keep them in separate windows.
+  - Choose the project NAME as a short, stable, filesystem-safe token identifying
+    the project — a readable slug (e.g. "pack-325") or the first 8 hex characters
+    of the SHA-256 of the project's ABSOLUTE ROOT DIRECTORY. Use the SAME name
+    every time so the same project always maps to the same window, even in a
+    later session. Allowed characters: letters, digits, dot, underscore, hyphen.
+    Do NOT key the name on a PID.
+  - Always pass ABSOLUTE file paths. Re-opening an already-open file just focuses
+    its tab (no duplicate). Open several at once if you like:
+        galley --project <name> a.md b.md c.md
+  - `galley --project <name>` with no file opens (or reuses) the project's window
+    with nothing loaded, ready for later files.
 
-  Probe + send concretely (no extra tools; <address> is the pipe/socket above):
-    - Portable, via Node — this is exactly how Galley's own channel test drives
-      it. A failed connect is the probe (exit non-zero => nothing listening, so
-      LAUNCH instead); a successful connect sends the path and exits 0:
-        node -e "const n=require('net'),s=n.connect(process.argv[1],()=>s.end(process.argv[2]+'\n'));s.on('error',()=>process.exit(1))" "<address>" "<absolute_path>"
-    - Windows-native (PowerShell, no Node) — Connect(timeoutMs) throwing is the
-      probe; otherwise write the path + newline:
-        powershell -c "$p=[IO.Pipes.NamedPipeClientStream]::new('.','mdtool-<name>','Out');try{$p.Connect(300)}catch{exit 1};$w=[IO.StreamWriter]::new($p);$w.WriteLine('<absolute_path>');$w.Dispose();$p.Dispose()"
+  That is the whole contract. Galley itself decides whether to open a new window
+  or route the file into the project's existing one — and it coordinates through
+  ordinary files rather than sockets, so it works the same from a sandboxed shell.
 
 WHAT GALLEY RENDERS
   GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks), LaTeX

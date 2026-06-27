@@ -81,24 +81,19 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ### 5.3 Instance model & file delivery
 
-The app does **not** manage its own uniqueness — no single-instance lock, no self-arbitration, no "am I a duplicate?" logic. Instead, **the launching caller (Claude) owns the lifecycle**, and the app is a simple listener that opens whatever files it is given. This keeps the app meaningfully simpler; the orchestration lives with the party that has the context to make grouping decisions.
+The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
 
-- **R11. App is a non-arbitrating listener.** On launch, the app listens on a **caller-provided channel** (a named pipe on Windows / Unix-domain socket on macOS) whose address is passed at launch. It opens any file given on the command line at startup, and any file subsequently sent over its channel. It does not check for, defer to, or coordinate with other instances.
-- **R12. Channel keyed by project (not PID).** The channel address is derived from a **stable project key** — the project directory/root (mirroring how Chrome keys an instance on its `--user-data-dir`). A stable key is recomputable across launches and survives the caller losing transient state, and avoids PID-reuse hazards. *(PID, if used at all, is only a liveness check — "is what I launched still alive?" — never the channel identity.)*
-- **R13. Caller-owned lifecycle (reference flow).** For a given project, the caller:
-  1. Determines the project's channel address from the project key.
-  2. Checks whether an instance is reachable on that channel (e.g. attempt to connect; connection-refused ⇒ none running).
-  3. **If reachable** → send the file path over the channel; the existing window opens it.
-  4. **If not** → launch a new `mdtool` instance bound to that channel, then send (or pass on the command line) the file path.
-  - Multiple projects ⇒ multiple channels ⇒ multiple independent windows, with no global contention. This delivers project grouping directly.
+- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app derives a per-project scratch directory under the OS temp dir and claims it via an `owner.json` liveness record. With no live owner it **becomes the window** and watches the directory for delivered files; with a live owner it **drops its files into that directory** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
+- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app maps it to `<tmpdir>/mdtool-<name>/`. The caller derives the name as a stable, filesystem-safe token from the project root (mirroring how Chrome keys an instance on its `--user-data-dir`), recomputable across launches. *(PID is used only as a liveness signal inside `owner.json` — "is the recorded owner still alive?" — never as the project identity.)*
+- **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch: (1) derive + claim the project's directory; (2) if a live owner exists, drop the path into its channel; (3) otherwise launch the window bound to the project and open the path. Multiple projects ⇒ multiple directories ⇒ multiple independent windows, with no global contention. This delivers project grouping directly.
 - **R14. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
 - **R15. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
 
 > Implementation note (accepted risk): when a file is delivered to a running instance, **that instance raises/focuses its own window**. An OS generally will not let a *different* process force another process's window to the foreground (Windows especially), so the raise must originate from the receiving instance itself; Windows may still be unreliable here, mitigated with standard tactics (`show()` + `focus()`, brief always-on-top toggle).
 
-> Design note: a global single-instance/self-arbitration model (app acquires a lock, later launches hand off and exit) was considered and **replaced** by this caller-owned model — it removes lock/hand-off logic from the app and yields multi-window project grouping for free. The transport (named pipe / Unix socket) and the receiver-side focus-raise are the same either way; only *who runs the "is one already there?" check* differs (here: the caller, not the app).
+> Design note: an earlier **caller-owned** model (the caller probes a socket and decides connect-vs-launch) was **replaced** by this app-self-arbitrating model. The original worry about self-arbitration — losing multi-window project grouping — does not apply, because arbitration is *per project* (one `owner.json` per project), so each project still gets its own window. The switch was driven by two things: (a) a **sandboxed caller cannot `listen()`** on a socket (seatbelt returns EPERM) but can read/write files freely, so a file-drop transport works where a socket does not; and (b) pushing the file-format + liveness logic onto the caller was error-prone — owning it in the app collapses the caller contract to a single command. See Appendix A.
 
-> Status (2026-06-20): R11–R15 implemented. `--channel <name>` is a plain **name** (no shell-fragile backslashes); both the app and the caller derive the OS transport from it the same way — `\\.\pipe\mdtool-<name>` on Windows, `<tmpdir>/mdtool-<name>.sock` elsewhere (`channelAddress()` in the platform seam). The wire protocol is one newline-terminated absolute path per message. Each delivered path opens as a new focused tab (R14); already-open paths focus their tab (R15). The listener lives behind the §7 seam (Node `net`), with a real round-trip unit test. *(The receiving instance raises its own window; cross-process raise is the caller's concern, per the note above.)*
+> Status (2026-06-27): R11–R15 reimplemented on a **file-drop transport**. `--project <name>` maps to `<tmpdir>/mdtool-<name>/`, holding one `owner.json` liveness record (`pid` + `host` + `startedAt`) and transient `*.open` command files (one absolute path each; written `*.tmp` then atomically renamed so a reader never sees a partial path). The owning window watches the directory (chokidar, polling) and opens each delivered path as a new focused tab (R14); already-open paths focus their tab (R15). Liveness is an on-demand `process.kill(pid, 0)` check, **not a heartbeat**; a stale owner is taken over on the next claim. This replaced the prior Unix-socket / named-pipe listener, which a sandboxed launcher could not `listen()` on. Split behind the §7 seam across `platform/project.ts` (dir + owner) and `platform/channel.ts` (messaging), each with unit tests. *(The receiving instance raises its own window; cross-process raise is the caller's concern, per the note above.)*
 
 ### 5.4 Editing
 
@@ -262,14 +257,14 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 | Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor (R6). MathJax remains the documented heavier fallback if ever needed. |
 | File watching | **chokidar** (or Node `fs.watch`) | In the main process (R32, R37). |
 | File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process (R33–R35). |
-| Instance model | **Caller-owned lifecycle**; app listens on a caller-provided named pipe (Windows) / Unix socket (macOS) | App does not self-arbitrate; the caller (Claude) tracks per-project channels and decides connect-vs-launch (R11–R15). |
+| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/mdtool-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>` (R11–R15). File transport works in a sandbox where socket `listen()` is denied. |
 | Packaging | **Electron Forge** (or electron-builder) | Produces installers (see §8). |
 
 ### Architecture notes
 
-- **Main process** owns all OS-touching work: CLI arg parsing, channel listener (named pipe / Unix socket) for file delivery, file read/write, file watching, baseline hashing and self-write detection. It emits events to the renderer ("open this file in a tab", "this file changed externally").
+- **Main process** owns all OS-touching work: CLI arg parsing, the per-project file-drop channel (scratch dir + `owner.json` liveness + `*.open` command files) for file delivery, file read/write, file watching, baseline hashing and self-write detection. It emits events to the renderer ("open this file in a tab", "this file changed externally").
 - **Renderer process** owns the entire UI: CodeMirror editor, markdown-it/KaTeX preview, scroll-sync, tabs, dirty indicators, split-view layout, link dialog, and conflict prompts. It calls the main process to load/save and listens for its events.
-- **Portability seam (important):** keep the main-process OS-touching code (file IO, watch, channel listener, CLI) behind a thin, well-defined interface. This is the layer that would be rewritten in a future migration off Electron; isolating it keeps that migration cheap (see §9).
+- **Portability seam (important):** keep the main-process OS-touching code (file IO, watch, the project/channel transport, CLI) behind a thin, well-defined interface. This is the layer that would be rewritten in a future migration off Electron; isolating it keeps that migration cheap (see §9).
 - **Security:** enable `contextIsolation`, do not expose Node directly to the renderer, bridge via a minimal preload API, and route preview link-clicks to the system browser (R4) rather than allowing in-app navigation. (Standard Electron hardening; the renderer is a full rendering-engine page.)
 
 ---
@@ -392,8 +387,8 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Indentation | Spaces, default width 2; `Tab` list-indent only at start of a list line; never escapes editor |
 | Text color | Out of scope (not standard markdown) |
 | Open mechanisms | CLI arg + file dialog; single file per open; may start with no file (R10) |
-| Instance model | Caller-owned lifecycle; app is a non-arbitrating listener on a project-keyed channel; caller connects-or-launches (R11–R15) |
-| Project grouping | One channel per project ⇒ multiple independent windows; channel keyed by project path, not PID |
+| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15) |
+| Project grouping | One scratch dir per project (`<tmpdir>/mdtool-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
 | Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
 | Re-open already-open file | Focus existing tab |
 | Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
@@ -417,61 +412,58 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 
 ## Appendix A — LLM usage guide (launcher contract)
 
-This appendix specifies how an LLM (e.g. Claude) drives `mdtool`. It is the "how to use it" guide for the *caller*, since the caller — not the app — owns the instance lifecycle (§5.3). A prompt-ready version is in §A.4.
+This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app **self-arbitrates per project** (§5.3), the caller's job is just to name the project and pass files. A prompt-ready version is in §A.4.
 
 ### A.1 Mental model
 
-- `mdtool` is **not** a singleton and does **not** coordinate instances. Each window is an independent process listening on one **channel**.
-- **One project ⇒ one channel ⇒ one window.** To group a project's documents in a single window, always use the **same channel** for that project. To keep two projects separate, use **two different channels**.
-- The caller is responsible for: deriving the channel from the project, checking whether a window is already listening, and either **sending** the file to it or **launching** a new window bound to it.
+- `galley` organizes windows **by project**, and each project has at most one window. You do **not** manage windows or coordinate instances — the app self-arbitrates.
+- **One project ⇒ one window.** Pass the **same** `--project <name>` for all of a project's files to keep them in one window; use **different** names to keep projects in separate windows.
+- Your only responsibility is to pass a stable project **name** and **absolute** file paths. `galley` decides whether to open a new window or route the file into the project's existing one.
 
-### A.2 The channel key
+### A.2 The project name
 
-- Derive the channel **name** from a **stable project key** — normally a short stable hash of the **absolute project root directory** (filesystem-safe, recomputable). Same project root ⇒ same channel name ⇒ same window, even across separate caller sessions.
-- Launch passes the **name** only: `mdtool --channel <name>` (a plain token — no backslashes to mangle through shells). The app and the caller derive the same OS transport address from it:
-  - **Windows:** named pipe `\\.\pipe\mdtool-<name>`
-  - **macOS/Linux:** Unix-domain socket `<tmpdir>/mdtool-<name>.sock`
-- Do **not** key on PID. PID is only ever used (optionally) as a liveness signal, never as the channel identity.
+- Pass a **stable project name** with `--project <name>` — normally a short stable hash of the **absolute project root directory** (filesystem-safe, recomputable), or a readable slug. Same project root ⇒ same name ⇒ same window, even across separate caller sessions.
+- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/mdtool-<name>/`); you never touch that directory.
+- Do **not** key on PID. PID is only ever used internally as a liveness signal, never as the project identity.
 
 ### A.3 Procedure (per file to open)
 
-1. **Compute** the channel name from the project root: `name = hash(project_root)`, and the transport address from the name (`\\.\pipe\mdtool-<name>` / `<tmpdir>/mdtool-<name>.sock`).
-2. **Probe** the channel — attempt to connect to that address.
-3. **If connect succeeds** (a window is live): **send** the file's absolute path over the channel, terminated by a newline (`<absolute_path>\n`). The existing window opens it as a new (or focused, if already open) tab.
-4. **If connect fails** (nothing listening): **launch** a new instance bound to that channel and give it the file, e.g.
-   `mdtool --channel <name> <absolute_file_path>`
-   The new window comes up listening on the channel and opens the file.
-5. Always pass **absolute** file paths.
+1. **Compute** the project name from the project root: `name = short_stable_hash(project_root)` (or a readable slug).
+2. **Run** one command:
+   `galley --project <name> <absolute_file_path>`
+   - If the project's window is already open, the file opens there as a new (or focused, if already open) tab.
+   - If not, a new window opens bound to the project and shows the file.
+3. Always pass **absolute** file paths. You can pass several at once: `galley --project <name> a.md b.md`.
 
 > Notes
 > - Sending the *same* file again is safe: the app focuses the existing tab rather than duplicating (R15).
 > - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in §5.3) — not an error condition.
-> - Launching without a file (`mdtool --channel <addr>`) opens an empty "No files open" window bound to that channel, ready to receive files.
+> - `galley --project <name>` without a file opens (or reuses) the project's window with nothing loaded.
+> - Delivery is coordinated through ordinary files, not sockets, so it works from a sandboxed shell.
 
 ### A.4 Prompt-ready instructions
 
 > The following can be dropped into an LLM's instructions/tooling description for driving mdtool.
 
 ```
-You can display markdown files to the user in the mdtool viewer.
+You can display markdown files to the user in the Galley viewer.
 
-mdtool windows are organized per PROJECT. All files for one project should
-appear in the same window; different projects use different windows.
+Galley windows are organized per PROJECT. All files for one project should
+appear in the same window; different projects use different windows. Galley
+manages the windows itself — you only provide a project name and a file.
 
-To show a file:
-1. Determine the project's channel address from its root directory:
-     addr = "mdtool-" + short_stable_hash(absolute_project_root)
-     - macOS:   /tmp/<addr>.sock        (Unix socket)
-     - Windows: \\.\pipe\<addr>          (named pipe)
-2. Try to connect to that channel.
-   - If a window is listening: send the file's ABSOLUTE path over the channel.
-   - If nothing is listening: launch a new window bound to the channel:
-         mdtool --channel <addr> "<absolute_file_path>"
-3. Always use absolute paths. Re-sending an open file just focuses its tab.
+To show a file, run ONE command:
+    galley --project <name> "<absolute_file_path>"
 
-Do NOT rely on a single global instance. Do NOT key the channel on a PID.
-Use the project root as the stable key so the same project always reuses
-the same window, even in a later session.
+  - <name> is a stable, filesystem-safe token identifying the project: a
+    readable slug, or short_stable_hash(absolute_project_root). Use the SAME
+    name every time for a project so its files share one window.
+  - Always use absolute paths. Re-running for an open file just focuses its tab.
+  - Open several at once: galley --project <name> a.md b.md
+
+Do NOT try to manage windows, probe for a running instance, or key the project
+on a PID. Galley decides whether to open a new window or reuse the project's
+existing one — including from a sandboxed shell.
 ```
 
-> This is a reference contract; the exact flag names (`--channel`), address scheme, and probe mechanism are finalized at implementation and should be kept in sync with this appendix.
+> This is a reference contract; the exact flag name (`--project`) and the file-drop transport are finalized at implementation and should be kept in sync with this appendix.

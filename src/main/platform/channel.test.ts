@@ -1,56 +1,95 @@
-import { describe, it, expect } from 'vitest';
-import net from 'node:net';
-import { createPlatformBridge, channelAddress } from './index';
+import { describe, it, expect, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { sendToChannel, listenOnChannel, type ChannelListener } from './channel';
+import { projectDir } from './project';
 
-// The channel listener (R11–R15) over a real OS transport: a named pipe on
-// Windows, a Unix-domain socket elsewhere. The caller connects and writes
-// newline-terminated absolute paths; the bridge hands each to onFile.
-const addrFor = (name: string) => channelAddress(`test-${name}`);
+// The channel transport (R11–R15) over the file-drop directory: a caller writes
+// a command file holding an absolute path; the watcher reads each and hands it
+// to onFile. Replaces the old Unix-socket / named-pipe round-trip.
 
-function send(address: string, message: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const client = net.connect(address, () => client.end(message));
-    client.on('error', reject);
-    client.on('close', () => resolve());
-  });
+let seq = 0;
+const made: string[] = [];
+const open: ChannelListener[] = [];
+function freshName(tag: string): string {
+  const name = `vt-ch-${tag}-${process.pid}-${seq++}`;
+  made.push(name);
+  return name;
 }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function listen(name: string, onFile: (p: string) => void): Promise<ChannelListener> {
+  const l = listenOnChannel(name, onFile);
+  open.push(l);
+  await sleep(120); // let the polling watcher settle before drops
+  return l;
+}
+async function waitFor(fn: () => boolean, ms = 3000, step = 25): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (fn()) return true;
+    await sleep(step);
+  }
+  return false;
+}
+function openCount(name: string): number {
+  return fs.readdirSync(projectDir(name)).filter((n) => n.endsWith('.open')).length;
+}
+afterEach(async () => {
+  for (const l of open.splice(0)) await l.close();
+  for (const name of made.splice(0)) fs.rmSync(projectDir(name), { recursive: true, force: true });
+});
 
-describe('channel listener (R11–R15)', () => {
-  it('delivers newline-separated paths sent over the channel', async () => {
-    const bridge = createPlatformBridge();
-    const addr = addrFor(`mdtool-test-${process.pid}-${Date.now()}`);
+describe('channel file-drop transport (R11–R15)', () => {
+  it('delivers a dropped path and deletes the command file', async () => {
+    const name = freshName('rt');
     const got: string[] = [];
-    await bridge.listenOnChannel(addr, (p) => got.push(p));
+    await listen(name, (p) => got.push(p));
 
-    await send(addr, 'C:\\docs\\a.md\nC:\\docs\\b.md\n');
-    await new Promise((r) => setTimeout(r, 60));
+    sendToChannel(name, 'C:\\docs\\a.md');
 
-    expect(got).toEqual(['C:\\docs\\a.md', 'C:\\docs\\b.md']);
-    await bridge.closeChannel();
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got[0]).toBe('C:\\docs\\a.md');
+    expect(await waitFor(() => openCount(name) === 0)).toBe(true);
   });
 
-  it('delivers a single path sent without a trailing newline', async () => {
-    const bridge = createPlatformBridge();
-    const addr = addrFor(`mdtool-test2-${process.pid}-${Date.now()}`);
+  it('delivers a burst of drops with no loss or duplication', async () => {
+    const name = freshName('burst');
     const got: string[] = [];
-    await bridge.listenOnChannel(addr, (p) => got.push(p));
+    await listen(name, (p) => got.push(p));
 
-    await send(addr, '/tmp/x.md');
-    await new Promise((r) => setTimeout(r, 60));
+    const sent = Array.from({ length: 12 }, (_, i) => `C:\\f${i}.md`);
+    for (const p of sent) sendToChannel(name, p);
 
-    expect(got).toEqual(['/tmp/x.md']);
-    await bridge.closeChannel();
+    expect(await waitFor(() => got.length === sent.length, 6000)).toBe(true);
+    expect(new Set(got)).toEqual(new Set(sent));
+    expect(await waitFor(() => openCount(name) === 0, 6000)).toBe(true);
   });
 
-  it('rejects if the address is already in use', async () => {
-    const a = createPlatformBridge();
-    const b = createPlatformBridge();
-    const addr = addrFor(`mdtool-test3-${process.pid}-${Date.now()}`);
-    const noop = () => {
-      /* unused */
-    };
-    await a.listenOnChannel(addr, noop);
-    await expect(b.listenOnChannel(addr, noop)).rejects.toBeTruthy();
-    await a.closeChannel();
+  it('reconciles commands dropped before the watcher attaches', async () => {
+    const name = freshName('reconcile');
+    fs.mkdirSync(projectDir(name), { recursive: true });
+    sendToChannel(name, 'C:\\pre1.md');
+    sendToChannel(name, 'C:\\pre2.md');
+
+    const got: string[] = [];
+    await listen(name, (p) => got.push(p));
+
+    expect(await waitFor(() => got.length === 2)).toBe(true);
+    expect(new Set(got)).toEqual(new Set(['C:\\pre1.md', 'C:\\pre2.md']));
+  });
+
+  it('ignores non-command files in the directory (e.g. owner.json)', async () => {
+    const name = freshName('ignore');
+    const dir = projectDir(name);
+    fs.mkdirSync(dir, { recursive: true });
+    const got: string[] = [];
+    await listen(name, (p) => got.push(p));
+
+    fs.writeFileSync(path.join(dir, 'owner.json'), '{"pid":1}');
+    fs.writeFileSync(path.join(dir, 'note.txt'), 'C:\\notacommand.md');
+    sendToChannel(name, 'C:\\real.md');
+
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got).toEqual(['C:\\real.md']); // the non-.open files never delivered
   });
 });
