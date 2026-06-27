@@ -144,6 +144,14 @@
   overflow: hidden;
 }
 
+/* Each open tab renders its own TabView (#26); only the active one shows. The
+   inactive ones carry the `hidden` attribute, but that alone is not enough — the
+   `.split-view` rule above sets `display: flex`, and an author display rule beats
+   the UA `[hidden] { display: none }`. This more-specific rule re-asserts it. */
+.tab-view[hidden] {
+  display: none;
+}
+
 .pane {
   height: 100%;
   min-width: 0;

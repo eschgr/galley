@@ -49,6 +49,30 @@ test('opens multiple command-line files as tabs, first focused (#37)', async ({ 
   await expect(activePreview(page)).toContainText('first doc');
 });
 
+test('only the active tab view is visible; the rest are hidden (#26)', async ({ page }) => {
+  await installMockBridge(page, [
+    { path: 'C:\\docs\\a.md', content: '# Alpha\n\nalpha body.\n', hash: 'h1' },
+    { path: 'C:\\docs\\b.md', content: '# Bravo\n\nbravo body.\n', hash: 'h2' },
+    { path: 'C:\\docs\\c.md', content: '# Charlie\n\ncharlie body.\n', hash: 'h3' },
+  ]);
+  await page.goto('/');
+  await expect(tabNames(page)).toHaveText(['a.md', 'b.md', 'c.md']);
+  // All three TabViews are MOUNTED (kept alive, #26)...
+  await expect(page.locator('.tab-view')).toHaveCount(3);
+  // ...but exactly ONE is actually visible — the inactive ones are display:none,
+  // not just carrying the `hidden` attribute (the bug: `.split-view { display:flex }`
+  // overrode `[hidden]`, so all three rendered stacked). :visible asserts real
+  // layout visibility, so it catches that regression.
+  await expect(page.locator('.tab-view:visible')).toHaveCount(1);
+  await expect(page.locator('.markdown-preview:visible')).toHaveCount(1);
+  await expect(activePreview(page)).toContainText('alpha body');
+
+  // Switching keeps the invariant: still exactly one visible, now the other doc.
+  await page.locator('.tab', { hasText: 'b.md' }).click();
+  await expect(page.locator('.tab-view:visible')).toHaveCount(1);
+  await expect(activePreview(page)).toContainText('bravo body');
+});
+
 test('the welcome screen shows until a file is opened in a tab (R8/R46)', async ({ page }) => {
   await installMockBridge(page);
   await page.goto('/');

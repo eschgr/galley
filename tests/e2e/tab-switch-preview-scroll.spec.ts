@@ -152,7 +152,9 @@ async function setupSplit(page: Page, aContent: string, bContent: string): Promi
   await openFile(page, { path: 'C:\\docs\\alpha.md', content: aContent, hash: 'ha' });
   await openFile(page, { path: 'C:\\docs\\bravo.md', content: bContent, hash: 'hb' });
   await page.locator('.source-toggle').click(); // Show Source → split view
-  await expect(page.locator('.pane-editor').first()).toBeVisible();
+  // Scope to the VISIBLE tab: every open tab renders its own .pane-editor, but
+  // only the active TabView is shown (#26). `.first()` could pick a hidden tab's.
+  await expect(page.locator('.tab-view:not([hidden]) .pane-editor')).toBeVisible();
 }
 
 // --- PREVIEW geometry helpers (scoped to the visible tab) --------------------
