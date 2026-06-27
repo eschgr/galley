@@ -134,12 +134,22 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
   // was display:none) and the preview reflows a beat later, so align immediately,
   // on the next frame, and again whenever the preview reports its layout settled
   // (onPreviewLayout) for a short window.
+  // True while a reveal-align is owed because the editor was display:none when
+  // source was shown — so the align below couldn't land and must run once the tab
+  // becomes visible. Cleared as soon as a visible align runs.
+  const pendingRevealAlign = useRef(false);
   const realignUntil = useRef(0);
   useEffect(() => {
     if (!showEditor) return; // preview-only: never scroll the hidden editor
     const ed = editorRef.current;
     const pv = previewRef.current;
     if (!ed) return;
+    // Hidden tab: its editor + preview are display:none, so neither alignTo nor
+    // getTopLine works yet. Defer the align to when it becomes visible (below).
+    if (hidden) {
+      pendingRevealAlign.current = true;
+      return;
+    }
     const align = () => {
       ed.refresh();
       ed.alignTo(pv?.getTopLine() ?? 0);
@@ -148,14 +158,30 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
     align();
     const raf = requestAnimationFrame(align);
     return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showEditor]);
 
   // When THIS tab becomes the active (visible) one in split view, re-measure the
-  // editor: it may have laid out (or last measured) while display:none, so its
-  // line geometry needs a refresh now that it's on-screen.
+  // editor — it may have laid out (or last measured) while display:none. If a
+  // reveal-align is still owed (source was shown while this tab was inactive, so
+  // the [showEditor] effect couldn't align a display:none editor), perform it now
+  // that the editor + preview are on-screen — mirroring the reveal effect (refresh
+  // + alignTo, immediately and on the next frame once the now-shown editor has had
+  // a measure cycle). Without the flag we'd re-align on EVERY switch, clobbering an
+  // already-synced editor's preserved scroll.
   useLayoutEffect(() => {
     if (hidden || viewMode !== 'split') return;
     editorRef.current?.refresh();
+    if (!pendingRevealAlign.current) return; // already synced — preserve the scroll
+    pendingRevealAlign.current = false;
+    const align = () => {
+      editorRef.current?.refresh();
+      editorRef.current?.alignTo(previewRef.current?.getTopLine() ?? 0);
+    };
+    realignUntil.current = Date.now() + 800;
+    align();
+    const raf = requestAnimationFrame(align);
+    return () => cancelAnimationFrame(raf);
   }, [hidden, viewMode]);
 
   // The preview re-built its anchor map (it reflowed). Re-align the editor to it,
