@@ -446,8 +446,9 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
    - If not, a new window opens bound to the project and shows the file.
 3. Paths may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory. Pass several at once: `galley --project <name> a.md b.md`.
 
+**Focusing a file.** To bring an already-open file's tab to the front, re-send it — the app focuses the existing tab rather than opening a duplicate (R15).
+
 > Notes
-> - **Focusing a file:** re-send an already-open file to bring its tab to the front — the app focuses the existing tab rather than opening a duplicate (R15).
 > - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in §5.3) — not an error condition.
 > - `galley --project <name>` without a file opens (or reuses) the project's window with nothing loaded.
 > - Delivery is coordinated through ordinary files, not sockets, so it works from a sandboxed shell.
