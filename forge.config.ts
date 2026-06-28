@@ -1,7 +1,6 @@
-import path from 'node:path';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerPKG } from '@electron-forge/maker-pkg';
+import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
@@ -26,10 +25,7 @@ const config: ForgeConfig = {
     // (The Start Menu shortcut folder is the EXE CompanyName, set above — NOT the
     // nuspec `authors`, which Squirrel ignores for shortcuts.)
     new MakerSquirrel({ name: 'Galley' }),
-    // macOS ships as a .pkg (installs to /Applications) so a postinstall script
-    // can put a `galley` command on PATH (#42) — the installer-driven mirror of
-    // the Windows Squirrel shim. The script is `packaging/macos/pkg-scripts/postinstall`.
-    new MakerPKG({ scripts: path.resolve('packaging', 'macos', 'pkg-scripts') }, ['darwin']),
+    new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
