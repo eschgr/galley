@@ -434,7 +434,7 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 
 ### A.2 The project name
 
-- Pass a **stable, filesystem-safe project name** with `--project <name>` — a readable slug (the project's directory name, or whatever label fits the context you're working in) works well. The only rule: use the **same name** for the same project, so its files share one window even across separate sessions. (Hashing the project root is one way to get a stable token, but it's not required — readability is usually better.)
+- Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name, or whatever label fits the context you're working in). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions. (A hash of the project root is one way to get a stable name, but it's not required — a readable name is usually better.)
 - Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/mdtool-<name>/`); you never touch that directory.
 
 ### A.3 Procedure (per file to open)
@@ -466,9 +466,9 @@ manages the windows itself — you only provide a project name and a file.
 To show a file, run ONE command:
     galley --project <name> "<file>"
 
-  - <name> is a stable, filesystem-safe label for the project (a readable slug
-    is fine). Use the SAME name every time for a project so its files share one
-    window.
+  - <name> is a short, stable, filesystem-safe name for the project (its folder
+    name is a fine choice). Use the SAME name every time for a project so its
+    files share one window.
   - Paths may be relative (resolved against the current directory) or absolute;
     absolute is safer. Re-running for an open file just focuses its tab.
   - Open several at once: galley --project <name> a.md b.md
