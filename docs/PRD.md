@@ -74,7 +74,7 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ### 5.2 Opening files
 
-- **R7.** Open a file via **CLI argument**: `mdtool <file>`.
+- **R7.** Open a file via **CLI argument**: `galley <file>`.
 - **R8.** Open a file via an **in-app file-open dialog** (reachable from the native menu bar).
 - **R9.** One file per open action. No multi-file open, no folder view, no drag-and-drop.
 - **R10.** The app can start with **no file specified**, opening to an empty "No files open" state (see R46).
@@ -455,7 +455,7 @@ Every operation below uses the **same command** — `galley --project <name> <fi
 
 ### A.4 Prompt-ready instructions
 
-> The following can be dropped into an LLM's instructions/tooling description for driving mdtool.
+> The following can be dropped into an LLM's instructions/tooling description for driving Galley.
 
 ```
 You can display markdown files to the user in the Galley viewer.
