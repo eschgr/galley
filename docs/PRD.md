@@ -437,20 +437,20 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 - Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name is an easy choice, but any short name that identifies the project works). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions.
 - Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/mdtool-<name>/`); you never touch that directory.
 
-### A.3 Procedure (per file to open)
+### A.3 Operations
 
-1. **Choose** a stable name for the project, and reuse the same one each time (see A.2).
-2. **Run** one command:
-   `galley --project <name> <file>`
-   - If the project's window is already open, the file opens there as a new (or focused, if already open) tab, and the launched process **exits immediately** — that's normal (it handed off; a fast exit means delivered, not failed).
-   - If not, a new window opens bound to the project and shows the file.
-3. Paths may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory. Pass several at once: `galley --project <name> a.md b.md`.
+Every operation below uses the **same command** — `galley --project <name> <file>` — and Galley chooses the behavior from the file's current state in the project's window. (Pick a stable `<name>` and reuse it; see A.2.)
 
-**Focusing a file.** To bring an already-open file's tab to the front, re-send it — the app focuses the existing tab rather than opening a duplicate (R15).
+**Open a file.** If the file isn't open yet, it opens as a new focused tab — launching the project's window first if none is running.
+
+**Focus an open file.** If the file is already open, re-running brings its existing tab to the front instead of opening a duplicate (R15) — re-sending a file is how you focus it.
 
 > Notes
+> - **Paths** may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory.
+> - **Several files at once:** `galley --project <name> a.md b.md`.
+> - Handing a file to an already-open window makes the command **exit immediately** — a fast exit means delivered, not failed.
+> - `galley --project <name>` **with no file** opens (or reuses) the project's window with nothing loaded.
 > - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in §5.3) — not an error condition.
-> - `galley --project <name>` without a file opens (or reuses) the project's window with nothing loaded.
 > - Delivery is coordinated through ordinary files, not sockets, so it works from a sandboxed shell.
 
 ### A.4 Prompt-ready instructions
