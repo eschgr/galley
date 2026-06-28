@@ -45,7 +45,7 @@ function deadPid(): Promise<number> {
 
 describe('projectDir (sanitization)', () => {
   it('maps a safe name to a temp-dir scratch path', () => {
-    expect(projectDir('proj_1-a.b')).toBe(path.join(os.tmpdir(), 'mdtool-proj_1-a.b'));
+    expect(projectDir('proj_1-a.b')).toBe(path.join(os.tmpdir(), 'galley-proj_1-a.b'));
   });
   it('rejects path traversal and separators', () => {
     expect(() => projectDir('../evil')).toThrow();

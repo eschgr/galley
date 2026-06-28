@@ -22,7 +22,7 @@ import path from 'node:path';
 import { PROTOCOL_VERSION } from './protocol';
 
 /** Filename prefix for a project's scratch dir under the temp dir. */
-const DIR_PREFIX = 'mdtool-';
+const DIR_PREFIX = 'galley-';
 /** The liveness record inside a project's scratch dir. */
 export const OWNER_FILE = 'owner.json';
 

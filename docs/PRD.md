@@ -84,7 +84,7 @@ The app may also be launched **with no file**; it opens to an empty state from w
 The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
 
 - **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app derives a per-project scratch directory under the OS temp dir and claims it via an `owner.json` liveness record. With no live owner it **becomes the window** and watches the directory for delivered files; with a live owner it **drops its files into that directory** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
-- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app maps it to `<tmpdir>/mdtool-<name>/`. The caller derives the name as a stable, filesystem-safe token from the project root (mirroring how Chrome keys an instance on its `--user-data-dir`), recomputable across launches. *(PID is used only as a liveness signal inside `owner.json` — "is the recorded owner still alive?" — never as the project identity.)*
+- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app maps it to `<tmpdir>/galley-<name>/`. The caller derives the name as a stable, filesystem-safe token from the project root (mirroring how Chrome keys an instance on its `--user-data-dir`), recomputable across launches. *(PID is used only as a liveness signal inside `owner.json` — "is the recorded owner still alive?" — never as the project identity.)*
 - **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch:
   1. Derive the project's scratch directory from the name, and **claim** it.
   2. **If a live owner already exists** → drop the path into its channel; the existing window opens it (or focuses the tab if the file is already open).
@@ -97,7 +97,7 @@ The app **self-arbitrates per project**. On launch it claims the project named b
 
 > Design note: an earlier **caller-owned** model (the caller probes a socket and decides connect-vs-launch) was **replaced** by this app-self-arbitrating model. The original worry about self-arbitration — losing multi-window project grouping — does not apply, because arbitration is *per project* (one `owner.json` per project), so each project still gets its own window. The switch was driven by two things: (a) a **sandboxed caller cannot `listen()`** on a socket (seatbelt returns EPERM) but can read/write files freely, so a file-drop transport works where a socket does not; and (b) pushing the file-format + liveness logic onto the caller was error-prone — owning it in the app collapses the caller contract to a single command. See Appendix A.
 
-> Status (2026-06-27): R11–R15 reimplemented on a **file-drop transport**. `--project <name>` maps to a scratch dir `<tmpdir>/mdtool-<name>/` holding one `owner.json` record and transient message files. This replaced the prior Unix-socket / named-pipe listener, which a sandboxed launcher could not `listen()` on. The pieces, all behind the §7 seam (`platform/project.ts` = dir + owner, `platform/channel.ts` = messaging, `platform/protocol.ts` = versioning), each unit-tested:
+> Status (2026-06-27): R11–R15 reimplemented on a **file-drop transport**. `--project <name>` maps to a scratch dir `<tmpdir>/galley-<name>/` holding one `owner.json` record and transient message files. This replaced the prior Unix-socket / named-pipe listener, which a sandboxed launcher could not `listen()` on. The pieces, all behind the §7 seam (`platform/project.ts` = dir + owner, `platform/channel.ts` = messaging, `platform/protocol.ts` = versioning), each unit-tested:
 >
 > - **Self-arbitration.** On launch the app *claims* the project: if no live owner, it becomes the window; if a live owner exists, it hands its files off and exits. The caller never probes.
 > - **Liveness without a heartbeat.** A claim short-circuits on `process.kill(pid, 0)` (dead → take over) but, because a PID can be **recycled** after an unclean exit, a live PID is confirmed by a **consumer handshake**: a `.ping` the owner answers by renaming to `.pong`. Only a process actually consuming the channel acks, so a recycled-but-unrelated PID can't masquerade as the owner. `owner.json` records `pid`/`startedAt`/`host` and the takeover is ownership-guarded.
@@ -269,7 +269,7 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 | Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor (R6). MathJax remains the documented heavier fallback if ever needed. |
 | File watching | **chokidar** (or Node `fs.watch`) | In the main process (R32, R37). |
 | File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process (R33–R35). |
-| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/mdtool-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>` (R11–R15). File transport works in a sandbox where socket `listen()` is denied. |
+| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/galley-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>` (R11–R15). File transport works in a sandbox where socket `listen()` is denied. |
 | Packaging | **Electron Forge** (or electron-builder) | Produces installers (see §8). |
 
 ### Architecture notes
@@ -400,7 +400,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Text color | Out of scope (not standard markdown) |
 | Open mechanisms | CLI arg + file dialog; single file per open; may start with no file (R10) |
 | Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15) |
-| Project grouping | One scratch dir per project (`<tmpdir>/mdtool-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
+| Project grouping | One scratch dir per project (`<tmpdir>/galley-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
 | Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
 | Re-open already-open file | Focus existing tab |
 | Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
@@ -435,7 +435,7 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 ### A.2 The project name
 
 - Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name is an easy choice, but any short name that identifies the project works). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions.
-- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/mdtool-<name>/`); you never touch that directory.
+- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/galley-<name>/`); you never touch that directory.
 
 ### A.3 Operations
 
