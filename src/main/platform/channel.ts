@@ -37,7 +37,7 @@ const TMP_EXT = '.tmp';
 const MSG_EXT = '.msg';
 const PING_EXT = '.ping';
 const PONG_EXT = '.pong';
-/** Transient files older than this are orphans (crashed sender / abandoned probe). */
+/** Transient files older than this are orphans (crashed sender, abandoned probe, or a message whose target owner died); `reapStale` deletes them. */
 const STALE_MS = 10_000;
 /** Default handshake budget — generous enough to cover an owner whose watcher is still starting. */
 const PING_TIMEOUT_MS = 1_500;
@@ -101,12 +101,16 @@ export function listenOnChannel(
   fs.mkdirSync(dir, { recursive: true });
   const mine = channelId + '.';
 
-  reapStale(dir);
+  // Deliver/ack anything already addressed to US first (queued before this
+  // window mounted, or left by a prior launch), regardless of age — THEN reap.
+  // Order matters: a `.msg` still present after this belongs to a dead/other
+  // owner, so it's safe for the reaper to sweep rather than stranding it forever.
   for (const name of safeReaddir(dir)) {
     if (!name.startsWith(mine)) continue;
     if (name.endsWith(MSG_EXT)) consumeMessage(path.join(dir, name), onFile);
     else if (name.endsWith(PING_EXT)) ackPing(path.join(dir, name)); // answer a probe that beat us here
   }
+  reapStale(dir);
 
   const watcher: FSWatcher = chokidarWatch(dir, {
     usePolling: true,
@@ -217,11 +221,20 @@ function ackPing(pingPath: string): void {
   }
 }
 
-/** Delete transient channel files orphaned by a crashed sender or abandoned probe. */
+/**
+ * Delete transient channel files left orphaned by a crashed sender, an abandoned
+ * probe, or a message addressed to an owner that died before consuming it. Called
+ * AFTER this owner reconciles its own queued messages, so any `.msg` still here
+ * belongs to a dead/other owner — safe to sweep rather than strand forever.
+ * (`owner.json` is never transient, so it is never matched.)
+ */
 function reapStale(dir: string): void {
   const now = Date.now();
   for (const name of safeReaddir(dir)) {
-    if (!(name.endsWith(TMP_EXT) || name.endsWith(PING_EXT) || name.endsWith(PONG_EXT))) continue;
+    if (
+      !(name.endsWith(TMP_EXT) || name.endsWith(MSG_EXT) || name.endsWith(PING_EXT) || name.endsWith(PONG_EXT))
+    )
+      continue;
     const f = path.join(dir, name);
     try {
       if (now - fs.statSync(f).mtimeMs > STALE_MS) fs.unlinkSync(f);

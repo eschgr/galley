@@ -152,6 +152,49 @@ describe('channel message format (versioned envelope)', () => {
   });
 });
 
+describe('stale-file reaping (orphans swept; own queued messages preserved)', () => {
+  // Backdate a file's mtime well past STALE_MS (10s) so reapStale treats it as an orphan.
+  function backdate(file: string): void {
+    const t = new Date(Date.now() - 60_000);
+    fs.utimesSync(file, t, t);
+  }
+  function writeMsg(name: string, fileName: string, path_: string): string {
+    const p = path.join(projectDir(name), fileName);
+    fs.mkdirSync(projectDir(name), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify({ v: PROTOCOL_VERSION, type: 'open', path: path_ }));
+    return p;
+  }
+
+  it('sweeps a stale message addressed to a now-dead owner, without delivering it', async () => {
+    const name = freshName('reap-orphan');
+    const orphan = writeMsg(name, 'deadowner-1.x.msg', 'C:\\orphan.md'); // a different owner's id
+    backdate(orphan);
+    const got: string[] = [];
+    await listen(name, ID, (p) => got.push(p));
+    expect(fs.existsSync(orphan)).toBe(false); // reaped (not ours, past TTL)
+    expect(got).toEqual([]); // never delivered to us
+  });
+
+  it('delivers our OWN queued message even when old (reconcile runs before reap)', async () => {
+    const name = freshName('reap-mine');
+    const mineMsg = writeMsg(name, `${ID}.old.msg`, 'C:\\mine.md');
+    backdate(mineMsg); // old, but addressed to us
+    const got: string[] = [];
+    await listen(name, ID, (p) => got.push(p));
+    expect(got).toEqual(['C:\\mine.md']); // consumed in reconcile, not swept
+    expect(fs.existsSync(mineMsg)).toBe(false); // consumed (deleted), not lingering
+  });
+
+  it('leaves a FRESH foreign message for its own owner', async () => {
+    const name = freshName('reap-fresh');
+    const fresh = writeMsg(name, 'other-9.y.msg', 'C:\\fresh.md'); // not backdated
+    await listen(name, ID, () => {
+      /* delivery not exercised here */
+    });
+    expect(fs.existsSync(fresh)).toBe(true); // within TTL → left for its owner
+  });
+});
+
 describe('channel liveness handshake (PID-reuse defence)', () => {
   it('a listening owner acknowledges a ping addressed to it', async () => {
     const name = freshName('ping-live');

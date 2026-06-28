@@ -430,22 +430,21 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 
 - `galley` organizes windows **by project**, and each project has at most one window. You do **not** manage windows or coordinate instances — the app self-arbitrates.
 - **One project ⇒ one window.** Pass the **same** `--project <name>` for all of a project's files to keep them in one window; use **different** names to keep projects in separate windows.
-- Your only responsibility is to pass a stable project **name** and **absolute** file paths. `galley` decides whether to open a new window or route the file into the project's existing one.
+- Your only responsibility is to pass a stable project **name** and the file path(s). `galley` decides whether to open a new window or route the file into the project's existing one.
 
 ### A.2 The project name
 
-- Pass a **stable project name** with `--project <name>` — normally a short stable hash of the **absolute project root directory** (filesystem-safe, recomputable), or a readable slug. Same project root ⇒ same name ⇒ same window, even across separate caller sessions.
+- Pass a **stable, filesystem-safe project name** with `--project <name>` — a readable slug (the project's directory name, or whatever label fits the context you're working in) works well. The only rule: use the **same name** for the same project, so its files share one window even across separate sessions. (Hashing the project root is one way to get a stable token, but it's not required — readability is usually better.)
 - Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/mdtool-<name>/`); you never touch that directory.
-- Do **not** key on PID. PID is only ever used internally as a liveness signal, never as the project identity.
 
 ### A.3 Procedure (per file to open)
 
-1. **Compute** the project name from the project root: `name = short_stable_hash(project_root)` (or a readable slug).
+1. **Choose** a stable name for the project, and reuse the same one each time (see A.2).
 2. **Run** one command:
-   `galley --project <name> <absolute_file_path>`
-   - If the project's window is already open, the file opens there as a new (or focused, if already open) tab.
+   `galley --project <name> <file>`
+   - If the project's window is already open, the file opens there as a new (or focused, if already open) tab, and the launched process **exits immediately** — that's normal (it handed off; a fast exit means delivered, not failed).
    - If not, a new window opens bound to the project and shows the file.
-3. Always pass **absolute** file paths. You can pass several at once: `galley --project <name> a.md b.md`.
+3. Paths may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory. Pass several at once: `galley --project <name> a.md b.md`.
 
 > Notes
 > - Sending the *same* file again is safe: the app focuses the existing tab rather than duplicating (R15).
@@ -465,17 +464,19 @@ appear in the same window; different projects use different windows. Galley
 manages the windows itself — you only provide a project name and a file.
 
 To show a file, run ONE command:
-    galley --project <name> "<absolute_file_path>"
+    galley --project <name> "<file>"
 
-  - <name> is a stable, filesystem-safe token identifying the project: a
-    readable slug, or short_stable_hash(absolute_project_root). Use the SAME
-    name every time for a project so its files share one window.
-  - Always use absolute paths. Re-running for an open file just focuses its tab.
+  - <name> is a stable, filesystem-safe label for the project (a readable slug
+    is fine). Use the SAME name every time for a project so its files share one
+    window.
+  - Paths may be relative (resolved against the current directory) or absolute;
+    absolute is safer. Re-running for an open file just focuses its tab.
   - Open several at once: galley --project <name> a.md b.md
+  - Handing a file to an already-open window makes the command exit immediately
+    — that fast exit means "delivered", not an error.
 
-Do NOT try to manage windows, probe for a running instance, or key the project
-on a PID. Galley decides whether to open a new window or reuse the project's
-existing one — including from a sandboxed shell.
+Galley decides whether to open a new window or reuse the project's existing one
+— including from a sandboxed shell; you don't manage or probe windows yourself.
 ```
 
 > This is a reference contract; the exact flag name (`--project`) and the file-drop transport are finalized at implementation and should be kept in sync with this appendix.

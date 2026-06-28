@@ -507,6 +507,31 @@ test('preview reading position is preserved per tab; a new tab opens at the top 
   await expect.poll(scrollTop).toBeGreaterThan(200);
 });
 
+test('re-delivering an already-open file keeps the tab and reading position (R15)', async ({ page }) => {
+  // Re-sending an open file (e.g. `galley --project X file.md` for a file already
+  // in a tab) must focus the existing tab WITHOUT scrolling back to the top.
+  await installMockBridge(page);
+  await page.goto('/');
+  const longDoc = '# Doc A\n\n' + Array.from({ length: 80 }, (_, i) => `Paragraph ${i} of doc A.`).join('\n\n');
+  const file = { path: 'C:\\docs\\long-a.md', content: longDoc, hash: 'ha' };
+  await fire(page, 'openCb', file);
+
+  const scrollTop = () =>
+    page.evaluate(() => document.querySelector<HTMLElement>('.tab-view:not([hidden]) .preview-scroll')!.scrollTop);
+  await page.evaluate(
+    () => (document.querySelector<HTMLElement>('.tab-view:not([hidden]) .preview-scroll')!.scrollTop = 1200),
+  );
+  const before = await scrollTop();
+  expect(before).toBeGreaterThan(200);
+
+  // Re-deliver the SAME file (the R15 path).
+  await fire(page, 'openCb', file);
+
+  await expect(activeTabName(page)).toHaveText('long-a.md');
+  await expect(tabNames(page)).toHaveCount(1); // no duplicate tab
+  await expect.poll(scrollTop).toBeGreaterThan(before - 50); // reading position kept, not reset to top
+});
+
 test('a file link with a #fragment jumps to that heading in the opened tab (R4)', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 320 }); // short, so the target is below the fold
   await installMockBridge(page);
