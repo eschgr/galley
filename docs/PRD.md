@@ -434,7 +434,7 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 
 ### A.2 The project name
 
-- Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name, or whatever label fits the context you're working in). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions. (A hash of the project root is one way to get a stable name, but it's not required — a readable name is usually better.)
+- Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name is an easy choice, but any short name that identifies the project works). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions. (A hash of the project root is one way to get a stable name, but it's not required — a readable name is usually better.)
 - Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/mdtool-<name>/`); you never touch that directory.
 
 ### A.3 Procedure (per file to open)
