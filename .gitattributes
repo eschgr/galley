@@ -1,0 +1,3 @@
+# The macOS .pkg postinstall script runs via /bin/sh — it must keep LF line
+# endings regardless of the checkout platform's autocrlf setting.
+packaging/macos/pkg-scripts/postinstall text eol=lf
