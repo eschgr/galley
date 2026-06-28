@@ -274,7 +274,7 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 
 ### Architecture notes
 
-- **Main process** owns all OS-touching work: CLI arg parsing, the per-project file-drop channel (scratch dir + `owner.json` liveness + `*.open` command files) for file delivery, file read/write, file watching, baseline hashing and self-write detection. It emits events to the renderer ("open this file in a tab", "this file changed externally").
+- **Main process** owns all OS-touching work: CLI arg parsing, the per-project file-drop channel (scratch dir + `owner.json` liveness + `*.msg` command files) for file delivery, file read/write, file watching, baseline hashing and self-write detection. It emits events to the renderer ("open this file in a tab", "this file changed externally").
 - **Renderer process** owns the entire UI: CodeMirror editor, markdown-it/KaTeX preview, scroll-sync, tabs, dirty indicators, split-view layout, link dialog, and conflict prompts. It calls the main process to load/save and listens for its events.
 - **Portability seam (important):** keep the main-process OS-touching code (file IO, watch, the project/channel transport, CLI) behind a thin, well-defined interface. This is the layer that would be rewritten in a future migration off Electron; isolating it keeps that migration cheap (see §9).
 - **Security:** enable `contextIsolation`, do not expose Node directly to the renderer, bridge via a minimal preload API, and route preview link-clicks to the system browser (R4) rather than allowing in-app navigation. (Standard Electron hardening; the renderer is a full rendering-engine page.)
