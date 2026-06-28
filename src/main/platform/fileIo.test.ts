@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArgs, parseCliChannelArg, readFile, resolveLocalLink, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliProjectArg, readFile, resolveLocalLink, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links, R4)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -70,11 +70,11 @@ describe('parseCliFileArgs', () => {
     expect(parseCliFileArgs(['electron.exe', '.', 'notes.md'], false)).toEqual([path.resolve('notes.md')]);
   });
 
-  it('skips flags and the --channel <addr> value, keeping the rest of the files', () => {
+  it('skips flags and the --project <name> value, keeping the rest of the files', () => {
     expect(parseCliFileArgs(['mdtool.exe', '--devtools', 'notes.md'], true)).toEqual([path.resolve('notes.md')]);
-    // --channel consumes its value; the files on either side still come through.
+    // --project consumes its value; the files on either side still come through.
     expect(
-      parseCliFileArgs(['mdtool.exe', 'a.md', '--channel', '\\\\.\\pipe\\x', 'b.md'], true),
+      parseCliFileArgs(['mdtool.exe', 'a.md', '--project', 'pack-325', 'b.md'], true),
     ).toEqual([path.resolve('a.md'), path.resolve('b.md')]);
   });
 
@@ -84,21 +84,19 @@ describe('parseCliFileArgs', () => {
   });
 });
 
-describe('parseCliChannelArg', () => {
-  it('reads the --channel <addr> value', () => {
-    expect(parseCliChannelArg(['mdtool.exe', '--channel', '\\\\.\\pipe\\galley-x'], true)).toBe(
-      '\\\\.\\pipe\\galley-x',
-    );
+describe('parseCliProjectArg', () => {
+  it('reads the --project <name> value', () => {
+    expect(parseCliProjectArg(['mdtool.exe', '--project', 'pack-325'], true)).toBe('pack-325');
   });
-  it('reads the --channel=<addr> form', () => {
-    expect(parseCliChannelArg(['mdtool.exe', '--channel=/tmp/g.sock', 'notes.md'], true)).toBe('/tmp/g.sock');
+  it('reads the --project=<name> form', () => {
+    expect(parseCliProjectArg(['mdtool.exe', '--project=a1b2c3d4', 'notes.md'], true)).toBe('a1b2c3d4');
   });
   it('skips the app-path argv[1] in a dev launch', () => {
-    expect(parseCliChannelArg(['electron.exe', '.', '--channel', 'addr'], false)).toBe('addr');
+    expect(parseCliProjectArg(['electron.exe', '.', '--project', 'proj'], false)).toBe('proj');
   });
-  it('returns null when no channel is passed', () => {
-    expect(parseCliChannelArg(['mdtool.exe', 'notes.md'], true)).toBeNull();
-    expect(parseCliChannelArg(['mdtool.exe', '--channel'], true)).toBeNull(); // no value
+  it('returns null when no project is passed', () => {
+    expect(parseCliProjectArg(['mdtool.exe', 'notes.md'], true)).toBeNull();
+    expect(parseCliProjectArg(['mdtool.exe', '--project'], true)).toBeNull(); // no value
   });
 });
 

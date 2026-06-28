@@ -6,8 +6,9 @@ import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
-import { createPlatformBridge, channelAddress, type SaveResult } from './main/platform';
+import { createPlatformBridge, type SaveResult } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
+import { decideStartupAction } from './main/startup';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -305,7 +306,7 @@ ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
   win.setBounds({ x: Math.round(nx), y, width: target, height: h });
 });
 
-const createWindow = () => {
+const createWindow = (project: string | null = null, files: string[] = [], channelId: string | null = null) => {
   const mainWindow = new BrowserWindow({
     // Portrait-ish by default — most documents read better tall than wide.
     // Resizable, so widening for side-by-side editing is one drag away.
@@ -378,31 +379,25 @@ const createWindow = () => {
     }
   });
 
-  // Channel listener (R11–R15): when launched with `--channel <addr>`, open any
-  // absolute file path the caller (Claude) sends over the channel as a new,
-  // focused tab. The app does not arbitrate — the caller decided to send rather
-  // than launch. Paths arriving before the renderer mounts are queued and
-  // flushed on did-finish-load.
+  // Channel (R11–R15): when this process owns a project (`--project <name>`),
+  // open any absolute path the caller drops into the project's channel as a new,
+  // focused tab. The app self-arbitrated at startup (this window won the claim);
+  // a duplicate launch hands its files here rather than opening another window.
+  // Paths arriving before the renderer mounts are queued and flushed on load.
   rendererReady = false;
   mainWindow.webContents.on('did-finish-load', () => {
     rendererReady = true;
     for (const f of pendingChannelFiles.splice(0)) void openPath(mainWindow, f);
   });
-  const channelName = platform.parseCliChannelArg(process.argv, app.isPackaged);
-  if (channelName) {
-    const address = channelAddress(channelName);
-    void platform
-      .listenOnChannel(address, (absPath) => {
-        if (mainWindow.isDestroyed()) return;
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus(); // R14: the delivered file's tab is focused
-        const resolved = path.resolve(absPath);
-        if (rendererReady) void openPath(mainWindow, resolved);
-        else pendingChannelFiles.push(resolved);
-      })
-      .catch((err) =>
-        dialog.showErrorBox('Channel error', `Could not listen on ${address}\n\n${String(err)}`),
-      );
+  if (project && channelId) {
+    platform.listenOnChannel(project, channelId, (absPath) => {
+      if (mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus(); // R14: the delivered file's tab is focused
+      const resolved = path.resolve(absPath);
+      if (rendererReady) void openPath(mainWindow, resolved);
+      else pendingChannelFiles.push(resolved);
+    });
   }
 
   // and load the index.html of the app.
@@ -421,12 +416,12 @@ const createWindow = () => {
   }
 
   // R7: record the command-line files for the renderer to pull on mount.
-  startupFilePaths = platform.parseCliFileArgs(process.argv, app.isPackaged);
+  startupFilePaths = files;
 };
 
 // This method will be called when Electron has finished initialization and is
 // ready to create browser windows. Some APIs can only be used after this event.
-app.on('ready', () => {
+app.on('ready', async () => {
   buildAppMenu({
     openFile: openFileViaDialog,
     saveFile: requestSave,
@@ -436,7 +431,38 @@ app.on('ready', () => {
     closeTab: requestCloseTab,
     help: requestHelp,
   });
-  createWindow();
+
+  // Self-arbitration (R11–R15): with `--project <name>`, claim the project. If a
+  // live window already owns it (confirmed by the channel handshake), drop our
+  // files into its channel and exit rather than open a duplicate; otherwise
+  // become its window. A plain launch (no --project) just opens a window with no
+  // channel.
+  const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
+  const files = platform.parseCliFileArgs(process.argv, app.isPackaged);
+  if (project) {
+    const claim = await platform.claimProject(project, { appVersion: app.getVersion() });
+    const action = decideStartupAction(claim, files);
+    if (action.kind === 'handoff') {
+      // Address each file to the live owner's channel, then exit (no 2nd window).
+      for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f);
+      app.quit();
+      return;
+    }
+    if (action.kind === 'incompatible') {
+      // A different-major Galley owns this project; writing to it would pollute a
+      // queue it can't parse. Surface and exit rather than fail silently (R11–R15).
+      dialog.showErrorBox(
+        'Galley version mismatch',
+        `Another, incompatible version of Galley (channel protocol ${action.ownerProtocol}) already owns ` +
+          `project "${project}". Close that window and try again, or open the file with that version.`,
+      );
+      app.exit(1);
+      return;
+    }
+    createWindow(project, files, claim.owner.id); // we own it — listen on our own channel
+    return;
+  }
+  createWindow(project, files);
 });
 
 // PRD R46: closing the last tab keeps the app open. Quitting the whole app is a
@@ -455,6 +481,6 @@ app.on('activate', () => {
   }
 });
 
-// Still deferred behind the platform seam (src/main/platform): the file watcher
-// + conflict handling (R32–R38) and the per-project channel listener (R11–R15).
-// See PRD §7 (architecture notes) and §9.
+// All OS-touching work (file IO + hashing, the file watcher + conflict handling
+// R32–R38, and the per-project file-drop channel R11–R15) lives behind the
+// platform seam (src/main/platform). See PRD §7 (architecture notes) and §9.
