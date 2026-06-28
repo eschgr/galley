@@ -85,7 +85,11 @@ The app **self-arbitrates per project**. On launch it claims the project named b
 
 - **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app derives a per-project scratch directory under the OS temp dir and claims it via an `owner.json` liveness record. With no live owner it **becomes the window** and watches the directory for delivered files; with a live owner it **drops its files into that directory** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
 - **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app maps it to `<tmpdir>/mdtool-<name>/`. The caller derives the name as a stable, filesystem-safe token from the project root (mirroring how Chrome keys an instance on its `--user-data-dir`), recomputable across launches. *(PID is used only as a liveness signal inside `owner.json` — "is the recorded owner still alive?" — never as the project identity.)*
-- **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch: (1) derive + claim the project's directory; (2) if a live owner exists, drop the path into its channel; (3) otherwise launch the window bound to the project and open the path. Multiple projects ⇒ multiple directories ⇒ multiple independent windows, with no global contention. This delivers project grouping directly.
+- **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch:
+  1. Derive the project's scratch directory from the name, and **claim** it.
+  2. **If a live owner already exists** → drop the path into its channel; the existing window opens it (or focuses the tab if the file is already open).
+  3. **If not** → become the window bound to that project and open the path.
+  - Multiple projects ⇒ multiple directories ⇒ multiple independent windows, with no global contention. This delivers project grouping directly.
 - **R14. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
 - **R15. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
 
