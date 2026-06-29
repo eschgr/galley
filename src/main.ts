@@ -9,6 +9,26 @@ import { buildCliHelp, wantsHelp } from './main/cliHelp';
 import { createPlatformBridge, type SaveResult } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
+import { installCliShim, removeCliShim } from './main/cliShim';
+
+// Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
+// that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync
+// (#42). Squirrel runs `Galley.exe --squirrel-<event>` on every version bump, so
+// we (re)write the shim to point at THIS exe — `process.execPath` is the current
+// versioned `app-x.y.z\Galley.exe`. Best-effort: a shim failure must not block
+// install/uninstall. Then the app quits (the Squirrel event isn't a real launch).
+if (process.platform === 'win32') {
+  const squirrelEvent = process.argv[1];
+  try {
+    if (squirrelEvent === '--squirrel-install' || squirrelEvent === '--squirrel-updated') {
+      installCliShim(process.execPath);
+    } else if (squirrelEvent === '--squirrel-uninstall') {
+      removeCliShim();
+    }
+  } catch (err) {
+    console.error('[mdtool] galley PATH shim update failed:', err);
+  }
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
