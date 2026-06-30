@@ -1,5 +1,5 @@
 {
-  "name": "mdtool",
+  "name": "galley",
   "productName": "Galley",
   "version": "0.3.0",
   "description": "Local markdown viewer & editor — live split-view preview, GFM + LaTeX math, per-project tabs.",

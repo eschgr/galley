@@ -32,7 +32,7 @@ async function installMockBridge(page: Page): Promise<void> {
       prevTabCb: (() => void) | null;
     } = { openCb: null, nextTabCb: null, prevTabCb: null };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
-    (window as unknown as { mdtool: unknown }).mdtool = {
+    (window as unknown as { galley: unknown }).galley = {
       platform: 'win32',
       version: '0.0.0-test',
       openExternal: async () => {},
@@ -85,7 +85,7 @@ const VIS_ED = '.tab-view:not([hidden]) .pane-editor .cm-scroller';
 const VIS_PV = '.tab-view:not([hidden]) .preview-scroll';
 
 /** The VISIBLE editor's top visible 0-based source line, scraped from the gutter.
- *  (The old __mdtoolTestEditorTopLine probe is a single global overwritten by the
+ *  (The old __galleyTestEditorTopLine probe is a single global overwritten by the
  *  last-mounted editor, so with one CM per tab we read the visible gutter directly.) */
 async function editorTopLine(page: Page): Promise<number> {
   return page.evaluate((sel) => {

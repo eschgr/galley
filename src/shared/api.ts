@@ -21,7 +21,7 @@ export type SaveOutcome =
   | { readonly conflict: false; readonly file: OpenedFile }
   | { readonly conflict: true; readonly disk: OpenedFile };
 
-export interface MdtoolApi {
+export interface GalleyApi {
   /** Host platform, surfaced for platform-conditional UI (shortcut labels, etc.). */
   readonly platform: NodeJS.Platform;
   /** App version, for the Help window (PRD R48). */
@@ -97,6 +97,6 @@ export interface MdtoolApi {
 
 declare global {
   interface Window {
-    mdtool: MdtoolApi;
+    galley: GalleyApi;
   }
 }

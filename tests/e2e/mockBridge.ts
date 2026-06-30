@@ -1,15 +1,15 @@
 import { expect, type Page } from '@playwright/test';
-import type { MdtoolApi } from '../../src/shared/api';
+import type { GalleyApi } from '../../src/shared/api';
 
 // The ONE mock main-process bridge shared across the renderer e2e specs. The real
 // file IO (read/write/hash, CLI parse) is unit-tested (src/main/platform), and
 // full Electron E2E is a later phase; these specs cover the React wiring by driving
-// the renderer through this mock `window.mdtool`, installed before the app loads.
+// the renderer through this mock `window.galley`, installed before the app loads.
 //
 // Why a single module: the bridge was hand-rolled and COPIED across spec files, and
 // the copies DRIFTED (one missed setActiveDocPath, another onNextTab) — each gap a
 // runtime "X is not a function" that crashes <App> on mount and only surfaces in a
-// clean-server e2e run. Consolidating here, typed with `satisfies MdtoolApi`, turns
+// clean-server e2e run. Consolidating here, typed with `satisfies GalleyApi`, turns
 // any such gap into a COMPILE error (`npx tsc --noEmit`) instead.
 
 export type MockFile = { path: string; content: string; hash: string };
@@ -37,7 +37,7 @@ type Harness = {
 };
 
 /**
- * Install a COMPLETE `window.mdtool` mock (typed `satisfies MdtoolApi`, so a
+ * Install a COMPLETE `window.galley` mock (typed `satisfies GalleyApi`, so a
  * missing/renamed bridge method is a COMPILE error here rather than a runtime
  * crash) plus the `window.__mock` harness, before the app loads. `startup` is the
  * optional file(s) `getStartupFiles()` returns (R7 command-line open).
@@ -59,7 +59,7 @@ export async function installMockBridge(
       nextSaveConflict: null, nextRead: null,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
-    (window as unknown as { mdtool: unknown }).mdtool = {
+    (window as unknown as { galley: unknown }).galley = {
       platform: 'win32',
       version: '0.0.0-test',
       openExternal: async (url: string) => {
@@ -68,8 +68,8 @@ export async function installMockBridge(
       openLocalFile: (href: string, from: string) => harness.openLocalCalls.push({ href, from }),
       setSourceVisible: async () => {},
       // App mirrors the active doc path to main (for the Export-to-PDF default) on
-      // every tab change; the renderer calls window.mdtool?.setActiveDocPath(...),
-      // and `?.` only guards mdtool being null — a MISSING method still throws and
+      // every tab change; the renderer calls window.galley?.setActiveDocPath(...),
+      // and `?.` only guards galley being null — a MISSING method still throws and
       // crashes <App> on mount. So the mock must implement the whole bridge.
       setActiveDocPath: () => {},
       getStartupFiles: async () => startupFiles,
@@ -122,7 +122,7 @@ export async function installMockBridge(
       // `satisfies` makes a missing/renamed bridge method a COMPILE error here,
       // instead of a runtime "X is not a function" crash that only surfaces in a
       // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
-    } satisfies MdtoolApi;
+    } satisfies GalleyApi;
   }, startup);
 }
 

@@ -2,12 +2,12 @@
 // Node/Electron APIs, and is the ONLY place allowed to bridge across the
 // contextIsolation boundary into the renderer. See PRD §7 (security).
 //
-// It exposes a single frozen object, `window.mdtool`, typed by MdtoolApi. The
+// It exposes a single frozen object, `window.galley`, typed by GalleyApi. The
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MdtoolApi, OpenedFile } from './shared/api';
+import type { GalleyApi, OpenedFile } from './shared/api';
 
-const api: MdtoolApi = {
+const api: GalleyApi = {
   platform: process.platform,
   // App version for the Help window — sourced from main's app.getVersion() (reads
   // package.json in dev / the packaged version in a release), so it tracks every
@@ -70,4 +70,4 @@ const api: MdtoolApi = {
   },
 };
 
-contextBridge.exposeInMainWorld('mdtool', api);
+contextBridge.exposeInMainWorld('galley', api);

@@ -10,7 +10,7 @@ it; _GitHub Flavored Markdown_ (GFM) adds tables, task lists, strikethrough
 (~~like this~~), and autolinking. A bare URL such as https://commonmark.org
 should become a link automatically.
 
-> **Note:** mdtool renders a GFM + LaTeX-math flavor intended to match Claude's
+> **Note:** Galley renders a GFM + LaTeX-math flavor intended to match Claude's
 > typical output. Raw HTML passthrough is intentionally disabled.
 
 ## Steps
