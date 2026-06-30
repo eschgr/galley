@@ -15,13 +15,13 @@ export function hashContent(content: string): string {
 }
 
 /**
- * Pick the file paths to open from a process argv (R7: `mdtool <file> [file …]`).
+ * Pick the file paths to open from a process argv (R7: `galley <file> [file …]`).
  *
  * Returns EVERY non-flag argument, each resolved to absolute, in command-line
- * order — so `mdtool a.md b.md c.md` opens all three. Skips the executable (and,
+ * order — so `galley a.md b.md c.md` opens all three. Skips the executable (and,
  * in dev, the app-path argv[1]) and known value-taking flags (`--project <name>`
  * also skips its value); other flags (`--devtools`, `--help`, `-h`) are simply
- * ignored. `packaged` distinguishes a packaged launch (`mdtool.exe …`) from a dev
+ * ignored. `packaged` distinguishes a packaged launch (`galley.exe …`) from a dev
  * launch (`electron . …`). Returns an empty array when no file was given.
  */
 export function parseCliFileArgs(argv: readonly string[], packaged: boolean): string[] {
@@ -64,7 +64,7 @@ export function resolveLocalLink(href: string, fromPath: string): string | null 
 }
 
 /**
- * Pick the project name from a process argv (R11): `mdtool --project <name> …`
+ * Pick the project name from a process argv (R11): `galley --project <name> …`
  * or `--project=<name>`. The name identifies the project whose window this file
  * belongs to; the app derives the channel scratch dir from it (see
  * `project.ts#projectDir`). Returns null when no project was passed.

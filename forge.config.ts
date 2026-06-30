@@ -21,7 +21,7 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [
     // Install to %LocalAppData%\Galley: the Squirrel package id (the install
-    // folder) defaults to the package.json `name` ("mdtool"); override to Galley.
+    // folder) defaults to the package.json `name` ("galley"); override to Galley.
     // (The Start Menu shortcut folder is the EXE CompanyName, set above — NOT the
     // nuspec `authors`, which Squirrel ignores for shortcuts.)
     new MakerSquirrel({ name: 'Galley' }),

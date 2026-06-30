@@ -94,7 +94,7 @@ async function installMockBridge(page: Page): Promise<void> {
       prevTabCb: (() => void) | null;
     } = { openCb: null, nextTabCb: null, prevTabCb: null };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
-    (window as unknown as { mdtool: unknown }).mdtool = {
+    (window as unknown as { galley: unknown }).galley = {
       platform: 'win32',
       version: '0.0.0-test',
       openExternal: async () => {},

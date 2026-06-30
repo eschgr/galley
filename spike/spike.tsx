@@ -16,7 +16,7 @@ function Spike() {
   return (
     <div className="spike">
       <header className="spike-header">
-        <h1>mdtool — rendering fidelity check</h1>
+        <h1>Galley — rendering fidelity check</h1>
         <p>markdown-it + markdown-it-texmath (KaTeX) + highlight.js</p>
       </header>
       {corpus.map((doc) => (

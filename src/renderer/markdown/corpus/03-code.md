@@ -41,7 +41,7 @@ async function loadUser(id: number): Promise<User> {
 
 ```json
 {
-  "name": "mdtool",
+  "name": "galley",
   "private": true,
   "scripts": { "start": "electron-forge start" },
   "dependencies": { "markdown-it": "^14.1.0", "katex": "^0.16.11" }
@@ -55,7 +55,7 @@ async function loadUser(id: number): Promise<User> {
 set -euo pipefail
 for f in *.md; do
   echo "rendering ${f}"
-  mdtool "$(realpath "$f")"
+  galley "$(realpath "$f")"
 done
 ```
 

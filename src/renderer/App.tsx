@@ -141,7 +141,7 @@ export function App() {
     if (!force && content === t.saved) return; // nothing new
     clearAutosave(id);
     try {
-      const outcome = await window.mdtool.saveFile(t.path, content, force);
+      const outcome = await window.galley.saveFile(t.path, content, force);
       if (outcome.conflict) {
         flagDiverged(id, outcome.disk); // write-path divergence (R34)
         return;
@@ -213,7 +213,7 @@ export function App() {
     const idx = tabsRef.current.findIndex((t) => t.id === id);
     if (idx === -1) return;
     const t = tabsRef.current[idx];
-    window.mdtool?.notifyClosed(t.path); // R41: stop watching its file
+    window.galley?.notifyClosed(t.path); // R41: stop watching its file
     clearAutosave(id);
     viewRefs.current.delete(id);
     const remaining = tabsRef.current.filter((x) => x.id !== id);
@@ -274,7 +274,7 @@ export function App() {
 
   // Pull a command-line file (R7) and subscribe to opens / save / reload / change.
   useEffect(() => {
-    void window.mdtool?.getStartupFiles().then((files) => {
+    void window.galley?.getStartupFiles().then((files) => {
       files.forEach((file) => openTab(file));
       // openTab leaves the LAST-opened tab active; when several files were passed
       // on the command line, re-assert the FIRST (leftmost) as the focused tab.
@@ -283,27 +283,27 @@ export function App() {
         if (first) switchTo(first.id);
       }
     });
-    const offOpen = window.mdtool?.onOpenFile((file) => openTab(file));
-    const offSave = window.mdtool?.onMenuSave(() => {
+    const offOpen = window.galley?.onOpenFile((file) => openTab(file));
+    const offSave = window.galley?.onMenuSave(() => {
       const id = activeIdRef.current;
       const t = tabById(id);
       if (!id || !t) return;
       if (t.conflict) resolveKeepMine();
       else void saveTab(id, { manual: true });
     });
-    const offReload = window.mdtool?.onReloadFile(() => {
+    const offReload = window.galley?.onReloadFile(() => {
       const id = activeIdRef.current;
       const t = tabById(id);
       if (!id || !t) return;
-      void window.mdtool.readFile(t.path).then((file) => {
+      void window.galley.readFile(t.path).then((file) => {
         if (file && activeIdRef.current === id) reloadTab(id, file);
       });
     });
-    const offClose = window.mdtool?.onCloseTab(() => {
+    const offClose = window.galley?.onCloseTab(() => {
       const id = activeIdRef.current;
       if (id) requestClose(id); // close the active tab (prompts if dirty; R41)
     });
-    const offExternal = window.mdtool?.onExternalChange((diskFile) => {
+    const offExternal = window.galley?.onExternalChange((diskFile) => {
       const t = tabsRef.current.find((x) => x.path === diskFile.path);
       if (!t) return;
       if (!t.conflict && !t.edited) reloadTab(t.id, diskFile); // in sync → refresh
@@ -318,9 +318,9 @@ export function App() {
       );
       if (target) switchTo(target);
     };
-    const offNext = window.mdtool?.onNextTab(() => cycle('next'));
-    const offPrev = window.mdtool?.onPrevTab(() => cycle('prev'));
-    const offHelp = window.mdtool?.onHelp(() => setShowHelp(true)); // R48
+    const offNext = window.galley?.onNextTab(() => cycle('next'));
+    const offPrev = window.galley?.onPrevTab(() => cycle('prev'));
+    const offHelp = window.galley?.onHelp(() => setShowHelp(true)); // R48
     return () => {
       offOpen?.();
       offSave?.();
@@ -344,7 +344,7 @@ export function App() {
   const toggleSource = () => {
     const next: ViewMode = showingSource ? 'preview' : 'split';
     setViewMode(next);
-    void window.mdtool?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
+    void window.galley?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
   };
 
   // Apply a pending #fragment to the now-active tab's preview once it is visible
@@ -371,7 +371,7 @@ export function App() {
     document.title = activePath ? `${basename(activePath)} — Galley` : 'Galley';
     // Mirror the active path to main so Export to PDF defaults beside the source
     // (R52). null on the welcome screen.
-    window.mdtool?.setActiveDocPath(activePath ?? null);
+    window.galley?.setActiveDocPath(activePath ?? null);
   }, [activePath]);
 
   return (
@@ -450,8 +450,8 @@ export function App() {
       )}
       {showHelp && (
         <HelpDialog
-          version={window.mdtool?.version ?? '0.0.0'}
-          platform={window.mdtool?.platform ?? 'unknown'}
+          version={window.galley?.version ?? '0.0.0'}
+          platform={window.galley?.platform ?? 'unknown'}
           onClose={() => setShowHelp(false)}
         />
       )}
@@ -501,6 +501,6 @@ export function App() {
   function onOpenLocalLink(href: string, fromPath: string) {
     const hash = href.indexOf('#');
     pendingFragment.current = hash >= 0 ? decodeURIComponent(href.slice(hash + 1)) || null : null;
-    window.mdtool?.openLocalFile(href, fromPath);
+    window.galley?.openLocalFile(href, fromPath);
   }
 }

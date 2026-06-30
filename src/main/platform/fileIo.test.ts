@@ -53,13 +53,13 @@ describe('hashContent', () => {
 
 describe('parseCliFileArgs', () => {
   it('returns the single file arg as an absolute path (packaged launch)', () => {
-    const r = parseCliFileArgs(['mdtool.exe', 'notes.md'], true);
+    const r = parseCliFileArgs(['galley.exe', 'notes.md'], true);
     expect(r).toEqual([path.resolve('notes.md')]);
     expect(path.isAbsolute(r[0])).toBe(true);
   });
 
   it('returns EVERY file arg, in command-line order, each absolute (#37)', () => {
-    expect(parseCliFileArgs(['mdtool.exe', 'a.md', 'b.md', 'c.md'], true)).toEqual([
+    expect(parseCliFileArgs(['galley.exe', 'a.md', 'b.md', 'c.md'], true)).toEqual([
       path.resolve('a.md'),
       path.resolve('b.md'),
       path.resolve('c.md'),
@@ -71,32 +71,32 @@ describe('parseCliFileArgs', () => {
   });
 
   it('skips flags and the --project <name> value, keeping the rest of the files', () => {
-    expect(parseCliFileArgs(['mdtool.exe', '--devtools', 'notes.md'], true)).toEqual([path.resolve('notes.md')]);
+    expect(parseCliFileArgs(['galley.exe', '--devtools', 'notes.md'], true)).toEqual([path.resolve('notes.md')]);
     // --project consumes its value; the files on either side still come through.
     expect(
-      parseCliFileArgs(['mdtool.exe', 'a.md', '--project', 'pack-325', 'b.md'], true),
+      parseCliFileArgs(['galley.exe', 'a.md', '--project', 'pack-325', 'b.md'], true),
     ).toEqual([path.resolve('a.md'), path.resolve('b.md')]);
   });
 
   it('returns an empty array when no file argument is present', () => {
-    expect(parseCliFileArgs(['mdtool.exe'], true)).toEqual([]);
-    expect(parseCliFileArgs(['mdtool.exe', '--devtools'], true)).toEqual([]);
+    expect(parseCliFileArgs(['galley.exe'], true)).toEqual([]);
+    expect(parseCliFileArgs(['galley.exe', '--devtools'], true)).toEqual([]);
   });
 });
 
 describe('parseCliProjectArg', () => {
   it('reads the --project <name> value', () => {
-    expect(parseCliProjectArg(['mdtool.exe', '--project', 'pack-325'], true)).toBe('pack-325');
+    expect(parseCliProjectArg(['galley.exe', '--project', 'pack-325'], true)).toBe('pack-325');
   });
   it('reads the --project=<name> form', () => {
-    expect(parseCliProjectArg(['mdtool.exe', '--project=a1b2c3d4', 'notes.md'], true)).toBe('a1b2c3d4');
+    expect(parseCliProjectArg(['galley.exe', '--project=a1b2c3d4', 'notes.md'], true)).toBe('a1b2c3d4');
   });
   it('skips the app-path argv[1] in a dev launch', () => {
     expect(parseCliProjectArg(['electron.exe', '.', '--project', 'proj'], false)).toBe('proj');
   });
   it('returns null when no project is passed', () => {
-    expect(parseCliProjectArg(['mdtool.exe', 'notes.md'], true)).toBeNull();
-    expect(parseCliProjectArg(['mdtool.exe', '--project'], true)).toBeNull(); // no value
+    expect(parseCliProjectArg(['galley.exe', 'notes.md'], true)).toBeNull();
+    expect(parseCliProjectArg(['galley.exe', '--project'], true)).toBeNull(); // no value
   });
 });
 
@@ -107,7 +107,7 @@ describe('readFile / writeFile round-trip', () => {
   });
 
   it('writes content and reads it back with a matching baseline hash', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'mdtool-'));
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'galley-'));
     dirs.push(dir);
     const file = path.join(dir, 'doc.md');
     const content = '# Title\n\nBody with unicode: café ✓\n';

@@ -137,7 +137,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         break;
       }
       case 'external':
-        void window.mdtool?.openExternal(href); // → system browser (R4)
+        void window.galley?.openExternal(href); // → system browser (R4)
         break;
       case 'local':
         onOpenLocal?.(href); // file path / file:// → open as a tab

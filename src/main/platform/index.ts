@@ -58,8 +58,8 @@ export interface PlatformBridge {
   // --- CLI (R7) -----------------------------------------------------------
   /**
    * Absolute file paths passed on the command line at launch (R7), in order;
-   * empty if none. `mdtool a.md b.md` opens both. `packaged` distinguishes
-   * `mdtool.exe …` from a dev `electron . …`.
+   * empty if none. `galley a.md b.md` opens both. `packaged` distinguishes
+   * `galley.exe …` from a dev `electron . …`.
    */
   parseCliFileArgs(argv: readonly string[], packaged: boolean): string[];
   /** The `--project <name>` value passed at launch, if any (R11/R12). */

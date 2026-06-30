@@ -53,7 +53,7 @@ const platform = createPlatformBridge();
 
 // Files passed on the command line (R7) are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
-// renderer has registered its listener. `mdtool a.md b.md` opens both.
+// renderer has registered its listener. `galley a.md b.md` opens both.
 let startupFilePaths: string[] = [];
 
 // Files delivered over the channel (R11) before the renderer has mounted are
@@ -143,7 +143,7 @@ const activeDocPath = new Map<number, string | null>();
 
 // App version for the Help window (R48) — synchronous `app:version` channel
 // returning app.getVersion(); see src/main/appVersion.ts (extracted so the
-// handler is unit-testable). The preload exposes it as `window.mdtool.version`.
+// handler is unit-testable). The preload exposes it as `window.galley.version`.
 registerAppVersionIpc(ipcMain, app);
 
 ipcMain.handle('window:setActiveDocPath', (event, p) => {
@@ -431,7 +431,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
 
   // DevTools are opt-in (--devtools flag) — not auto-opened on a normal launch.
   if (OPEN_DEVTOOLS) {
-    console.log('[mdtool] --devtools set: opening DevTools');
+    console.log('[galley] --devtools set: opening DevTools');
     mainWindow.webContents.openDevTools();
   }
 

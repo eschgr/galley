@@ -108,7 +108,7 @@ export function listenOnChannel(
       // uncleanly in the ~150ms between a sender's drop and our consume. It can
       // never be re-delivered (ids are unique) and the next clean releaseProject
       // wipes the whole dir — so just note it and leave it, no dedicated cleanup.
-      if (name.endsWith(MSG_EXT)) console.warn(`[mdtool] channel: orphaned message for a defunct owner, ignoring: ${name}`);
+      if (name.endsWith(MSG_EXT)) console.warn(`[galley] channel: orphaned message for a defunct owner, ignoring: ${name}`);
       continue;
     }
     if (name.endsWith(MSG_EXT)) consumeMessage(path.join(dir, name), onFile);
@@ -128,7 +128,7 @@ export function listenOnChannel(
     if (name.endsWith(MSG_EXT)) consumeMessage(p, onFile);
     else if (name.endsWith(PING_EXT)) ackPing(p); // a launching peer is checking we're alive
   });
-  watcher.on('error', (err) => console.error('[mdtool] channel watch error:', err));
+  watcher.on('error', (err) => console.error('[galley] channel watch error:', err));
 
   return { close: () => watcher.close() };
 }
@@ -151,7 +151,7 @@ function consumeMessage(filePath: string, onFile: (absPath: string) => void): vo
   try {
     msg = JSON.parse(raw);
   } catch {
-    console.error('[mdtool] channel: unparseable message dropped:', filePath);
+    console.error('[galley] channel: unparseable message dropped:', filePath);
     return;
   }
 
@@ -159,7 +159,7 @@ function consumeMessage(filePath: string, onFile: (absPath: string) => void): vo
   // incompatible-major message lands anyway, surface it — don't fail silently.
   if (!isCompatibleWith(msg.v)) {
     console.error(
-      `[mdtool] channel: incompatible protocol ${JSON.stringify(msg.v)} (this build ${PROTOCOL_VERSION}); message ignored`,
+      `[galley] channel: incompatible protocol ${JSON.stringify(msg.v)} (this build ${PROTOCOL_VERSION}); message ignored`,
     );
     return;
   }
@@ -171,7 +171,7 @@ function consumeMessage(filePath: string, onFile: (absPath: string) => void): vo
     default:
       // Unknown verb under a compatible major = a newer-minor capability we lack.
       // Graceful forward-compat: skip (logged), don't error.
-      console.warn(`[mdtool] channel: unsupported message type ${JSON.stringify(msg.type)}; ignored`);
+      console.warn(`[galley] channel: unsupported message type ${JSON.stringify(msg.type)}; ignored`);
   }
 }
 
