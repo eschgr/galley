@@ -1,8 +1,8 @@
 # PRD: Galley — Local Markdown Viewer & Editor
 
-**Status:** Draft v9
+**Status:** Draft v11
 **Owner:** (you)
-**Last updated:** 2026-06-22
+**Last updated:** 2026-07-03
 
 ---
 
@@ -57,6 +57,16 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ---
 
+## Features
+
+As Galley grows, each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`). This keeps the main PRD a lean hub — the high-level, current-state source of truth and basic user journeys above — while the detailed feature designs live in their sub-PRDs. Where a section below has been superseded by a sub-PRD, it links out.
+
+- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Promotes the **project** concept (today an ephemeral window-grouping key) into a first-class, persistent feature: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness rework (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes §5.3 (R11–R15).
+
+*(This section is intentionally unnumbered for now; section numbering is normalized in the planned PRD refactor that separates high-level overview from feature-level detail — tracked in [#66](https://github.com/eschgr/mdtool/issues/66).)*
+
+---
+
 ## 5. Functional requirements
 
 ### 5.1 Markdown rendering
@@ -81,15 +91,17 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ### 5.3 Instance model & file delivery
 
+> **The project model & mechanism live in [`docs/PRD-Projects.md`](PRD-Projects.md#5-concept--what-a-project-is).** This section covers the **caller-facing instance model** — one command, self-arbitration, become-or-hand-off, tab behavior. The project's durable home, ownership/liveness, lifecycle, and session restore are the sub-PRD's; the transport detail below stays here until the [#66](https://github.com/eschgr/mdtool/issues/66) refactor moves it out.
+
 The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
 
-- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app derives a per-project scratch directory under the OS temp dir and claims it via an `owner.json` liveness record. With no live owner it **becomes the window** and watches the directory for delivered files; with a live owner it **drops its files into that directory** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
-- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app maps it to `<tmpdir>/galley-<name>/`. The caller derives the name as a stable, filesystem-safe token from the project root (mirroring how Chrome keys an instance on its `--user-data-dir`), recomputable across launches. *(PID is used only as a liveness signal inside `owner.json` — "is the recorded owner still alive?" — never as the project identity.)*
+- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app **claims the project**: with no live owner it **becomes the window** and consumes the channel for delivered files; with a live owner it **drops its files into the channel** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel. *(The project's on-disk home, ownership, and liveness model are the Projects sub-PRD's concern.)*
+- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity — a stable, filesystem-safe token the caller supplies and reuses across launches. *(PID is only a liveness signal — "is the recorded owner still alive?" — never the identity. How a name maps to the project's home is the sub-PRD's concern.)*
 - **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch:
-  1. Derive the project's scratch directory from the name, and **claim** it.
+  1. **Claim** the project.
   2. **If a live owner already exists** → drop the path into its channel; the existing window opens it (or focuses the tab if the file is already open).
   3. **If not** → become the window bound to that project and open the path.
-  - Multiple projects ⇒ multiple directories ⇒ multiple independent windows, with no global contention. This delivers project grouping directly.
+  - Multiple projects ⇒ multiple independent windows, with no global contention. A launch with **no `--project`** opens an independent, projectless window.
 - **R14. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
 - **R15. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
 
@@ -97,15 +109,9 @@ The app **self-arbitrates per project**. On launch it claims the project named b
 
 > Design note: an earlier **caller-owned** model (the caller probes a socket and decides connect-vs-launch) was **replaced** by this app-self-arbitrating model. The original worry about self-arbitration — losing multi-window project grouping — does not apply, because arbitration is *per project* (one `owner.json` per project), so each project still gets its own window. The switch was driven by two things: (a) a **sandboxed caller cannot `listen()`** on a socket (seatbelt returns EPERM) but can read/write files freely, so a file-drop transport works where a socket does not; and (b) pushing the file-format + liveness logic onto the caller was error-prone — owning it in the app collapses the caller contract to a single command. See Appendix A.
 
-> Status (2026-06-27): R11–R15 reimplemented on a **file-drop transport**. `--project <name>` maps to a scratch dir `<tmpdir>/galley-<name>/` holding one `owner.json` record and transient message files. This replaced the prior Unix-socket / named-pipe listener, which a sandboxed launcher could not `listen()` on. The pieces, all behind the §7 seam (`platform/project.ts` = dir + owner, `platform/channel.ts` = messaging, `platform/protocol.ts` = versioning), each unit-tested:
+> **File-drop transport & addressing (retained).** Behind the §7 seam (`platform/project.ts`, `channel.ts`, `protocol.ts`, each unit-tested): `owner.json` publishes the owner's `id = <pid>-<startedAt>`; every message/ping filename carries that id, so a message reaches exactly its intended target even if two owners transiently coexist, and a stale owner is inert. A message is a versioned JSON envelope `{ "v", "type": "open", "path" }` written `*.tmp` then atomically renamed `*.msg`; the protocol (`protocol.ts`, independent of the app version) is `MAJOR.MINOR`, and a sender refuses to write to a different-major owner. The owning window opens each delivered path as a focused tab (R14), or focuses the existing tab (R15).
 >
-> - **Self-arbitration.** On launch the app *claims* the project: if no live owner, it becomes the window; if a live owner exists, it hands its files off and exits. The caller never probes.
-> - **Liveness without a heartbeat.** A claim short-circuits on `process.kill(pid, 0)` (dead → take over) but, because a PID can be **recycled** after an unclean exit, a live PID is confirmed by a **consumer handshake**: a `.ping` the owner answers by renaming to `.pong`. Only a process actually consuming the channel acks, so a recycled-but-unrelated PID can't masquerade as the owner. `owner.json` records `pid`/`startedAt`/`host` and the takeover is ownership-guarded.
-> - **Addressing (the "channel name").** `owner.json` publishes the owner's `id = <pid>-<startedAt>`. Every message/ping filename is `<id>.<unique>.<ext>`, and an owner only touches files carrying its own id — so even if two owners transiently coexist, a message reaches exactly its intended target (no double- or wrong-window delivery); a stale owner is inert.
-> - **Message format.** A message body is a versioned JSON envelope `{ "v": "<proto>", "type": "open", "path": … }` written `*.tmp` then atomically renamed to `*.msg`. The envelope is extensible (new `type`s) and forward-compatible (consumers ignore unknown fields, skip unknown types).
-> - **Protocol version** (`protocol.ts`, **independent of the app version**) is `MAJOR.MINOR`: same-major ⇒ compatible (minor is additive). A sender checks `owner.json`'s protocol and **refuses to write to a different-major owner** (surfacing an error rather than polluting its queue); the receiver re-checks each message defensively and surfaces — never silently drops — an incompatible one. Modeled as two **peers** (same app, possibly version-skewed across an upgrade), not client↔host.
->
-> The owning window opens each delivered path as a new focused tab (R14); already-open paths focus their tab (R15). *(The receiving instance raises its own window; cross-process raise is the caller's concern, per the note above.)*
+> **Current status vs. the rework.** Shipped today, the per-project directory is under the **OS temp dir** and liveness is a `.ping`→`.pong` consumer handshake answered on the main event loop, with release removing the whole directory. The move to a **durable app-managed home**, a **passive OS-maintained lock** (fixing the temp-cleanup duplicate [#60](https://github.com/eschgr/mdtool/issues/60) and the modal-block duplicate [#56](https://github.com/eschgr/mdtool/issues/56)), **non-destructive release**, and **session restore** ([#61](https://github.com/eschgr/mdtool/issues/61)) is designed in the Projects sub-PRD (§7–§10) and not yet built.
 
 ### 5.4 Editing
 
@@ -359,7 +365,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 ## 12. Open items / future
 
 - New-file creation (deferred; anticipated next addition).
-- Session restore — reopen previously-open files on launch (deferred enhancement; explicitly out of scope now).
+- Session restore — specified in the Projects sub-PRD ([§8.6 Session persistence & crash recovery](PRD-Projects.md#86-session-persistence--crash-recovery-pf19pf21), PF19–PF21: persist/restore open tabs, prompt-on-restore after a crash); design settled, implementation pending.
 - Diff view for conflict resolution (deferred enhancement).
 - Clipboard-URL prefill in the link dialog (R27 nice-to-have).
 - Possible future: directory view, drag-and-drop, recently-opened list, tab reordering, bulk tab operations.
@@ -399,13 +405,13 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Indentation | Spaces, default width 2; `Tab` list-indent only at start of a list line; never escapes editor |
 | Text color | Out of scope (not standard markdown) |
 | Open mechanisms | CLI arg + file dialog; single file per open; may start with no file (R10) |
-| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15) |
+| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15). Being reworked into a persistent project home — see [`docs/PRD-Projects.md`](PRD-Projects.md#7-data-model--on-disk-layout) |
 | Project grouping | One scratch dir per project (`<tmpdir>/galley-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
 | Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
 | Re-open already-open file | Focus existing tab |
 | Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
 | Empty state | "No files open"; closing last tab keeps app open (R46) |
-| Session restore | Out of scope (future) |
+| Session restore | Specified in the Projects sub-PRD (`docs/PRD-Projects.md`, PF19–PF21); design settled, implementation pending |
 | Layout | Split view with scroll sync; **Show/Hide Source** toggle collapses to full-window reading view; opens in reading view by default (R45) |
 | Commands | OS-native menu bar (File/Edit/Help); no custom command palette |
 | Help window | App info, license + attribution, full keyboard-shortcut reference |
