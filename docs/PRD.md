@@ -91,17 +91,17 @@ As Galley grows, each substantial feature area is specified in its own **sub-PRD
 
 ### 5.3 Instance model & file delivery
 
-> **Full model & mechanism: [`docs/PRD-Projects.md`](PRD-Projects.md).** The instance model is being promoted into a first-class, persistent project — durable per-project home, robust ownership/liveness, non-destructive lifecycle, and session restore. The requirements below state that model; the sub-PRD owns the detail and the current-vs-target status.
+> **The project model & mechanism live in [`docs/PRD-Projects.md`](PRD-Projects.md).** This section covers the **caller-facing instance model** — one command, self-arbitration, become-or-hand-off, tab behavior. The project's durable home, ownership/liveness, lifecycle, and session restore are the sub-PRD's; the transport detail below stays here until the [#66](https://github.com/eschgr/mdtool/issues/66) refactor moves it out.
 
 The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
 
-- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app claims a **durable, app-managed per-project home** — a runtime/durable split in which coordination state is disposable but project data is not (sub-PRD §7–§8) — via an owner record. With no live owner it **becomes the window** and consumes the channel for delivered files; with a live owner it **drops its files into the channel** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
-- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app **derives the home path from the name** (sub-PRD §8.4), recomputable across launches. The caller supplies a stable, filesystem-safe name. *(PID is used only as a liveness signal — "is the recorded owner still alive?" — never as the project identity.)*
+- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app **claims the project**: with no live owner it **becomes the window** and consumes the channel for delivered files; with a live owner it **drops its files into the channel** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel. *(The project's on-disk home, ownership, and liveness model are the Projects sub-PRD's concern.)*
+- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity — a stable, filesystem-safe token the caller supplies and reuses across launches. *(PID is only a liveness signal — "is the recorded owner still alive?" — never the identity. How a name maps to the project's home is the sub-PRD's concern.)*
 - **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch:
-  1. Derive the project's home from the name, and **claim** it.
+  1. **Claim** the project.
   2. **If a live owner already exists** → drop the path into its channel; the existing window opens it (or focuses the tab if the file is already open).
   3. **If not** → become the window bound to that project and open the path.
-  - Multiple projects ⇒ multiple independent windows, with no global contention. **Release is non-destructive** — it drops only coordination state, never project data. A launch with **no `--project`** opens an independent, projectless window.
+  - Multiple projects ⇒ multiple independent windows, with no global contention. A launch with **no `--project`** opens an independent, projectless window.
 - **R14. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
 - **R15. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
 
@@ -365,7 +365,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 ## 12. Open items / future
 
 - New-file creation (deferred; anticipated next addition).
-- Session restore — specified in the Projects sub-PRD ([`docs/PRD-Projects.md`](PRD-Projects.md), PF19–PF21: persist/restore open tabs, prompt-on-restore after a crash); design settled, implementation pending.
+- Session restore — specified in the Projects sub-PRD ([§8.6 Session persistence & crash recovery](PRD-Projects.md#86-session-persistence--crash-recovery-pf19pf21), PF19–PF21: persist/restore open tabs, prompt-on-restore after a crash); design settled, implementation pending.
 - Diff view for conflict resolution (deferred enhancement).
 - Clipboard-URL prefill in the link dialog (R27 nice-to-have).
 - Possible future: directory view, drag-and-drop, recently-opened list, tab reordering, bulk tab operations.
