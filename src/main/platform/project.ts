@@ -188,6 +188,26 @@ export async function acquireProject(
 }
 
 /**
+ * Re-assert ownership after an external removal of `runtime/` or its `owner.json`
+ * (PF8, §8.2 — the #60 defense-in-depth). A live owner whose discoverable
+ * artifacts were deleted out from under it (manual delete, disk cleaner, AV
+ * quarantine) recreates them with the SAME identity, so a later launch's
+ * `acquireProject` finds the live owner and hands off instead of silently
+ * duplicating the window.
+ *
+ * The record is re-written VERBATIM — same `id` (`<pid>-<startedAt>`), same
+ * pid/startedAt/host/protocol/dropDir — because the published id is what senders
+ * stamp their message filenames with; a fresh id would strand every message
+ * already addressed to this owner. `mkdirSync recursive` also recreates the home
+ * dir if the whole home was nuked. Uses the same atomic rename as `acquireProject`
+ * (a `.swap` temp the channel's stale-`.tmp` reaper never races).
+ */
+export function reassertOwner(runtimeDir: string, owner: ProjectOwner): void {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  writeOwnerAtomic(runtimeDir, owner);
+}
+
+/**
  * Release the project on window close: remove ONLY the `runtime/` dir (the
  * ownership record + channel files), but ONLY if we still own it. The pid guard
  * stops a slow-closing previous instance from deleting a newer instance's runtime

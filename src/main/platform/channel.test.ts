@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { sendToChannel, listenOnChannel, pingChannel, type ChannelListener } from './channel';
+import { acquireProject, reassertOwner, readProjectOwner, OWNER_FILE, type ProjectOwner } from './project';
 import { PROTOCOL_VERSION, PROTOCOL } from './protocol';
 
 // The channel transport (§7, §8.1): a launching peer writes a message file
@@ -183,5 +184,175 @@ describe('channel liveness handshake (PID-reuse defence)', () => {
     await pingChannel(dir, ID);
     const leftovers = fs.readdirSync(dir).filter((n) => n.endsWith('.ping') || n.endsWith('.pong'));
     expect(leftovers).toEqual([]);
+  });
+});
+
+// Re-assertion on external removal (PF8, §8.2 — the #60 defense-in-depth). A live
+// owner whose runtime/ or owner.json is deleted out from under it must recreate the
+// discoverable artifacts with the SAME identity, so a later launch's acquireProject
+// finds the live owner and hands off instead of duplicating. The bridge wires
+// `onReassert` to project.ts#reassertOwner (+ project.json re-materialization); the
+// tests here mirror that wiring directly.
+describe('channel re-assertion on external removal (§8.2, #60)', () => {
+  /** A home dir with a project.json + runtime/ layout (mirrors projectStore). */
+  function freshHome(): { home: string; runtimeDir: string; recordPath: string } {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-home-'));
+    roots.push(home);
+    return { home, runtimeDir: path.join(home, 'runtime'), recordPath: path.join(home, 'project.json') };
+  }
+  const noop = (): void => {
+    /* delivery not exercised */
+  };
+  /** Listen with `onReassert` wired to reassertOwner (as the bridge does); count fires. */
+  async function listenOwned(
+    dir: string,
+    owner: ProjectOwner,
+    onFile: (p: string) => void = noop,
+    onProjectJson?: () => void,
+  ): Promise<{ listener: ChannelListener; reasserts: () => number }> {
+    let count = 0;
+    const l = listenOnChannel(dir, owner.id, onFile, {
+      onReassert: () => {
+        count++;
+        reassertOwner(dir, owner);
+        onProjectJson?.();
+      },
+    });
+    open.push(l);
+    await sleep(120);
+    return { listener: l, reasserts: () => count };
+  }
+
+  it('recreates owner.json with the SAME id when it is removed under a listener', async () => {
+    const { runtimeDir } = freshHome();
+    const claim = await acquireProject('reassert-owner', runtimeDir, {}, { ping: async () => true });
+    const owner = claim.owner;
+    const { reasserts } = await listenOwned(runtimeDir, owner);
+
+    fs.unlinkSync(path.join(runtimeDir, OWNER_FILE)); // external delete of just owner.json
+
+    expect(await waitFor(() => reasserts() >= 1)).toBe(true);
+    expect(fs.existsSync(runtimeDir)).toBe(true);
+    expect(readProjectOwner(runtimeDir)?.id).toBe(owner.id); // same identity restored
+  });
+
+  it('recreates runtimeDir + owner.json (same id) and re-materializes project.json when the whole home is removed', async () => {
+    const { home, runtimeDir, recordPath } = freshHome();
+    const claim = await acquireProject('reassert-home', runtimeDir, {}, { ping: async () => true });
+    const owner = claim.owner;
+    fs.writeFileSync(recordPath, JSON.stringify({ schemaVersion: 1, name: 'reassert-home', createdAt: 1 }));
+
+    const { reasserts } = await listenOwned(runtimeDir, owner, noop, () => {
+      // stand-in for the bridge's materializeProjectRecord: recreate project.json
+      // only if the home was nuked (absence is the signal).
+      if (!fs.existsSync(recordPath)) {
+        fs.mkdirSync(home, { recursive: true });
+        fs.writeFileSync(recordPath, JSON.stringify({ schemaVersion: 1, name: 'reassert-home', createdAt: 2 }));
+      }
+    });
+
+    fs.rmSync(home, { recursive: true, force: true }); // nuke the entire home
+
+    expect(await waitFor(() => reasserts() >= 1)).toBe(true);
+    expect(await waitFor(() => fs.existsSync(runtimeDir))).toBe(true);
+    expect(readProjectOwner(runtimeDir)?.id).toBe(owner.id); // same identity restored
+    expect(fs.existsSync(recordPath)).toBe(true); // project.json re-materialized
+  });
+
+  it('#60: after re-assertion a fresh acquireProject finds the live owner (handoff, not duplicate)', async () => {
+    const { runtimeDir } = freshHome();
+    // Model the owner as a SEPARATE live process (a foreign pid), the real #60
+    // scenario — the re-asserting owner is a different process than the launch that
+    // later probes it. (Using this test process's own pid would trip acquireProject's
+    // "re-claim my own record" path and mask the handoff.)
+    const owner: ProjectOwner = {
+      pid: 999999,
+      startedAt: 5,
+      id: '999999-5',
+      protocol: PROTOCOL_VERSION,
+      host: os.hostname(),
+      project: 'reassert-handoff',
+      dropDir: runtimeDir,
+    };
+    reassertOwner(runtimeDir, owner); // publish owner.json as a live owner would on claim
+    // A listener consuming owner's channel, wired (as the bridge does) to re-assert.
+    const l = listenOnChannel(runtimeDir, owner.id, noop, { onReassert: () => reassertOwner(runtimeDir, owner) });
+    open.push(l);
+    await sleep(120);
+
+    fs.rmSync(runtimeDir, { recursive: true, force: true }); // external removal
+    expect(await waitFor(() => readProjectOwner(runtimeDir)?.id === owner.id)).toBe(true);
+
+    // A later launch for the same project: the recreated owner.json points at THIS
+    // live listener; an injected ping that acks models the live owner answering, so
+    // acquireProject must defer (owned:false) rather than claim a duplicate.
+    const second = await acquireProject('reassert-handoff', runtimeDir, {}, {
+      ping: async () => true,
+      alive: () => true,
+    });
+    expect(second.owned).toBe(false);
+    expect(second.owner.id).toBe(owner.id);
+  });
+
+  it('still delivers messages after a re-assertion (watch stays healthy)', async () => {
+    const { runtimeDir } = freshHome();
+    const claim = await acquireProject('reassert-deliver', runtimeDir, {}, { ping: async () => true });
+    const owner = claim.owner;
+    const got: string[] = [];
+    const { reasserts } = await listenOwned(runtimeDir, owner, (p) => got.push(p));
+
+    fs.rmSync(runtimeDir, { recursive: true, force: true }); // external removal
+    expect(await waitFor(() => reasserts() >= 1)).toBe(true);
+    expect(await waitFor(() => fs.existsSync(runtimeDir))).toBe(true);
+    await sleep(150); // let the re-healed watcher settle after the dir was recreated
+
+    sendToChannel(runtimeDir, owner.id, 'C:\\after-reassert.md');
+    expect(await waitFor(() => got.includes('C:\\after-reassert.md'), 6000)).toBe(true);
+  });
+
+  it('drains a message queued into the recreated dir before the watch re-attaches', async () => {
+    // #60 dropped-open: after re-assert recreates runtime/ + owner.json, a launching
+    // peer reads the recreated owner.json and drops a `.msg` — all within the ~60ms
+    // heal debounce, so the file PRE-EXISTS the watcher re-attach. The re-created
+    // watcher uses ignoreInitial, so only the heal-path reconcile can pick it up.
+    // We model the peer's synchronous drop inside onReassert (which reassertOwner
+    // recreated the dir for), guaranteeing the .msg is present before re-attach.
+    const { runtimeDir } = freshHome();
+    const claim = await acquireProject('reassert-drain', runtimeDir, {}, { ping: async () => true });
+    const owner = claim.owner;
+    const got: string[] = [];
+
+    let dropped = false;
+    const l = listenOnChannel(runtimeDir, owner.id, (p) => got.push(p), {
+      onReassert: () => {
+        reassertOwner(runtimeDir, owner); // recreate runtimeDir + owner.json (same id)
+        if (!dropped) {
+          dropped = true;
+          // A launching peer's drop into the freshly recreated dir, BEFORE the
+          // debounce re-attaches the watcher.
+          sendToChannel(runtimeDir, owner.id, 'C:\\queued-in-heal.md');
+        }
+      },
+    });
+    open.push(l);
+    await sleep(120);
+
+    fs.rmSync(runtimeDir, { recursive: true, force: true }); // external removal triggers the heal
+
+    expect(await waitFor(() => got.includes('C:\\queued-in-heal.md'), 6000)).toBe(true);
+  });
+
+  it('does not re-assert on routine channel churn (a consumed message)', async () => {
+    const { runtimeDir } = freshHome();
+    const claim = await acquireProject('reassert-churn', runtimeDir, {}, { ping: async () => true });
+    const owner = claim.owner;
+    const got: string[] = [];
+    const { reasserts } = await listenOwned(runtimeDir, owner, (p) => got.push(p));
+
+    sendToChannel(runtimeDir, owner.id, 'C:\\churn.md'); // delivered then unlinked
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    await sleep(200); // give any spurious unlink→reassert time to (not) fire
+
+    expect(reasserts()).toBe(0); // consuming a .msg must not trigger a re-assert
   });
 });

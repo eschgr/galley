@@ -9,6 +9,7 @@ import {
   isProjectLive,
   acquireProject,
   releaseProject,
+  reassertOwner,
   OWNER_FILE,
   type ProjectOwner,
 } from './project';
@@ -152,6 +153,36 @@ describe('isProjectLive', () => {
     writeOwner(dir, { pid: 999999 });
     expect(isProjectLive(dir, () => true)).toBe(true);
     expect(isProjectLive(dir, () => false)).toBe(false);
+  });
+});
+
+describe('reassertOwner (§8.2, #60 re-assertion)', () => {
+  it('recreates owner.json verbatim after an external delete', async () => {
+    const dir = freshRuntimeDir();
+    const claim = await acquireProject('reassert', dir, {}, { ping: async () => true });
+    const owner = claim.owner;
+
+    fs.rmSync(path.join(dir, OWNER_FILE)); // external removal of the record
+    expect(readProjectOwner(dir)).toBeNull();
+
+    reassertOwner(dir, owner);
+    const restored = readProjectOwner(dir);
+    expect(restored?.id).toBe(owner.id); // SAME identity — senders addressing it still land
+    expect(restored?.pid).toBe(owner.pid);
+    expect(restored?.startedAt).toBe(owner.startedAt);
+  });
+
+  it('recreates the runtime dir if it was removed entirely', async () => {
+    const dir = freshRuntimeDir();
+    const claim = await acquireProject('reassert-dir', dir, {}, { ping: async () => true });
+    const owner = claim.owner;
+
+    fs.rmSync(dir, { recursive: true, force: true }); // whole runtime dir gone
+    expect(fs.existsSync(dir)).toBe(false);
+
+    reassertOwner(dir, owner);
+    expect(fs.existsSync(dir)).toBe(true);
+    expect(readProjectOwner(dir)?.id).toBe(owner.id);
   });
 });
 
