@@ -15,7 +15,7 @@ describe('platform watcher (R32/R33/R37)', () => {
   it(
     'ignores the app own saves and forwards genuine external changes',
     async () => {
-      const bridge = createPlatformBridge();
+      const bridge = createPlatformBridge({ projectsHome: () => path.join(os.tmpdir(), 'galley-projects-test') });
       const dir = await mkdtemp(path.join(os.tmpdir(), 'galley-watch-'));
       dirs.push(dir);
       const file = path.join(dir, 'doc.md');

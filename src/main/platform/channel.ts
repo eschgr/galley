@@ -1,13 +1,14 @@
 /**
- * Channel transport — file-drop messaging into a running window (PRD §5.3
- * R11–R15).
+ * Channel transport — file-drop messaging into a running window (PRD §7, §8.1).
  *
- * The channel is the *messaging* half of the per-project machinery (the project
- * scratch dir + `owner.json` live in `project.ts`). A launching peer "sends" by
- * dropping a message file into the project dir; the owning window watches the
- * dir and acts on each message. This replaces the old socket/named-pipe
- * transport, which a sandboxed launcher could not `listen()` on — file write +
- * file watch are both permitted where a socket `listen()` is denied (EPERM).
+ * The channel is the *messaging* half of the per-project machinery (the
+ * `owner.json` liveness record lives in `project.ts`). Both operate on the
+ * project's `<home>/runtime/` dir (derived by `projectStore.ts`). A launching
+ * peer "sends" by dropping a message file into that dir; the owning window
+ * watches the dir and acts on each message. This replaces the old socket/named-
+ * pipe transport, which a sandboxed launcher could not `listen()` on — file
+ * write + file watch are both permitted where a socket `listen()` is denied
+ * (EPERM).
  *
  * Addressing — the "channel name". Every file is named `<channelId>.<unique>.<ext>`
  * where `channelId = <pid>-<startedAt>` identifies the owning instance (the PID
@@ -30,7 +31,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
-import { projectDir } from './project';
 import { PROTOCOL_VERSION, isCompatibleWith } from './protocol';
 
 const TMP_EXT = '.tmp';
@@ -70,11 +70,10 @@ function atomicWrite(base: string, ext: string, body: string): void {
  * version from `owner.json` and must not write to a different-major owner — see
  * `startup.decideStartupAction`); the receiver re-checks defensively.
  */
-export function sendToChannel(project: string, targetId: string, absPath: string): void {
-  const dir = projectDir(project);
-  fs.mkdirSync(dir, { recursive: true });
+export function sendToChannel(runtimeDir: string, targetId: string, absPath: string): void {
+  fs.mkdirSync(runtimeDir, { recursive: true });
   const envelope = JSON.stringify({ v: PROTOCOL_VERSION, type: 'open', path: absPath });
-  atomicWrite(messageBase(dir, targetId), MSG_EXT, envelope);
+  atomicWrite(messageBase(runtimeDir, targetId), MSG_EXT, envelope);
 }
 
 /** Handle returned by `listenOnChannel`; close it to stop watching. */
@@ -93,11 +92,11 @@ export interface ChannelListener {
  * support, so the directory is watched and the channelId prefix filtered in code.
  */
 export function listenOnChannel(
-  project: string,
+  runtimeDir: string,
   channelId: string,
   onFile: (absPath: string) => void,
 ): ChannelListener {
-  const dir = projectDir(project);
+  const dir = runtimeDir;
   fs.mkdirSync(dir, { recursive: true });
   const mine = channelId + '.';
 
@@ -182,11 +181,11 @@ function consumeMessage(filePath: string, onFile: (absPath: string) => void): vo
  * consumes nothing and never does — so this is immune to PID reuse. Cleans up.
  */
 export async function pingChannel(
-  project: string,
+  runtimeDir: string,
   targetId: string,
   { timeoutMs = PING_TIMEOUT_MS, intervalMs = PING_INTERVAL_MS } = {},
 ): Promise<boolean> {
-  const dir = projectDir(project);
+  const dir = runtimeDir;
   fs.mkdirSync(dir, { recursive: true });
   const base = messageBase(dir, targetId);
   const pingPath = base + PING_EXT;

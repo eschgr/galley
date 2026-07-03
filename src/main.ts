@@ -48,8 +48,13 @@ if (wantsHelp(process.argv)) {
   app.exit(0);
 }
 
-// All OS-touching file work goes through the platform seam (PRD §7/§9).
-const platform = createPlatformBridge();
+// All OS-touching file work goes through the platform seam (PRD §7/§9). The
+// projects-home root (`userData/projects`) is passed as a LAZY thunk: the seam
+// stays Electron-free, and `app.getPath` is only read once a project op runs
+// (always post-`ready`), never at module load.
+const platform = createPlatformBridge({
+  projectsHome: () => path.join(app.getPath('userData'), 'projects'),
+});
 
 // Files passed on the command line (R7) are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
@@ -460,26 +465,38 @@ app.on('ready', async () => {
   const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
   const files = platform.parseCliFileArgs(process.argv, app.isPackaged);
   if (project) {
-    const claim = await platform.claimProject(project, { appVersion: app.getVersion() });
-    const action = decideStartupAction(claim, files);
-    if (action.kind === 'handoff') {
-      // Address each file to the live owner's channel, then exit (no 2nd window).
-      for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f);
-      app.quit();
-      return;
-    }
-    if (action.kind === 'incompatible') {
-      // A different-major Galley owns this project; writing to it would pollute a
-      // queue it can't parse. Surface and exit rather than fail silently (R11–R15).
+    try {
+      const claim = await platform.claimProject(project, { appVersion: app.getVersion() });
+      const action = decideStartupAction(claim, files);
+      if (action.kind === 'handoff') {
+        // Address each file to the live owner's channel, then exit (no 2nd window).
+        for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f);
+        app.quit();
+        return;
+      }
+      if (action.kind === 'incompatible') {
+        // A different-major Galley owns this project; writing to it would pollute a
+        // queue it can't parse. Surface and exit rather than fail silently (R11–R15).
+        dialog.showErrorBox(
+          'Galley version mismatch',
+          `Another, incompatible version of Galley (channel protocol ${action.ownerProtocol}) already owns ` +
+            `project "${project}". Close that window and try again, or open the file with that version.`,
+        );
+        app.exit(1);
+        return;
+      }
+      createWindow(project, files, claim.owner.id); // we own it — listen on our own channel
+    } catch (err) {
+      // An unsafe/invalid --project value (e.g. "..", "a/b", an embedded control
+      // char) is rejected by the derivation's safe-name guard, which throws here.
+      // Surface it cleanly and exit rather than crash the ready handler (mirrors
+      // the incompatible-protocol handling above).
       dialog.showErrorBox(
-        'Galley version mismatch',
-        `Another, incompatible version of Galley (channel protocol ${action.ownerProtocol}) already owns ` +
-          `project "${project}". Close that window and try again, or open the file with that version.`,
+        'Invalid project name',
+        `Cannot open project ${JSON.stringify(project)}.\n\n${String(err)}`,
       );
       app.exit(1);
-      return;
     }
-    createWindow(project, files, claim.owner.id); // we own it — listen on our own channel
     return;
   }
   createWindow(project, files);

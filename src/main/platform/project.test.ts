@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import {
-  projectDir,
   isProcessAlive,
   readProjectOwner,
   isProjectLive,
@@ -14,23 +13,21 @@ import {
   type ProjectOwner,
 } from './project';
 
-// Each test uses a unique project name so the real temp-dir scratch dirs never
-// collide; we remove them afterwards. Names are restricted to the sanitized
-// charset projectDir() accepts.
-let seq = 0;
-const made: string[] = [];
-function freshName(tag: string): string {
-  const name = `vt-${tag}-${process.pid}-${seq++}`;
-  made.push(name);
-  return name;
+// Ownership + liveness now operate on a plain `runtime/` dir (derived by
+// projectStore from the durable home). Each test mints a hermetic temp dir under
+// os.tmpdir() and cleans it up — nothing touches the real userData.
+const roots: string[] = [];
+function freshRuntimeDir(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-proj-'));
+  roots.push(root);
+  return path.join(root, 'runtime');
 }
-function writeOwner(name: string, owner: Partial<ProjectOwner>): void {
-  const dir = projectDir(name);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, OWNER_FILE), JSON.stringify({ host: os.hostname(), ...owner }));
+function writeOwner(runtimeDir: string, owner: Partial<ProjectOwner>): void {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(path.join(runtimeDir, OWNER_FILE), JSON.stringify({ host: os.hostname(), ...owner }));
 }
 afterEach(() => {
-  for (const name of made.splice(0)) fs.rmSync(projectDir(name), { recursive: true, force: true });
+  for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
 /** A pid that is guaranteed dead: spawn a node that exits immediately, then reuse its pid. */
@@ -42,20 +39,6 @@ function deadPid(): Promise<number> {
     child.on('exit', () => setTimeout(() => resolve(pid), 50));
   });
 }
-
-describe('projectDir (sanitization)', () => {
-  it('maps a safe name to a temp-dir scratch path', () => {
-    expect(projectDir('proj_1-a.b')).toBe(path.join(os.tmpdir(), 'galley-proj_1-a.b'));
-  });
-  it('rejects path traversal and separators', () => {
-    expect(() => projectDir('../evil')).toThrow();
-    expect(() => projectDir('a/b')).toThrow();
-    expect(() => projectDir('a\\b')).toThrow();
-    expect(() => projectDir('..')).toThrow();
-    expect(() => projectDir('.')).toThrow();
-    expect(() => projectDir('')).toThrow();
-  });
-});
 
 describe('isProcessAlive', () => {
   it('is true for the current process', () => {
@@ -73,18 +56,18 @@ describe('isProcessAlive', () => {
 
 describe('readProjectOwner', () => {
   it('returns null when there is no record', () => {
-    expect(readProjectOwner(freshName('noowner'))).toBeNull();
+    expect(readProjectOwner(freshRuntimeDir())).toBeNull();
   });
   it('reads back a written record', () => {
-    const name = freshName('read');
-    writeOwner(name, { pid: 4242, project: name });
-    expect(readProjectOwner(name)?.pid).toBe(4242);
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 4242 });
+    expect(readProjectOwner(dir)?.pid).toBe(4242);
   });
   it('returns null for a corrupt record', () => {
-    const name = freshName('corrupt');
-    fs.mkdirSync(projectDir(name), { recursive: true });
-    fs.writeFileSync(path.join(projectDir(name), OWNER_FILE), '{not json');
-    expect(readProjectOwner(name)).toBeNull();
+    const dir = freshRuntimeDir();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, OWNER_FILE), '{not json');
+    expect(readProjectOwner(dir)).toBeNull();
   });
 });
 
@@ -95,51 +78,51 @@ describe('acquireProject', () => {
   const neverAlive = () => false;
 
   it('claims a fresh project (owned, owner.json = our pid)', async () => {
-    const name = freshName('fresh');
-    const r = await acquireProject(name, {}, { ping: pingTrue });
+    const dir = freshRuntimeDir();
+    const r = await acquireProject('fresh', dir, {}, { ping: pingTrue });
     expect(r.owned).toBe(true);
-    expect(readProjectOwner(name)?.pid).toBe(process.pid);
+    expect(readProjectOwner(dir)?.pid).toBe(process.pid);
   });
 
   it('defers to a live owner that acks the handshake (handoff path)', async () => {
-    const name = freshName('live');
-    writeOwner(name, { pid: 999999, project: name });
-    const r = await acquireProject(name, {}, { ping: pingTrue, alive: alwaysAlive });
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 999999 });
+    const r = await acquireProject('live', dir, {}, { ping: pingTrue, alive: alwaysAlive });
     expect(r.owned).toBe(false);
     expect(r.owner.pid).toBe(999999); // unchanged — we did not take over
-    expect(readProjectOwner(name)?.pid).toBe(999999);
+    expect(readProjectOwner(dir)?.pid).toBe(999999);
   });
 
   it('takes over when the recorded PID is alive but NOT consuming (PID reuse)', async () => {
     // The crux: owner.json left by a hard-killed instance, its PID since recycled
     // to an unrelated live process. alive() is true, but the handshake fails.
-    const name = freshName('reused');
-    writeOwner(name, { pid: 999999, project: name });
-    const r = await acquireProject(name, {}, { ping: pingFalse, alive: alwaysAlive });
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 999999 });
+    const r = await acquireProject('reused', dir, {}, { ping: pingFalse, alive: alwaysAlive });
     expect(r.owned).toBe(true);
-    expect(readProjectOwner(name)?.pid).toBe(process.pid); // we took over
+    expect(readProjectOwner(dir)?.pid).toBe(process.pid); // we took over
   });
 
   it('takes over a dead PID without bothering to handshake', async () => {
-    const name = freshName('stale');
-    writeOwner(name, { pid: 999999, project: name });
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 999999 });
     let pinged = false;
-    const r = await acquireProject(name, {}, { ping: async () => ((pinged = true), true), alive: neverAlive });
+    const r = await acquireProject('stale', dir, {}, { ping: async () => ((pinged = true), true), alive: neverAlive });
     expect(r.owned).toBe(true);
     expect(pinged).toBe(false); // dead PID short-circuits — no handshake needed
   });
 
   it('re-claims its own prior record', async () => {
-    const name = freshName('self');
-    writeOwner(name, { pid: process.pid, project: name });
-    const r = await acquireProject(name, {}, { ping: pingTrue, alive: alwaysAlive });
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: process.pid });
+    const r = await acquireProject('self', dir, {}, { ping: pingTrue, alive: alwaysAlive });
     expect(r.owned).toBe(true); // our own pid is not a foreign live owner
   });
 
   it('records appVersion, host, channel id, and protocol in the owner', async () => {
-    const name = freshName('meta');
-    await acquireProject(name, { appVersion: '9.9.9' }, { ping: pingTrue });
-    const owner = readProjectOwner(name);
+    const dir = freshRuntimeDir();
+    await acquireProject('meta', dir, { appVersion: '9.9.9' }, { ping: pingTrue });
+    const owner = readProjectOwner(dir);
     expect(owner?.appVersion).toBe('9.9.9');
     expect(owner?.host).toBe(os.hostname());
     expect(owner?.id).toBe(`${process.pid}-${owner?.startedAt}`); // channel name = pid-startedAt
@@ -147,13 +130,14 @@ describe('acquireProject', () => {
   });
 
   it('addresses the handshake to the existing owner id', async () => {
-    const name = freshName('addr');
-    writeOwner(name, { pid: 999999, startedAt: 5, id: '999999-5', project: name });
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 999999, startedAt: 5, id: '999999-5' });
     let pingedId: string | undefined;
     await acquireProject(
-      name,
+      'addr',
+      dir,
       {},
-      { ping: async (_p, id) => ((pingedId = id), true), alive: alwaysAlive },
+      { ping: async (id) => ((pingedId = id), true), alive: alwaysAlive },
     );
     expect(pingedId).toBe('999999-5'); // probed the recorded owner's channel, not ours
   });
@@ -161,27 +145,42 @@ describe('acquireProject', () => {
 
 describe('isProjectLive', () => {
   it('is false with no record', () => {
-    expect(isProjectLive(freshName('dead'))).toBe(false);
+    expect(isProjectLive(freshRuntimeDir())).toBe(false);
   });
   it('reflects the injected liveness of the recorded pid', () => {
-    const name = freshName('livecheck');
-    writeOwner(name, { pid: 999999, project: name });
-    expect(isProjectLive(name, () => true)).toBe(true);
-    expect(isProjectLive(name, () => false)).toBe(false);
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 999999 });
+    expect(isProjectLive(dir, () => true)).toBe(true);
+    expect(isProjectLive(dir, () => false)).toBe(false);
   });
 });
 
-describe('releaseProject (ownership guard)', () => {
-  it('does NOT remove a directory owned by another instance', () => {
-    const name = freshName('foreign');
-    writeOwner(name, { pid: 999999, project: name }); // someone else owns it
-    expect(releaseProject(name)).toBe(false);
-    expect(fs.existsSync(projectDir(name))).toBe(true);
+describe('releaseProject (ownership guard, non-destructive)', () => {
+  it('does NOT remove a runtime dir owned by another instance', () => {
+    const dir = freshRuntimeDir();
+    writeOwner(dir, { pid: 999999 }); // someone else owns it
+    expect(releaseProject(dir)).toBe(false);
+    expect(fs.existsSync(dir)).toBe(true);
   });
-  it('removes the directory when we own it', async () => {
-    const name = freshName('mine');
-    await acquireProject(name, {}, { ping: async () => true });
-    expect(releaseProject(name)).toBe(true);
-    expect(fs.existsSync(projectDir(name))).toBe(false);
+  it('removes the runtime dir when we own it', async () => {
+    const dir = freshRuntimeDir();
+    await acquireProject('mine', dir, {}, { ping: async () => true });
+    expect(releaseProject(dir)).toBe(true);
+    expect(fs.existsSync(dir)).toBe(false);
+  });
+  it('removes ONLY runtime/, leaving the durable home (incl. project.json) intact', async () => {
+    // The #60 data-safety guarantee: release clears coordination state, never
+    // durable data. Model the layout with a home containing project.json + runtime/.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-home-'));
+    roots.push(home);
+    const runtimeDir = path.join(home, 'runtime');
+    const recordPath = path.join(home, 'project.json');
+    fs.writeFileSync(recordPath, JSON.stringify({ schemaVersion: 1, name: 'mine', createdAt: 1 }));
+    await acquireProject('mine', runtimeDir, {}, { ping: async () => true });
+
+    expect(releaseProject(runtimeDir)).toBe(true);
+    expect(fs.existsSync(runtimeDir)).toBe(false); // runtime gone
+    expect(fs.existsSync(home)).toBe(true); // home preserved
+    expect(fs.existsSync(recordPath)).toBe(true); // project.json preserved
   });
 });
