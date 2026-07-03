@@ -21,7 +21,9 @@ import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
 import {
   acquireProject as acquireProjectFs,
   releaseProject as releaseProjectFs,
+  reassertOwner as reassertOwnerFs,
   type ClaimResult,
+  type ProjectOwner,
 } from './project';
 import {
   sendToChannel as sendToChannelFs,
@@ -141,6 +143,12 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
   // can stop watching and release ownership of exactly what this process took.
   let channelListener: ChannelListener | null = null;
   let claimedRuntimeDir: string | null = null;
+  // The owner record + project name from our claim, retained so a re-assertion
+  // (PF8, §8.2) can rewrite `owner.json` with the SAME identity and re-materialize
+  // `project.json` if the home was externally removed while we're live.
+  let claimedOwner: ProjectOwner | null = null;
+  let claimedProject: string | null = null;
+  let claimedAppVersion: string | undefined;
 
   // Resolve a project name to its on-disk layout, deriving the projects-home
   // lazily on first use (post-`app`-ready — see PlatformBridgeOptions).
@@ -220,7 +228,14 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       const result = await acquireProjectFs(project, paths.runtimeDir, opts ?? {}, {
         ping: (id) => pingChannelFs(paths.runtimeDir, id),
       });
-      if (result.owned) claimedRuntimeDir = paths.runtimeDir; // remember so closeChannel releases it
+      if (result.owned) {
+        // Remember so closeChannel releases it and a re-assertion (§8.2) can
+        // recreate the artifacts with this exact owner identity.
+        claimedRuntimeDir = paths.runtimeDir;
+        claimedOwner = result.owner;
+        claimedProject = project;
+        claimedAppVersion = opts?.appVersion;
+      }
       return result;
     },
 
@@ -229,7 +244,20 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
     },
 
     listenOnChannel(project, channelId, onFile) {
-      channelListener = listenOnChannelFs(pathsFor(project).runtimeDir, channelId, onFile);
+      const paths = pathsFor(project);
+      channelListener = listenOnChannelFs(paths.runtimeDir, channelId, onFile, {
+        // On external removal of runtime/ or owner.json while we're live: recreate
+        // the discoverable artifacts with the SAME identity so a later launch hands
+        // off (§8.2, PF8). Re-materialize project.json too, in case the whole home
+        // was nuked — its absence is the signal to recreate it (an existing record
+        // is preserved untouched, never re-stamped).
+        onReassert: () => {
+          if (claimedOwner) reassertOwnerFs(paths.runtimeDir, claimedOwner);
+          if (claimedProject) {
+            materializeProjectRecord(paths, claimedProject, { appVersion: claimedAppVersion });
+          }
+        },
+      });
     },
 
     async closeChannel() {
@@ -243,6 +271,9 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
         releaseProjectFs(claimedRuntimeDir);
         claimedRuntimeDir = null;
       }
+      claimedOwner = null;
+      claimedProject = null;
+      claimedAppVersion = undefined;
     },
   };
 }
