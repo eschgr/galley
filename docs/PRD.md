@@ -61,7 +61,7 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 As Galley grows, each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`). This keeps the main PRD a lean hub — the high-level, current-state source of truth and basic user journeys above — while the detailed feature designs live in their sub-PRDs. Where a section below has been superseded by a sub-PRD, it links out.
 
-- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md).** Promotes the **project** concept (today an ephemeral window-grouping key) into a first-class, persistent feature: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness rework (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes §5.3 (R11–R15).
+- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Promotes the **project** concept (today an ephemeral window-grouping key) into a first-class, persistent feature: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness rework (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes §5.3 (R11–R15).
 
 *(This section is intentionally unnumbered for now; section numbering is normalized in the planned PRD refactor that separates high-level overview from feature-level detail — tracked in [#66](https://github.com/eschgr/mdtool/issues/66).)*
 
@@ -91,7 +91,7 @@ As Galley grows, each substantial feature area is specified in its own **sub-PRD
 
 ### 5.3 Instance model & file delivery
 
-> **The project model & mechanism live in [`docs/PRD-Projects.md`](PRD-Projects.md).** This section covers the **caller-facing instance model** — one command, self-arbitration, become-or-hand-off, tab behavior. The project's durable home, ownership/liveness, lifecycle, and session restore are the sub-PRD's; the transport detail below stays here until the [#66](https://github.com/eschgr/mdtool/issues/66) refactor moves it out.
+> **The project model & mechanism live in [`docs/PRD-Projects.md`](PRD-Projects.md#5-concept--what-a-project-is).** This section covers the **caller-facing instance model** — one command, self-arbitration, become-or-hand-off, tab behavior. The project's durable home, ownership/liveness, lifecycle, and session restore are the sub-PRD's; the transport detail below stays here until the [#66](https://github.com/eschgr/mdtool/issues/66) refactor moves it out.
 
 The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
 
@@ -405,7 +405,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | Indentation | Spaces, default width 2; `Tab` list-indent only at start of a list line; never escapes editor |
 | Text color | Out of scope (not standard markdown) |
 | Open mechanisms | CLI arg + file dialog; single file per open; may start with no file (R10) |
-| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15). Being reworked into a persistent project home — see [`docs/PRD-Projects.md`](PRD-Projects.md) |
+| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15). Being reworked into a persistent project home — see [`docs/PRD-Projects.md`](PRD-Projects.md#7-data-model--on-disk-layout) |
 | Project grouping | One scratch dir per project (`<tmpdir>/galley-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
 | Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
 | Re-open already-open file | Focus existing tab |
