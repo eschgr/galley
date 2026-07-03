@@ -28,7 +28,6 @@ import {
 import {
   sendToChannel as sendToChannelFs,
   listenOnChannel as listenOnChannelFs,
-  pingChannel as pingChannelFs,
   type ChannelListener,
 } from './channel';
 import { projectPaths, materializeProjectRecord, type ProjectPaths } from './projectStore';
@@ -96,9 +95,9 @@ export interface PlatformBridge {
   // --- Per-project channel (R11–R15) -------------------------------------
   /**
    * Claim the project for this process, taking over a stale/absent owner. When
-   * a *live* instance already owns it (confirmed via the channel handshake, so a
-   * recycled PID can't masquerade as one), resolves `{ owned: false }` so the
-   * launch can hand its files off and exit instead of opening a duplicate
+   * a *live* instance already owns it (confirmed via an OS start-time match, so a
+   * recycled PID can't masquerade as one — §8.1), resolves `{ owned: false }` so
+   * the launch can hand its files off and exit instead of opening a duplicate
    * window. A successful claim is remembered so `closeChannel` releases it.
    */
   claimProject(project: string, opts?: { appVersion?: string }): Promise<ClaimResult>;
@@ -225,9 +224,9 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       // exists whether we become owner or hand off (PF3). Reuse preserves an
       // existing createdAt — a claim never clobbers durable data.
       materializeProjectRecord(paths, project, opts ?? {});
-      const result = await acquireProjectFs(project, paths.runtimeDir, opts ?? {}, {
-        ping: (id) => pingChannelFs(paths.runtimeDir, id),
-      });
+      // Liveness uses the default OS start-time query (kill(0) + start-time match);
+      // no channel handshake — see project.ts#acquireProject / §8.1.
+      const result = await acquireProjectFs(project, paths.runtimeDir, opts ?? {}, {});
       if (result.owned) {
         // Remember so closeChannel releases it and a re-assertion (§8.2) can
         // recreate the artifacts with this exact owner identity.

@@ -458,10 +458,10 @@ app.on('ready', async () => {
   });
 
   // Self-arbitration (R11–R15): with `--project <name>`, claim the project. If a
-  // live window already owns it (confirmed by the channel handshake), drop our
-  // files into its channel and exit rather than open a duplicate; otherwise
-  // become its window. A plain launch (no --project) just opens a window with no
-  // channel.
+  // live window already owns it (its pid is alive AND its recorded OS start-time
+  // still matches — the start-time liveness check, §8.1/#56), drop our files into
+  // its channel and exit rather than open a duplicate; otherwise become its window.
+  // A plain launch (no --project) just opens a window with no channel.
   const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
   const files = platform.parseCliFileArgs(process.argv, app.isPackaged);
   if (project) {
