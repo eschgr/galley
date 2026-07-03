@@ -1,8 +1,8 @@
 # PRD: Galley — Local Markdown Viewer & Editor
 
-**Status:** Draft v10
+**Status:** Draft v11
 **Owner:** (you)
-**Last updated:** 2026-07-02
+**Last updated:** 2026-07-03
 
 ---
 
@@ -91,17 +91,17 @@ As Galley grows, each substantial feature area is specified in its own **sub-PRD
 
 ### 5.3 Instance model & file delivery
 
-> **Being superseded by [`docs/PRD-Projects.md`](PRD-Projects.md).** The project concept is being promoted into a first-class, persistent feature (durable home, session restore, ownership/liveness rework); that sub-PRD supersedes R11–R15. This section documents the **currently shipped** model.
+> **Full model & mechanism: [`docs/PRD-Projects.md`](PRD-Projects.md).** The instance model is being promoted into a first-class, persistent project — durable per-project home, robust ownership/liveness, non-destructive lifecycle, and session restore. The requirements below state that model; the sub-PRD owns the detail and the current-vs-target status.
 
 The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
 
-- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app derives a per-project scratch directory under the OS temp dir and claims it via an `owner.json` liveness record. With no live owner it **becomes the window** and watches the directory for delivered files; with a live owner it **drops its files into that directory** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
-- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app maps it to `<tmpdir>/galley-<name>/`. The caller derives the name as a stable, filesystem-safe token from the project root (mirroring how Chrome keys an instance on its `--user-data-dir`), recomputable across launches. *(PID is used only as a liveness signal inside `owner.json` — "is the recorded owner still alive?" — never as the project identity.)*
+- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app claims a **durable, app-managed per-project home** — a runtime/durable split in which coordination state is disposable but project data is not (sub-PRD §7–§8) — via an owner record. With no live owner it **becomes the window** and consumes the channel for delivered files; with a live owner it **drops its files into the channel** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel.
+- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity; the app **derives the home path from the name** (sub-PRD §8.4), recomputable across launches. The caller supplies a stable, filesystem-safe name. *(PID is used only as a liveness signal — "is the recorded owner still alive?" — never as the project identity.)*
 - **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch:
-  1. Derive the project's scratch directory from the name, and **claim** it.
+  1. Derive the project's home from the name, and **claim** it.
   2. **If a live owner already exists** → drop the path into its channel; the existing window opens it (or focuses the tab if the file is already open).
   3. **If not** → become the window bound to that project and open the path.
-  - Multiple projects ⇒ multiple directories ⇒ multiple independent windows, with no global contention. This delivers project grouping directly.
+  - Multiple projects ⇒ multiple independent windows, with no global contention. **Release is non-destructive** — it drops only coordination state, never project data. A launch with **no `--project`** opens an independent, projectless window.
 - **R14. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
 - **R15. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
 
@@ -109,15 +109,9 @@ The app **self-arbitrates per project**. On launch it claims the project named b
 
 > Design note: an earlier **caller-owned** model (the caller probes a socket and decides connect-vs-launch) was **replaced** by this app-self-arbitrating model. The original worry about self-arbitration — losing multi-window project grouping — does not apply, because arbitration is *per project* (one `owner.json` per project), so each project still gets its own window. The switch was driven by two things: (a) a **sandboxed caller cannot `listen()`** on a socket (seatbelt returns EPERM) but can read/write files freely, so a file-drop transport works where a socket does not; and (b) pushing the file-format + liveness logic onto the caller was error-prone — owning it in the app collapses the caller contract to a single command. See Appendix A.
 
-> Status (2026-06-27): R11–R15 reimplemented on a **file-drop transport**. `--project <name>` maps to a scratch dir `<tmpdir>/galley-<name>/` holding one `owner.json` record and transient message files. This replaced the prior Unix-socket / named-pipe listener, which a sandboxed launcher could not `listen()` on. The pieces, all behind the §7 seam (`platform/project.ts` = dir + owner, `platform/channel.ts` = messaging, `platform/protocol.ts` = versioning), each unit-tested:
+> **File-drop transport & addressing (retained).** Behind the §7 seam (`platform/project.ts`, `channel.ts`, `protocol.ts`, each unit-tested): `owner.json` publishes the owner's `id = <pid>-<startedAt>`; every message/ping filename carries that id, so a message reaches exactly its intended target even if two owners transiently coexist, and a stale owner is inert. A message is a versioned JSON envelope `{ "v", "type": "open", "path" }` written `*.tmp` then atomically renamed `*.msg`; the protocol (`protocol.ts`, independent of the app version) is `MAJOR.MINOR`, and a sender refuses to write to a different-major owner. The owning window opens each delivered path as a focused tab (R14), or focuses the existing tab (R15).
 >
-> - **Self-arbitration.** On launch the app *claims* the project: if no live owner, it becomes the window; if a live owner exists, it hands its files off and exits. The caller never probes.
-> - **Liveness without a heartbeat.** A claim short-circuits on `process.kill(pid, 0)` (dead → take over) but, because a PID can be **recycled** after an unclean exit, a live PID is confirmed by a **consumer handshake**: a `.ping` the owner answers by renaming to `.pong`. Only a process actually consuming the channel acks, so a recycled-but-unrelated PID can't masquerade as the owner. `owner.json` records `pid`/`startedAt`/`host` and the takeover is ownership-guarded.
-> - **Addressing (the "channel name").** `owner.json` publishes the owner's `id = <pid>-<startedAt>`. Every message/ping filename is `<id>.<unique>.<ext>`, and an owner only touches files carrying its own id — so even if two owners transiently coexist, a message reaches exactly its intended target (no double- or wrong-window delivery); a stale owner is inert.
-> - **Message format.** A message body is a versioned JSON envelope `{ "v": "<proto>", "type": "open", "path": … }` written `*.tmp` then atomically renamed to `*.msg`. The envelope is extensible (new `type`s) and forward-compatible (consumers ignore unknown fields, skip unknown types).
-> - **Protocol version** (`protocol.ts`, **independent of the app version**) is `MAJOR.MINOR`: same-major ⇒ compatible (minor is additive). A sender checks `owner.json`'s protocol and **refuses to write to a different-major owner** (surfacing an error rather than polluting its queue); the receiver re-checks each message defensively and surfaces — never silently drops — an incompatible one. Modeled as two **peers** (same app, possibly version-skewed across an upgrade), not client↔host.
->
-> The owning window opens each delivered path as a new focused tab (R14); already-open paths focus their tab (R15). *(The receiving instance raises its own window; cross-process raise is the caller's concern, per the note above.)*
+> **Current status vs. the rework.** Shipped today, the per-project directory is under the **OS temp dir** and liveness is a `.ping`→`.pong` consumer handshake answered on the main event loop, with release removing the whole directory. The move to a **durable app-managed home**, a **passive OS-maintained lock** (fixing the temp-cleanup duplicate [#60](https://github.com/eschgr/mdtool/issues/60) and the modal-block duplicate [#56](https://github.com/eschgr/mdtool/issues/56)), **non-destructive release**, and **session restore** ([#61](https://github.com/eschgr/mdtool/issues/61)) is designed in the Projects sub-PRD (§7–§10) and not yet built.
 
 ### 5.4 Editing
 
