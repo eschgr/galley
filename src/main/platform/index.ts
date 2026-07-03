@@ -12,9 +12,9 @@
  * CodeMirror, markdown-it/KaTeX, scroll-sync, tabs — ports as-is.
  *
  * This file defines the contract; the Node file-IO lives in ./fileIo, the
- * watcher uses chokidar here, and the per-project channel splits across
- * ./project (scratch dir + owner.json liveness) and ./channel (file-drop
- * messaging).
+ * watcher uses chokidar here, and the per-project machinery splits across
+ * ./projectStore (durable home layout + project.json), ./project (owner.json
+ * liveness) and ./channel (file-drop messaging).
  */
 import * as fileIo from './fileIo';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
@@ -29,6 +29,7 @@ import {
   pingChannel as pingChannelFs,
   type ChannelListener,
 } from './channel';
+import { projectPaths, materializeProjectRecord, type ProjectPaths } from './projectStore';
 
 export type { ClaimResult } from './project';
 
@@ -112,21 +113,38 @@ export interface PlatformBridge {
 }
 
 /**
- * The Node-backed bridge. File IO, CLI parsing, file watching, and the
- * per-project file-drop channel (R11–R15) are all implemented here by composing
- * ./fileIo, ./project, and ./channel.
+ * Options for the Node-backed bridge.
  */
-export function createPlatformBridge(): PlatformBridge {
+export interface PlatformBridgeOptions {
+  /**
+   * The projects-home root — `<userData>/projects` — resolved LAZILY (a thunk,
+   * not a value) so it can be read after `app` is ready without pulling Electron
+   * into this seam. Every project op runs post-`ready`, so first-use resolution
+   * is safe. Tests inject a temp dir here.
+   */
+  projectsHome: () => string;
+}
+
+/**
+ * The Node-backed bridge. File IO, CLI parsing, file watching, and the
+ * per-project durable home + file-drop channel (§7, §8.1) are all implemented
+ * here by composing ./fileIo, ./projectStore, ./project, and ./channel.
+ */
+export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBridge {
   // The hash of the on-disk content as we last knew it (set on read/write and
   // when we forward an external change), per path. Drives both self-write
   // detection (R33) and the write-path divergence guard (R34): a watcher event
   // or a save whose disk hash matches `knownHash` is consistent with our view.
   const knownHash = new Map<string, string>();
   const watchers = new Map<string, FSWatcher>();
-  // The active channel watcher and the project we claimed, so closeChannel can
-  // stop watching and release ownership of exactly what this process took.
+  // The active channel watcher and the runtime dir we claimed, so closeChannel
+  // can stop watching and release ownership of exactly what this process took.
   let channelListener: ChannelListener | null = null;
-  let claimedProject: string | null = null;
+  let claimedRuntimeDir: string | null = null;
+
+  // Resolve a project name to its on-disk layout, deriving the projects-home
+  // lazily on first use (post-`app`-ready — see PlatformBridgeOptions).
+  const pathsFor = (project: string): ProjectPaths => projectPaths(options.projectsHome(), project);
 
   const closeWatcher = (absPath: string): void => {
     const watcher = watchers.get(absPath);
@@ -189,23 +207,29 @@ export function createPlatformBridge(): PlatformBridge {
       closeWatcher(absPath);
     },
 
-    // Per-project channel (R11–R15). The app self-arbitrates: claim the project
-    // (taking over a stale owner), and either become its window or — when a live
-    // owner exists — drop files into its channel. See ./project and ./channel.
+    // Per-project channel (§7, §8.1). The app self-arbitrates: materialize the
+    // durable home, then claim the project (taking over a stale owner) and either
+    // become its window or — when a live owner exists — drop files into its
+    // channel. See ./projectStore, ./project, and ./channel.
     async claimProject(project, opts) {
-      const result = await acquireProjectFs(project, opts ?? {}, {
-        ping: (p, id) => pingChannelFs(p, id),
+      const paths = pathsFor(project);
+      // Materialize-or-reuse the durable record BEFORE claiming, so the home
+      // exists whether we become owner or hand off (PF3). Reuse preserves an
+      // existing createdAt — a claim never clobbers durable data.
+      materializeProjectRecord(paths, project, opts ?? {});
+      const result = await acquireProjectFs(project, paths.runtimeDir, opts ?? {}, {
+        ping: (id) => pingChannelFs(paths.runtimeDir, id),
       });
-      if (result.owned) claimedProject = project; // remember so closeChannel releases it
+      if (result.owned) claimedRuntimeDir = paths.runtimeDir; // remember so closeChannel releases it
       return result;
     },
 
     sendToChannel(project, targetId, absPath) {
-      sendToChannelFs(project, targetId, absPath);
+      sendToChannelFs(pathsFor(project).runtimeDir, targetId, absPath);
     },
 
     listenOnChannel(project, channelId, onFile) {
-      channelListener = listenOnChannelFs(project, channelId, onFile);
+      channelListener = listenOnChannelFs(pathsFor(project).runtimeDir, channelId, onFile);
     },
 
     async closeChannel() {
@@ -213,9 +237,11 @@ export function createPlatformBridge(): PlatformBridge {
         await channelListener.close();
         channelListener = null;
       }
-      if (claimedProject) {
-        releaseProjectFs(claimedProject); // ownership-guarded: only removes our own dir
-        claimedProject = null;
+      if (claimedRuntimeDir) {
+        // Ownership-guarded, non-destructive (PF8): removes ONLY our runtime/ dir,
+        // never project.json or the home — the #60 data-safety fix.
+        releaseProjectFs(claimedRuntimeDir);
+        claimedRuntimeDir = null;
       }
     },
   };

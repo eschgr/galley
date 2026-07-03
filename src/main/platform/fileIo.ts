@@ -66,8 +66,8 @@ export function resolveLocalLink(href: string, fromPath: string): string | null 
 /**
  * Pick the project name from a process argv (R11): `galley --project <name> …`
  * or `--project=<name>`. The name identifies the project whose window this file
- * belongs to; the app derives the channel scratch dir from it (see
- * `project.ts#projectDir`). Returns null when no project was passed.
+ * belongs to; the app derives the durable home from it (see
+ * `projectStore.ts#deriveDirName`). Returns null when no project was passed.
  */
 export function parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null {
   const rest = argv.slice(packaged ? 1 : 2);
