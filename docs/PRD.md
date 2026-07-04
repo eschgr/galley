@@ -72,9 +72,9 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ## 5. Non-functional requirements
 
-- **R49. Cross-platform:** runs on Windows and macOS.
-- **R50. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
-- **R51. Prototype-appropriate footprint:** bundle size and memory are heavier than a native-webview approach (bundled engine), an accepted tradeoff for this version. See §9 for the migration path if footprint becomes a concern.
+- **NFR1. Cross-platform:** runs on Windows and macOS.
+- **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
+- **NFR3. Prototype-appropriate footprint:** bundle size and memory are heavier than a native-webview approach (bundled engine), an accepted tradeoff for this version. See §9 for the migration path if footprint becomes a concern.
 
 ---
 
@@ -83,11 +83,11 @@ The app may also be launched **with no file**; it opens to an empty state from w
 Each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`); this section indexes them. The main PRD is the **hub** — the product overview and user journeys (§1–§4), the non-functional requirements (§5), and the cross-cutting concerns below (technical stack, build & distribution, licensing, and the decision log). The detailed **functional requirements** live in the sub-PRDs; the decision log (§13) traces the key decisions.
 
 - **Markdown rendering — [`docs/PRD-Rendering.md`](PRD-Rendering.md).** The preview pipeline (GFM, LaTeX math, fenced-code highlighting, link handling) and the pre-build rendering de-risking spike. **R1–R6.**
-- **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R7–R15.** *(The Projects sub-PRD below makes the instance model a persistent feature.)*
-- **Editing & formatting — [`docs/PRD-Editing.md`](PRD-Editing.md).** Source editing, live preview, scroll sync, editor syntax highlighting, undo/redo, find & replace, the formatting-shortcut set, and document states. **R16–R28.**
-- **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R29–R38.**
-- **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R39–R48, R52–R53.**
-- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model (R11–R15) in `PRD-Opening-and-Instances.md`.
+- **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R1–R9.** *(The Projects sub-PRD below makes the instance model a persistent feature.)*
+- **Editing & formatting — [`docs/PRD-Editing.md`](PRD-Editing.md).** Source editing, live preview, scroll sync, editor syntax highlighting, undo/redo, find & replace, the formatting-shortcut set, and document states. **R1–R15.**
+- **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R1–R11.**
+- **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R1–R15.**
+- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model & file delivery in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#2-instance-model--file-delivery).
 
 ---
 
@@ -209,41 +209,41 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 
 ## 13. Requirements traceability (decision log)
 
-This log records the *decisions*; the referenced requirement IDs (`R#`) are specified in full in the feature sub-PRDs indexed in §6. The non-functional requirements (R49–R51) are in §5.
+This log records the key *decisions*. The requirements themselves are specified in the feature sub-PRDs (§6); the non-functional requirements are in §5.
 
 | Decision | Resolution |
 |---|---|
 | Markdown flavor | GFM + LaTeX math; assembled from markdown-it plugins |
 | Code blocks | Syntax-highlighted fences |
-| Math rendering | **`markdown-it-texmath` + KaTeX** (dollar + bracket delimiters), chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only); `throwOnError:false` floor; MathJax documented fallback (R5/R6) |
-| Preview link clicks | Open in system default browser, never in-app (R4) |
-| Rendering spike | **Done.** Validated GFM + math + highlighting on representative Claude output before building UI; settled the math engine (R5/R6) |
+| Math rendering | **`markdown-it-texmath` + KaTeX** (dollar + bracket delimiters), chosen by the rendering spike over `@vscode/markdown-it-katex` (dollars-only); `throwOnError:false` floor; MathJax documented fallback |
+| Preview link clicks | Open in system default browser, never in-app |
+| Rendering spike | Validated GFM + math + highlighting on representative Claude output before building UI; settled the math engine |
 | Save model | Auto-save, 5s debounce; force-save retained as reassurance |
-| Reload model | `Ctrl/Cmd+R` re-reads the open file from disk, keeps the view layout; reloads the document only, not the app (R31a). HMR off + reload roles removed so code changes need a restart |
-| Conflict — write path | Save checks disk vs. baseline; if diverged, raise the out-of-sync notice, no silent overwrite (R34) |
-| Conflict — read path | Reload silent if buffer in sync; else raise the out-of-sync notice (R35) |
-| Conflict — notice | Two choices (Load from disk / Keep mine); loud modal on the first divergence per run, then a passive status-bar flag; auto-save suspended until resolved (R36) |
+| Reload model | `Ctrl/Cmd+R` re-reads the open file from disk, keeps the view layout; reloads the document only, not the app. HMR off + reload roles removed so code changes need a restart |
+| Conflict — write path | Save checks disk vs. baseline; if diverged, raise the out-of-sync notice, no silent overwrite |
+| Conflict — read path | Reload silent if buffer in sync; else raise the out-of-sync notice |
+| Conflict — notice | Two choices (Load from disk / Keep mine); loud modal on the first divergence per run, then a passive status-bar flag; auto-save suspended until resolved |
 | Diff view | Out of scope (labeled choice only this version) |
-| File locks | No write/view locks held on open files (R38) |
-| Self-write detection | Content-hash baseline, in the Node main process (R33) |
+| File locks | No write/view locks held on open files |
+| Self-write detection | Content-hash baseline, in the Node main process |
 | Crash-loss tolerance | Up to ~5s, accepted |
-| Preview | Live, as-you-type, with scroll sync (R17/R18) |
-| Find & replace | In scope (R21); `Cmd/Ctrl+F` panel — find next/prev, replace/replace-all, case/whole-word/regex toggles (CodeMirror built-in) |
+| Preview | Live, as-you-type, with scroll sync |
+| Find & replace | In scope; `Cmd/Ctrl+F` panel — find next/prev, replace/replace-all, case/whole-word/regex toggles (CodeMirror built-in) |
 | Editor features | Syntax highlighting, undo/redo, find/replace; line numbers optional |
 | Formatting shortcuts | Bold, italic, link, inline code, strikethrough, headings (1–6), fenced code block, list indent/outdent; toggle + smart selection |
 | Headings | Explicit `Ctrl/Cmd+1..6`; normalize to requested level (switch, not stack); same-level removes |
 | Link editing | `Cmd/Ctrl+K` dialog; prefills when cursor is within an existing link; Remove-link button; clipboard prefill is future |
 | Indentation | Spaces, default width 2; `Tab` list-indent only at start of a list line; never escapes editor |
 | Text color | Out of scope (not standard markdown) |
-| Open mechanisms | CLI arg + file dialog; single file per open; may start with no file (R10) |
-| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15). Being reworked into a persistent project home — see [`docs/PRD-Projects.md`](PRD-Projects.md#7-data-model--on-disk-layout) |
-| Project grouping | One scratch dir per project (`<tmpdir>/galley-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
+| Open mechanisms | CLI arg + file dialog; single file per open; may start with no file |
+| Instance model | App self-arbitrates per project via a file-drop channel; the caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off. The durable per-project home, ownership/liveness, and session restore are specified in the Projects sub-PRD — see [`docs/PRD-Projects.md`](PRD-Projects.md#7-data-model--on-disk-layout) |
+| Project grouping | A durable per-project home ⇒ multiple independent windows; keyed by the `--project` name, not PID |
 | Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
 | Re-open already-open file | Focus existing tab |
 | Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
-| Empty state | "No files open"; closing last tab keeps app open (R46) |
-| Session restore | Specified in the Projects sub-PRD (`docs/PRD-Projects.md`, PF19–PF21); design settled, implementation pending |
-| Layout | Split view with scroll sync; **Show/Hide Source** toggle collapses to full-window reading view; opens in reading view by default (R45) |
+| Empty state | "No files open"; closing last tab keeps app open |
+| Session restore | Specified in the Projects sub-PRD (`docs/PRD-Projects.md`, PF19–PF21) |
+| Layout | Split view with scroll sync; **Show/Hide Source** toggle collapses to full-window reading view; opens in reading view by default |
 | Commands | OS-native menu bar (File/Edit/Help); no custom command palette |
 | Help window | App info, license + attribution, full keyboard-shortcut reference |
 | Stack | Electron, single language (TS/JS), React, CodeMirror 6, markdown-it + GFM (task-lists) + `markdown-it-texmath`/KaTeX + highlight.js → HTML preview; Node main process for IO/watch/channel-listener/CLI |
@@ -251,9 +251,9 @@ This log records the *decisions*; the referenced requirement IDs (`R#`) are spec
 | Build output | `.dmg` (macOS), `.exe`/`.msi` (Windows) via Electron Forge/electron-builder; per-OS build, CI for both |
 | Licensing | MIT/permissive; bundle attribution notice (also in Help); $0 for personal use |
 | New-file creation | Out of scope (future) |
-| Print / Export to PDF | Active tab's rendered preview only; live-window `@media print` (chrome stripped, full document paginated, backgrounds on); built-in Electron `webContents` APIs, no new deps (R52/R53) |
-| PDF export flow | Always a pre-filled **Save As** dialog (confirm-to-write, never silent); default = source folder + name `.pdf`, else `Galley document.pdf` in Documents; Letter, 0.75in margins (R52) |
-| Print/export wiring | Main-direct menu handlers call `webContents.print`/`printToPDF`; one one-way `setActiveDocPath` mirror feeds the save-dialog default; no renderer round-trip (R52c) |
+| Print / Export to PDF | Active tab's rendered preview only; live-window `@media print` (chrome stripped, full document paginated, backgrounds on); built-in Electron `webContents` APIs, no new deps |
+| PDF export flow | Always a pre-filled **Save As** dialog (confirm-to-write, never silent); default = source folder + name `.pdf`, else `Galley document.pdf` in Documents; Letter, 0.75in margins |
+| Print/export wiring | Main-direct menu handlers call `webContents.print`/`printToPDF`; one one-way `setActiveDocPath` mirror feeds the save-dialog default; no renderer round-trip |
 | Print/export shortcuts | Print `Ctrl/Cmd+P`; Export to PDF `Ctrl/Cmd+Shift+P` |
 | Page numbers / headers-footers | Out of scope this version (future) |
 

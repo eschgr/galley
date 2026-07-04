@@ -1,7 +1,7 @@
 # PRD: Galley — Markdown Rendering
 
 **Status:** Draft (split from the main PRD v11, 2026-07-04)
-**Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **markdown-rendering** requirements (the preview pipeline and the pre-build rendering spike); the main PRD's **§5 Features** section indexes it. Requirement IDs (**R#**) are unchanged by the split, so existing references (the decision log, code comments, cross-doc links) still resolve.
+**Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **markdown-rendering** requirements (the preview pipeline and the pre-build rendering spike); the main PRD's **§6 Features** section indexes it. Requirement IDs (**R#**) are numbered locally within this sub-PRD.
 
 ---
 
