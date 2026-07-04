@@ -33,6 +33,10 @@ test('a dirty-shutdown session offers the restore prompt; Yes reopens the tabs a
   await expect(modal).toBeVisible();
   await expect(modal.locator('.modal-title')).toHaveText('Galley recovered from a crash');
   await expect(modal.locator('.modal-body')).toHaveText('Restore session from last save?');
+  // Exactly two choices, in order, with bare labels — no per-button hint text (a
+  // regression that re-adds the "start fresh" / "reopen…" hints, or flips the
+  // order, fails here rather than passing the loose /Yes/ selector below).
+  await expect(modal.getByRole('button')).toHaveText(['No', 'Yes']);
 
   // Yes → both tabs open, in order, with the active one (bravo) focused.
   await page.getByRole('button', { name: /Yes/ }).click();
