@@ -37,6 +37,7 @@ import { LinkDialog } from './components/LinkDialog';
 import { TabStrip } from './components/TabStrip';
 import { reorderToIndex } from './reorderTabs';
 import { CloseTabDialog } from './components/CloseTabDialog';
+import { RestoreDialog } from './components/RestoreDialog';
 import { HelpDialog } from './components/HelpDialog';
 import type { LinkContext } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
@@ -82,6 +83,10 @@ export function App() {
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
   const [closing, setClosing] = useState<Tab | null>(null); // close-with-unsaved prompt
   const [showHelp, setShowHelp] = useState(false); // Help window (R48)
+  // The session offered for restore after a dirty shutdown (PF20, §8.6), or null.
+  // Set once on mount when main reports a restorable session; cleared on the user's
+  // Yes/No. Held so the Yes handler can reopen exactly what was loaded from disk.
+  const [restore, setRestore] = useState<{ files: OpenedFile[]; activeIndex: number } | null>(null);
 
   // Refs mirror state for the once-registered IPC handlers and timers.
   const tabsRef = useRef<Tab[]>([]);
@@ -274,15 +279,25 @@ export function App() {
 
   // Pull a command-line file (R7) and subscribe to opens / save / reload / change.
   useEffect(() => {
-    void window.galley?.getStartupFiles().then((files) => {
-      files.forEach((file) => openTab(file));
-      // openTab leaves the LAST-opened tab active; when several files were passed
-      // on the command line, re-assert the FIRST (leftmost) as the focused tab.
-      if (files.length > 1) {
-        const first = tabsRef.current.find((t) => t.path === files[0].path);
-        if (first) switchTo(first.id);
-      }
-    });
+    void window.galley
+      ?.getStartupFiles()
+      .then((files) => {
+        files.forEach((file) => openTab(file));
+        // openTab leaves the LAST-opened tab active; when several files were passed
+        // on the command line, re-assert the FIRST (leftmost) as the focused tab.
+        if (files.length > 1) {
+          const first = tabsRef.current.find((t) => t.path === files[0].path);
+          if (first) switchTo(first.id);
+        }
+      })
+      // After the CLI files are open, ask main whether a prior session should be
+      // restored (PF20, §8.6). Non-null only after a dirty shutdown in a claimed
+      // project; then offer the restore prompt. Runs AFTER getStartupFiles so the
+      // CLI-file behaviour is fully in place either way — restore only ever adds.
+      .then(() => window.galley?.getRestore())
+      .then((session) => {
+        if (session && session.files.length > 0) setRestore(session);
+      });
     const offOpen = window.galley?.onOpenFile((file) => openTab(file));
     const offSave = window.galley?.onMenuSave(() => {
       const id = activeIdRef.current;
@@ -334,6 +349,23 @@ export function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Restore resolutions (PF20, §8.6). Yes → open each restored file (openTab dedups
+  // by path: a file already open from the CLI is focused/kept, never duplicated),
+  // then focus the restored active tab. No → start fresh (keep the CLI files /
+  // welcome). Either way the dialog is dismissed.
+  const acceptRestore = () => {
+    const session = restore;
+    setRestore(null);
+    if (!session) return;
+    session.files.forEach((file) => openTab(file));
+    const active = session.files[session.activeIndex];
+    if (active) {
+      const tab = tabsRef.current.find((t) => t.path === active.path);
+      if (tab) switchTo(tab.id);
+    }
+  };
+  const dismissRestore = () => setRestore(null);
 
   // Cmd/Ctrl+K (R27): snapshot the link context at the cursor, then open the dialog.
   const openLinkDialog = () => {
@@ -475,6 +507,7 @@ export function App() {
           onClose={() => setShowHelp(false)}
         />
       )}
+      {restore && <RestoreDialog onRestore={acceptRestore} onDismiss={dismissRestore} />}
       {conflict && showModal && (
         <ConflictDialog
           fileName={basename(conflict.path)}

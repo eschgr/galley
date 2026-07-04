@@ -56,6 +56,15 @@ export interface GalleyApi {
    * every tab open/close/switch. A no-op in projectless mode (main has no home).
    */
   setSession(session: { files: string[]; activeIndex: number }): void;
+  /**
+   * Pull the session to restore after a dirty shutdown (PF20, §8.6), once on
+   * mount. Non-null only when the claimed project's last session was left dirty
+   * (a crash / unclean exit): main loads each persisted path from disk (skipping
+   * any that no longer read, adjusting `activeIndex`) and returns the loaded
+   * files + active index. Null on a clean shutdown, projectless mode, or nothing
+   * to restore — the renderer then shows the restore prompt only when non-null.
+   */
+  getRestore(): Promise<{ files: OpenedFile[]; activeIndex: number } | null>;
 
   /**
    * Save content to a path (R29/R30). A checked save (default) refuses to write

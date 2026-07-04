@@ -11,6 +11,7 @@ import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
 import { debounce } from './main/debounce';
+import { decideCrashReload, materializeRestore } from './main/crashReload';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
 // that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync
@@ -174,6 +175,32 @@ ipcMain.handle('window:setSession', (_event, session: unknown) => {
   persistSession({
     files: files as string[],
     activeIndex: typeof activeIndex === 'number' ? activeIndex : -1,
+  });
+});
+
+// Session restore (PF20, §8.6): the renderer pulls this once on mount. The bridge
+// makes the restore DECISION (dirty shutdown + non-empty open-set + a claimed
+// project — else null); here we materialize it, loading each persisted path from
+// disk (which re-watches it) so restored content is the last save (D2). A path
+// that no longer reads (deleted/moved) is skipped, and `activeIndex` is shifted
+// down by each skipped path that preceded it so it still points at the same tab.
+// Null decision, or every path unreadable, resolves null → the renderer stays with
+// just the CLI files / welcome and shows no prompt.
+ipcMain.handle('window:getRestore', async (event) => {
+  const decision = platform.getRestoreSession();
+  if (!decision) return null;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  // The skip-missing / activeIndex-adjust logic lives in the pure `materializeRestore`
+  // helper. `platform.readFile` THROWS on a path that no longer reads; adapt it to
+  // the helper's null-for-missing contract, and re-watch each path that loads.
+  return materializeRestore(decision, async (absPath) => {
+    try {
+      const snapshot = await platform.readFile(absPath); // re-watches on read below
+      if (win) watchFile(win, absPath);
+      return snapshot;
+    } catch {
+      return null; // no longer reads (deleted/moved since the crash)
+    }
   });
 });
 
@@ -372,8 +399,17 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     },
   });
 
+  // Set once the window is (being) torn down, so the renderer-crash recovery
+  // below never reloads a window on its way out — a `render-process-gone` fired
+  // during normal close must NOT be treated as a crash to recover from.
+  let closing = false;
+  mainWindow.on('close', () => {
+    closing = true;
+  });
+
   // Stop watching every open file, and close the channel, when the window closes.
   mainWindow.on('closed', () => {
+    closing = true;
     for (const p of watchedPaths) platform.unwatch(p);
     watchedPaths.clear();
     activeDocPath.delete(mainWindow.id);
@@ -441,6 +477,48 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
   mainWindow.webContents.on('did-finish-load', () => {
     rendererReady = true;
     for (const f of pendingChannelFiles.splice(0)) void openPath(mainWindow, f);
+  });
+
+  // Renderer-crash recovery (PF21, §8.6): if the renderer process dies while main
+  // is alive — and it is NOT a normal teardown (`clean-exit`, which fires during
+  // ordinary quit) and the window is not already closing — reload the renderer.
+  // The reloaded page re-runs its mount flow and hits `getRestore`; session.json
+  // is still `cleanExit:false` (only a clean quit flips it), so it offers restore.
+  //
+  // `decideCrashReload` (a pure, capped helper) drives this: a rolling window of
+  // recent reloads with a cap replaces the old single `reloading` flag. That flag
+  // was cleared only by `did-finish-load`, so a renderer that crashed AGAIN during
+  // the recovery reload (a deterministic mount-time crash) left it stuck `true`
+  // forever — every later crash was swallowed and the window stayed blank. The cap
+  // instead re-evaluates on EVERY crash: it reloads again (up to RELOAD_CAP within
+  // RELOAD_WINDOW_MS), then gives up cleanly rather than loop or hang.
+  // (`did-fail-load` is not reliably emitted on a renderer *process* crash, so we
+  // deliberately don't re-arm on it.)
+  let recentReloads: number[] = [];
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    const decision = decideCrashReload({
+      reason: details.reason,
+      closing,
+      destroyed: mainWindow.isDestroyed(),
+      recentReloads,
+      now: Date.now(),
+    });
+    recentReloads = decision.recentReloads;
+    if (details.reason === 'clean-exit') return; // normal teardown — not a crash
+    console.error('[galley] renderer process gone:', details.reason, `(exit ${details.exitCode})`);
+    if (decision.gaveUp) {
+      console.error('[galley] renderer crashed repeatedly; not reloading again');
+      return;
+    }
+    if (decision.reload) {
+      rendererReady = false; // a --project file dropped mid-reload queues instead of dropping
+      mainWindow.webContents.reload(); // re-mount → getRestore offers the last session
+    }
+  });
+  // A merely-hung renderer is logged, never auto-reloaded (D2 / §8.6) — reloading a
+  // window that might recover on its own would drop unsaved edits gratuitously.
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[galley] renderer unresponsive');
   });
   if (project && channelId) {
     platform.listenOnChannel(project, channelId, (absPath) => {

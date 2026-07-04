@@ -135,6 +135,15 @@ export interface PlatformBridge {
    * quit before any session was written leaves nothing to (and needs no) marking.
    */
   markCleanExit(): void;
+  /**
+   * The restore decision (§8.6, PF20/D2): the claimed project's session is
+   * *restorable* iff its `session.json` exists, `cleanExit === false` (a prior
+   * crash / unclean exit — a clean shutdown set it true), AND `files` is
+   * non-empty. Returns the persisted paths + active index when restorable, else
+   * null — including projectless mode (no claim, no home ⇒ nothing to restore).
+   * This is the pure decision; the caller (main) loads the paths from disk.
+   */
+  getRestoreSession(): { files: string[]; activeIndex: number } | null;
 }
 
 /**
@@ -318,6 +327,21 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       const existing = readSession(homeDir);
       if (!existing) return; // nothing was ever persisted — nothing to mark
       writeSessionFs(homeDir, { ...existing, cleanExit: true });
+    },
+
+    // The restore decision (§8.6, PF20/D2). Pure and side-effect-free: reads the
+    // claimed project's session and returns its paths only if it looks like a
+    // dirty shutdown (cleanExit:false) with a non-empty open-set. A projectless
+    // window has no claim and no home, so it returns null — projectless never
+    // restores by design. Loading the paths from disk is main's job (readFile).
+    getRestoreSession() {
+      if (!claimedProject) return null;
+      const session = readSession(pathsFor(claimedProject).homeDir);
+      // Restorable iff a session exists, it was NOT a clean shutdown, and it had
+      // open tabs. A clean quit (cleanExit:true), an absent record, or an empty
+      // open-set all yield null — nothing to offer.
+      if (!session || session.cleanExit || session.files.length === 0) return null;
+      return { files: [...session.files], activeIndex: session.activeIndex };
     },
   };
 }
