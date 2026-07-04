@@ -1,6 +1,6 @@
 /**
  * Keyboard-input → renderer-command mapping for the window's
- * `before-input-event` handler (issue #19 tab cycling, R41 close-tab).
+ * `before-input-event` handler (tab cycling and close-tab key commands).
  *
  * Chromium's built-in Ctrl/Cmd+W would close the whole WINDOW and Tab can be
  * swallowed by the focused CM6 editor, so main intercepts these at the input

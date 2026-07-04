@@ -1,5 +1,5 @@
 /**
- * How a link clicked in the preview should be handled (PRD R4). Classification is
+ * How a link clicked in the preview should be handled. Classification is
  * a pure function of the href so it can be unit-tested exhaustively; Preview maps
  * each kind to an action:
  *   - 'anchor'   in-page (`#heading`)        → scroll the preview to that heading

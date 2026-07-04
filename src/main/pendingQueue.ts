@@ -1,6 +1,6 @@
 /**
  * A tiny arrival buffer for work that must wait until a consumer is ready
- * (R11–R15 channel file-drops): files delivered before the renderer's
+ * (channel file-drops): files delivered before the renderer's
  * `did-finish-load` are queued in arrival order and flushed once it mounts;
  * after that they pass straight through. A crash-reload re-arms the buffer
  * (`suspend`) so files dropped mid-reload queue again rather than being sent to

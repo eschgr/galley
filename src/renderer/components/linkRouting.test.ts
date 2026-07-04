@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { classifyHref } from './linkRouting';
 
-describe('classifyHref (preview link routing, R4)', () => {
+describe('classifyHref (preview link routing)', () => {
   it('treats #fragments as in-page anchors', () => {
     expect(classifyHref('#section-a')).toBe('anchor');
     expect(classifyHref('#')).toBe('anchor');

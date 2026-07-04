@@ -12,7 +12,7 @@ const keyDown = (over: Partial<KeyInput>): KeyInput => ({
   ...over,
 });
 
-describe('mapInputToCommand — close tab (Ctrl/Cmd+W, R41)', () => {
+describe('mapInputToCommand — close tab (Ctrl/Cmd+W)', () => {
   it('maps Ctrl+W to close-tab on win32/linux', () => {
     expect(mapInputToCommand(keyDown({ key: 'w', control: true }), 'win32')).toBe('menu:closeTab');
     expect(mapInputToCommand(keyDown({ key: 'w', control: true }), 'linux')).toBe('menu:closeTab');
@@ -39,7 +39,7 @@ describe('mapInputToCommand — close tab (Ctrl/Cmd+W, R41)', () => {
   });
 });
 
-describe('mapInputToCommand — cycle tabs (Ctrl+Tab / Ctrl+Shift+Tab, #19)', () => {
+describe('mapInputToCommand — cycle tabs (Ctrl+Tab / Ctrl+Shift+Tab)', () => {
   it('maps Ctrl+Tab to next and Ctrl+Shift+Tab to prev', () => {
     expect(mapInputToCommand(keyDown({ key: 'Tab', control: true }), 'win32')).toBe('menu:nextTab');
     expect(mapInputToCommand(keyDown({ key: 'Tab', control: true, shift: true }), 'win32')).toBe('menu:prevTab');

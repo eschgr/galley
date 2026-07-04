@@ -1,5 +1,5 @@
 /**
- * Default Save-dialog path for Export to PDF (PRD R52 / §5.11). Pure and
+ * Default Save-dialog path for Export to PDF. Pure and
  * Electron-free so it can be unit-tested cross-platform.
  *
  * The PDF defaults beside the source document, with the source's basename and

@@ -1,5 +1,5 @@
 /**
- * Pure scroll-sync interpolation (PRD R18), extracted so it can be unit-tested
+ * Pure scroll-sync interpolation, extracted so it can be unit-tested
  * without a DOM. An "anchor" maps a source line to a vertical offset (px) within
  * the preview's scroll container; the preview builds them from the
  * `data-source-line` elements. These functions convert between a scroll offset
@@ -59,7 +59,7 @@ function clamp(n: number, lo: number, hi: number): number {
 /**
  * Blend the follower's line-anchored scroll target toward the follower's OWN max
  * scroll as the leader approaches its end, so the two panes CO-ARRIVE at the
- * bottom (#18). In the middle, top-line→top-line alignment is exact; but at the
+ * bottom. In the middle, top-line→top-line alignment is exact; but at the
  * leader's bottom that alignment can leave the follower's tail hidden when the
  * follower's content past that line is taller (e.g. math renders taller than its
  * source) or shorter.

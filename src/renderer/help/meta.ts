@@ -1,4 +1,4 @@
-/** App identity shown in the Help window (PRD R48). Version comes from the
+/** App identity shown in the Help window. Version comes from the
  *  bridge (`window.galley.version`); name and description live here. */
 export const APP_NAME = 'Galley';
 export const APP_DESCRIPTION =

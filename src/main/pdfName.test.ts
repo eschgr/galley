@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import { defaultPdfPath } from './pdfName';
 
-describe('defaultPdfPath (Export to PDF default, R52)', () => {
+describe('defaultPdfPath (Export to PDF default)', () => {
   const docs = path.join(path.sep === '\\' ? 'C:\\Users\\me' : '/home/me', 'Documents');
 
   it('swaps a .md extension for .pdf, beside the source', () => {

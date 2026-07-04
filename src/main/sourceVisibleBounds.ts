@@ -1,5 +1,5 @@
 /**
- * Window-resize math for the Show/Hide Source toggle (R45), lifted out of
+ * Window-resize math for the Show/Hide Source toggle, lifted out of
  * main.ts's `window:setSourceVisible` handler so the doubling / work-area clamp
  * / on-screen nudge is unit-testable without a real BrowserWindow or display.
  *

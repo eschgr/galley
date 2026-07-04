@@ -1,5 +1,5 @@
 /**
- * Link dialog (PRD R27). Cmd/Ctrl+K opens this instead of inserting raw syntax,
+ * Link dialog (the link dialog). Cmd/Ctrl+K opens this instead of inserting raw syntax,
  * so the user never has to remember `[text](url)` ordering. Prefilled from the
  * selection or, when the cursor is inside an existing link, from that link —
  * confirming then updates it in place. In edit mode a Remove-link action strips
@@ -21,7 +21,7 @@ export function LinkDialog({ initial, onConfirm, onRemove, onCancel }: LinkDialo
   const urlRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    urlRef.current?.focus(); // focus starts in the URL field (R27)
+    urlRef.current?.focus(); // focus starts in the URL field
     urlRef.current?.select();
   }, []);
 

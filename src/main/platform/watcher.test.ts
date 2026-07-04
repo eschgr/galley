@@ -6,7 +6,7 @@ import { createPlatformBridge, type ExternalChangeEvent } from './index';
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe('platform watcher (R32/R33/R37)', () => {
+describe('platform watcher (watch open files, self-write detection, debounce)', () => {
   const dirs: string[] = [];
   afterAll(async () => {
     for (const d of dirs) await rm(d, { recursive: true, force: true });
@@ -25,7 +25,7 @@ describe('platform watcher (R32/R33/R37)', () => {
       bridge.watch(file, (e) => events.push(e));
       await wait(400); // let chokidar become ready
 
-      // R33: the app's own save must NOT be forwarded.
+      // Self-write detection: the app's own save must NOT be forwarded.
       await bridge.writeFile(file, 'app save\n');
       await wait(600);
       expect(events.length).toBe(0);
