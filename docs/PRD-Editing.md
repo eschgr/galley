@@ -56,7 +56,7 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
     - If nothing is selected, both fields start empty; on confirm, insert `[text](url)` at the cursor.
   - **Editing an existing link:** if the cursor is anywhere within an existing markdown link (any part of its `[text](url)` syntax), the dialog opens **prefilled** with that link's current Text and URL, and confirming updates the existing link in place.
   - **Remove-link button:** in edit mode, a **Remove link** action strips the link syntax and keeps the plain text (`[text](url)` → `text`).
-  - *Nice-to-have (future):* if the clipboard contains a URL when the dialog opens, prefill the **URL** field with it.
+  - *Nice-to-have (future, [#85](https://github.com/eschgr/mdtool/issues/85)):* if the clipboard contains a URL when the dialog opens, prefill the **URL** field with it.
 
 - **R15. Indentation setting.** The editor indents with **spaces**, default width **2**. (Applies to R11 list nesting and general `Tab` indentation.)
 
@@ -71,3 +71,8 @@ The editor tracks **what it is showing as an explicit state**, not as a null-pat
 - **Welcome screen** — a built-in **sandbox** shown whenever no file is open. It introduces the app and lets the user play with the renderer. It is **never saved** (no auto-save, no watcher, no Save), the title bar reads **"Welcome!"**, and it makes no claim to be a file. Opening a file replaces it.
 - **File** — a document opened from disk, with a path, baseline hash, watcher, and the full save/auto-save/conflict behavior.
 - **Untitled** *(future, with Save As)* — an editable buffer with **no destination yet**. Unlike the welcome screen it holds the user's work: auto-save and watching can't run, but unsaved changes must be surfaced and the user offered a way to save (Save As). *Not implemented yet — do not treat the welcome screen as an unsaved buffer.*
+
+## 4. Non-goals
+
+- **Word / character count.**
+- **Smart list-item selection** — extending a selection (or `Home`) to a list line's start stopping at the item's *content*, skipping the marker (`-` / `1.`). *(Future: [#89](https://github.com/eschgr/mdtool/issues/89).)*

@@ -21,9 +21,9 @@ It addresses **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** 
 
 ## 2. Relationship to the main PRD
 
-- **Supersedes** the **instance model & file delivery (R11–R15)** in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#2-instance-model--file-delivery): the ephemeral `<tmpdir>/galley-<name>/` scratch dir is replaced by a **durable, app-managed project home** with a runtime/durable split (sections 7 and 8). The *caller contract* — a single `galley --project <name> <file>` command, and a plain `galley <file>` for a projectless window; the app self-arbitrates — is preserved verbatim.
+- **Supersedes** the **instance model & file delivery** in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#2-instance-model--file-delivery): the ephemeral `<tmpdir>/galley-<name>/` scratch dir is replaced by a **durable, app-managed project home** with a runtime/durable split (sections 7 and 8). The *caller contract* — a single `galley --project <name> <file>` command, and a plain `galley <file>` for a projectless window; the app self-arbitrates — is preserved verbatim.
 - **Extends** main PRD **section 7 (architecture / portability seam)** with a `ProjectStore` seam member (section 9).
-- **Resolves** the main PRD **section 12 open item "Session restore"** (section 6, group C).
+- **Specifies session persistence & restore** (section 6, group C).
 - **Leaves unchanged** everything about rendering, editing, saving, conflict handling, tabs, and print/export — a project is context *around* files, not a change to how a file is viewed or edited.
 
 Requirements here are numbered **PF#** (project feature). The numbering is stable across drafts; gaps mark features that were considered and cut (see section 4).
@@ -47,11 +47,11 @@ Each was considered during design and deliberately cut; each is a candidate futu
 - **Templating.** Its own future topic that works differently from what a project would model. **Tracked in [#67](https://github.com/eschgr/mdtool/issues/67).** *(Was PF12, PF15.)*
 - **Per-project settings surface.** No user-editable project settings; the only candidate (a reading-vs-split default) is not worth a surface. `project.json` holds identity and metadata only. *(Was PF14, PF16, PF17, PF18.)*
 - **A curated / tracked member-file list.** Membership is **ephemeral**: a file is associated with a project only while open in that project's session. *(Was PF22.)*
-- **New-file creation.** Deferred, bound up with templating. **Tracked in [#68](https://github.com/eschgr/mdtool/issues/68).** *(Was PF23; also the main PRD section 12 item.)*
+- **New-file creation.** Deferred, bound up with templating. **Tracked in [#68](https://github.com/eschgr/mdtool/issues/68).** *(Was PF23.)*
 - **A default project name.** If no `--project` is given, Galley runs **projectless** (PF27), not under an inferred name (e.g. from the current directory). Inferring identity the caller did not ask for is out of scope.
 - **Human-driven project creation UI** (a "New Project" dialog with setup questions). The project is created implicitly when files are opened for review (section 8.5); a guided human-initiated flow is a future nicety. **Tracked in [#71](https://github.com/eschgr/mdtool/issues/71).**
 - **A "Reveal Home" (or any project-directory) menu affordance.** The durable home is app-managed and not a place the user is expected to visit; when directory access is genuinely needed, the user asks the LLM to open the path or browses to it directly. A dedicated menu item is not worth the surface. *(Was PF26.)*
-- **A directory / folder tree view or file browser** in the renderer (consistent with the main PRD section 4).
+- **A directory / folder tree view or file browser** in the renderer (Galley opens files, it is not a file browser; see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and [#86](https://github.com/eschgr/mdtool/issues/86)).
 - **In-tree project homes.** Rejected on principle (section 8.4): a project's context spans directories, so there is no coherent tree to colocate in.
 
 ---

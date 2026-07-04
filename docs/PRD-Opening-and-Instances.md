@@ -14,6 +14,13 @@
 - **R3.** One file per open action. No multi-file open, no folder view, no drag-and-drop.
 - **R4.** The app can start with **no file specified**, opening to an empty "No files open" state.
 
+### Non-goals
+
+- **Directory / folder tree view / file browser** — Galley opens files; it is not a file manager or IDE. *(Future: [#86](https://github.com/eschgr/mdtool/issues/86).)*
+- **Drag-and-drop file opening.** *(Future: [#87](https://github.com/eschgr/mdtool/issues/87).)*
+- **"Reveal in Finder/Explorer".**
+- **New-file creation** from within the app. *(Tracked as [#68](https://github.com/eschgr/mdtool/issues/68).)*
+
 ## 2. Instance model & file delivery
 
 > **The project model & mechanism live in [`docs/PRD-Projects.md`](PRD-Projects.md#5-concept--what-a-project-is).** This section covers the **caller-facing instance model** — one command, self-arbitration, become-or-hand-off, tab behavior. The project's durable home, ownership/liveness, lifecycle, and session restore are the sub-PRD's; the file-drop transport detail below is retained here.

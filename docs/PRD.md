@@ -40,47 +40,22 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ## 4. Non-goals (this version)
 
-### Files & opening
-- New-file creation from within the app *(planned for a future version)*.
-- Drag-and-drop file opening.
-- Directory / folder tree view.
-- Opening multiple files in a single command.
-- **"Reveal in Finder/Explorer".**
+These are the **product-level** exclusions — the things Galley is deliberately not. Feature-level "out of scope" notes live in the relevant sub-PRD (§6), and candidate future enhancements are tracked as GitHub issues rather than listed here.
 
-### Editing & rendering
-- **Text color / font color** — not part of standard markdown (no CommonMark/GFM syntax); Claude does not emit it, and supporting it would require enabling raw-HTML passthrough.
-- **Word / character count.**
-
-### Conflict handling & session
-- Concurrent LLM-edit conflict handling as a primary flow *(the conflict handling exists, but the expected use is manual correction, not simultaneous LLM writes)*.
-- **Session restore** — reopening the set of files/tabs that were open in a previous run. On a fresh start the app opens with no files. *(Planned as a possible future enhancement.)*
-- **Diff view** for conflicts — showing a rendered line-diff of disk vs. buffer. v1 uses a labeled choice instead. *(Possible future enhancement.)*
-
-### Tabs & layout
-- **Bulk tab operations** — "close all" / "close others". A fresh launch already starts empty, so closing the window (or individual tabs) is the way to clear state.
-- **Dynamically swapping the editor/preview pane order in-app** — the layout is fixed (**rendered view on the left, source editor on the right**); a runtime control to flip which side each pane is on is out of scope. It is a possible future nice-to-have, bound up with the i18n/RTL and accessibility work below. *(See §12.)*
-
-### Platform & inclusivity
-- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout.
-- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype.)*
-
-### Print & export
-- **Page numbers / running headers / footers** in printed and exported PDFs — fixed defaults only this version *(future).*
-- **In-app page-size / margin chooser** — Export uses fixed Letter / 0.75in defaults; Print defers paper choices to the OS print dialog *(future).*
-
----
+- **Concurrent LLM-edit conflict handling as a primary flow.** Galley is for turn-based work — the LLM writes, the user reviews and corrects, the loop continues — not simultaneous collaborative editing. The conflict handling exists as a safety net, but simultaneous LLM writes are not the expected flow.
+- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout. *(Tracked as [#91](https://github.com/eschgr/mdtool/issues/91).)*
+- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype; tracked as [#92](https://github.com/eschgr/mdtool/issues/92).)*
 
 ## 5. Non-functional requirements
 
 - **NFR1. Cross-platform:** runs on Windows and macOS.
 - **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
-- **NFR3. Prototype-appropriate footprint:** bundle size and memory are heavier than a native-webview approach (bundled engine), an accepted tradeoff for this version. See §9 for the migration path if footprint becomes a concern.
 
 ---
 
 ## 6. Features
 
-Each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`); this section indexes them. The main PRD is the **hub** — the product overview and user journeys (§1–§4), the non-functional requirements (§5), and the cross-cutting concerns below (technical stack, build & distribution, licensing, and the decision log). The detailed **functional requirements** live in the sub-PRDs; the decision log (§13) traces the key decisions.
+Each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`); this section indexes them. The main PRD is the **hub** — the product overview and user journeys (§1–§4), the non-functional requirements (§5), and the cross-cutting concerns below (technical stack, build & distribution, licensing, dependencies). The detailed **functional requirements** live in the sub-PRDs.
 
 - **Markdown rendering — [`docs/PRD-Rendering.md`](PRD-Rendering.md).** The preview pipeline (GFM, LaTeX math, fenced-code highlighting, link handling) and the pre-build rendering de-risking spike. **R1–R6.**
 - **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R1–R9.** *(The Projects sub-PRD below makes the instance model a persistent feature.)*
@@ -99,12 +74,12 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 |---|---|---|
 | App shell | **Electron** | One language for UI + system code; bundles the rendering engine, JS runtime, and file IO into one toolchain. Heavier binary, fewer ecosystem seams. |
 | UI framework | **React** (recommended) | First-class CodeMirror and markdown-lib bindings. Svelte/plain TS are lighter alternatives. |
-| Editor | **CodeMirror 6** | Syntax highlighting (R19), undo/redo (R20), find/replace panel (R21), line numbers (R22), keymaps (R23). |
-| Markdown render | **markdown-it** + GFM plugins (`markdown-it-task-lists`) + **`markdown-it-texmath`** (math) + **`highlight.js`** (code) | Renders source → HTML for the preview pane (R1–R3). Runs in the renderer for zero-latency live preview. Plugin set decided by the R5 spike. |
-| Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor (R6). MathJax remains the documented heavier fallback if ever needed. |
-| File watching | **chokidar** (or Node `fs.watch`) | In the main process (R32, R37). |
-| File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process (R33–R35). |
-| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/galley-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>` (R11–R15). File transport works in a sandbox where socket `listen()` is denied. |
+| Editor | **CodeMirror 6** | Syntax highlighting, undo/redo, find/replace panel, line numbers, keymaps. |
+| Markdown render | **markdown-it** + GFM plugins (`markdown-it-task-lists`) + **`markdown-it-texmath`** (math) + **`highlight.js`** (code) | Renders source → HTML for the preview pane. Runs in the renderer for zero-latency live preview. Plugin set decided by the rendering spike. |
+| Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the rendering spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor. MathJax remains the documented heavier fallback if ever needed. |
+| File watching | **chokidar** (or Node `fs.watch`) | In the main process. |
+| File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process. |
+| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/galley-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>`. File transport works in a sandbox where socket `listen()` is denied. |
 | Packaging | **Electron Forge** (or electron-builder) | Produces installers (see §8). |
 
 ### Architecture notes
@@ -112,7 +87,7 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 - **Main process** owns all OS-touching work: CLI arg parsing, the per-project file-drop channel (scratch dir + `owner.json` liveness + `*.msg` command files) for file delivery, file read/write, file watching, baseline hashing and self-write detection. It emits events to the renderer ("open this file in a tab", "this file changed externally").
 - **Renderer process** owns the entire UI: CodeMirror editor, markdown-it/KaTeX preview, scroll-sync, tabs, dirty indicators, split-view layout, link dialog, and conflict prompts. It calls the main process to load/save and listens for its events.
 - **Portability seam (important):** keep the main-process OS-touching code (file IO, watch, the project/channel transport, CLI) behind a thin, well-defined interface. This is the layer that would be rewritten in a future migration off Electron; isolating it keeps that migration cheap (see §9).
-- **Security:** enable `contextIsolation`, do not expose Node directly to the renderer, bridge via a minimal preload API, and route preview link-clicks to the system browser (R4) rather than allowing in-app navigation. (Standard Electron hardening; the renderer is a full rendering-engine page.)
+- **Security:** enable `contextIsolation`, do not expose Node directly to the renderer, bridge via a minimal preload API, and route preview link-clicks to the system browser rather than allowing in-app navigation. (Standard Electron hardening; the renderer is a full rendering-engine page.)
 
 ---
 
@@ -165,14 +140,14 @@ If footprint later becomes a real concern, the migration target is **Tauri** (OS
 - **Electron:** MIT license — free, including for commercial use, no fees or tiers.
 - **Tooling** (Electron Forge, CodeMirror 6, markdown-it, KaTeX/MathJax, chokidar): permissive (MIT/BSD/Apache-2.0 family). Confirm each at lock-in.
 - **Chromium** (bundled via Electron): predominantly BSD with some third-party components under other licenses; does **not** require open-sourcing your app. Major closed-source Electron apps (VS Code, Slack, Discord) demonstrate proprietary distribution is fine.
-- **Only obligation:** include the bundled license/attribution notice with the distributed app (also surfaced in-app via the Help window, R48). Forge/electron-builder generate this automatically.
+- **Only obligation:** include the bundled license/attribution notice with the distributed app (also surfaced in-app via the Help window). Forge/electron-builder generate this automatically.
 - **Total cost for personal use: $0** (signing certificates only enter if distributing to others; see §8).
 
 ---
 
 ## 11. Dependencies
 
-Install picture for the prototype (all permissive licenses; math/GFM choices resolved by the R5 spike — see R6):
+Install picture for the prototype (all permissive licenses; math/GFM choices resolved by the rendering spike):
 
 | Package | Purpose | Process |
 |---|---|---|
@@ -187,75 +162,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | `chokidar` | File watching (external-change detection) | main |
 | *(built-in)* Node `fs`, `crypto`, `path` | File IO, hashing, path handling | main |
 
-> Note: the GFM/math plugin set was finalized by the R5 spike (`markdown-it-texmath` + `katex`, `markdown-it-task-lists`, `highlight.js`). Exact CodeMirror sub-packages may still vary; the table lists the functional pieces rather than a locked version manifest.
-
----
-
-## 12. Open items / future
-
-- New-file creation (deferred; anticipated next addition).
-- Session restore — specified in the Projects sub-PRD ([§8.6 Session persistence & crash recovery](PRD-Projects.md#86-session-persistence--crash-recovery-pf19pf21), PF19–PF21: persist/restore open tabs, prompt-on-restore after a crash); design settled, implementation pending.
-- Diff view for conflict resolution (deferred enhancement).
-- Clipboard-URL prefill in the link dialog (R27 nice-to-have).
-- Possible future: directory view, drag-and-drop, recently-opened list, tab reordering, bulk tab operations.
-- Possible future: **smart list-item selection** — extending a selection (or `Home`) to the start of a list line stops at the item's *content*, skipping the marker (`-` / `1.`), as most modern editors do. New behavior, not a correctness fix; out of scope this version.
-- Possible future: a **dynamic in-app control to swap the editor/preview pane order** (the fixed default is rendered view left, source right) — nice-to-have, gated behind the internationalization/RTL and accessibility work that is out of scope this version (§3).
-- Possible future: internationalization/localization (incl. RTL) and a dedicated accessibility pass (§3).
-- Possible future: migrate shell to Tauri if footprint warrants (§9).
-- Print/export polish: page numbers / running headers-footers, an in-app page-size & margin chooser, and "open the PDF after export" (see [`PRD-UI-Shell.md`](PRD-UI-Shell.md#5-print--export-to-pdf)).
-- Keybinding-collision checks at implementation: `Cmd/Ctrl+E` (inline code) and `Cmd/Ctrl+K` (link) against editor defaults.
-
----
-
-## 13. Requirements traceability (decision log)
-
-This log records the key *decisions*. The requirements themselves are specified in the feature sub-PRDs (§6); the non-functional requirements are in §5.
-
-| Decision | Resolution |
-|---|---|
-| Markdown flavor | GFM + LaTeX math; assembled from markdown-it plugins |
-| Code blocks | Syntax-highlighted fences |
-| Math rendering | **`markdown-it-texmath` + KaTeX** (dollar + bracket delimiters), chosen by the rendering spike over `@vscode/markdown-it-katex` (dollars-only); `throwOnError:false` floor; MathJax documented fallback |
-| Preview link clicks | Open in system default browser, never in-app |
-| Rendering spike | Validated GFM + math + highlighting on representative Claude output before building UI; settled the math engine |
-| Save model | Auto-save, 5s debounce; force-save retained as reassurance |
-| Reload model | `Ctrl/Cmd+R` re-reads the open file from disk, keeps the view layout; reloads the document only, not the app. HMR off + reload roles removed so code changes need a restart |
-| Conflict — write path | Save checks disk vs. baseline; if diverged, raise the out-of-sync notice, no silent overwrite |
-| Conflict — read path | Reload silent if buffer in sync; else raise the out-of-sync notice |
-| Conflict — notice | Two choices (Load from disk / Keep mine); loud modal on the first divergence per run, then a passive status-bar flag; auto-save suspended until resolved |
-| Diff view | Out of scope (labeled choice only this version) |
-| File locks | No write/view locks held on open files |
-| Self-write detection | Content-hash baseline, in the Node main process |
-| Crash-loss tolerance | Up to ~5s, accepted |
-| Preview | Live, as-you-type, with scroll sync |
-| Find & replace | In scope; `Cmd/Ctrl+F` panel — find next/prev, replace/replace-all, case/whole-word/regex toggles (CodeMirror built-in) |
-| Editor features | Syntax highlighting, undo/redo, find/replace; line numbers optional |
-| Formatting shortcuts | Bold, italic, link, inline code, strikethrough, headings (1–6), fenced code block, list indent/outdent; toggle + smart selection |
-| Headings | Explicit `Ctrl/Cmd+1..6`; normalize to requested level (switch, not stack); same-level removes |
-| Link editing | `Cmd/Ctrl+K` dialog; prefills when cursor is within an existing link; Remove-link button; clipboard prefill is future |
-| Indentation | Spaces, default width 2; `Tab` list-indent only at start of a list line; never escapes editor |
-| Text color | Out of scope (not standard markdown) |
-| Open mechanisms | CLI arg + file dialog; single file per open; may start with no file |
-| Instance model | App self-arbitrates per project via a file-drop channel; the caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off. The durable per-project home, ownership/liveness, and session restore are specified in the Projects sub-PRD — see [`docs/PRD-Projects.md`](PRD-Projects.md#7-data-model--on-disk-layout) |
-| Project grouping | A durable per-project home ⇒ multiple independent windows; keyed by the `--project` name, not PID |
-| Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
-| Re-open already-open file | Focus existing tab |
-| Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
-| Empty state | "No files open"; closing last tab keeps app open |
-| Session restore | Specified in the Projects sub-PRD (`docs/PRD-Projects.md`, PF19–PF21) |
-| Layout | Split view with scroll sync; **Show/Hide Source** toggle collapses to full-window reading view; opens in reading view by default |
-| Commands | OS-native menu bar (File/Edit/Help); no custom command palette |
-| Help window | App info, license + attribution, full keyboard-shortcut reference |
-| Stack | Electron, single language (TS/JS), React, CodeMirror 6, markdown-it + GFM (task-lists) + `markdown-it-texmath`/KaTeX + highlight.js → HTML preview; Node main process for IO/watch/channel-listener/CLI |
-| Portability | Isolate main-process OS code behind a thin interface; Tauri as later migration target if bloated |
-| Build output | `.dmg` (macOS), `.exe`/`.msi` (Windows) via Electron Forge/electron-builder; per-OS build, CI for both |
-| Licensing | MIT/permissive; bundle attribution notice (also in Help); $0 for personal use |
-| New-file creation | Out of scope (future) |
-| Print / Export to PDF | Active tab's rendered preview only; live-window `@media print` (chrome stripped, full document paginated, backgrounds on); built-in Electron `webContents` APIs, no new deps |
-| PDF export flow | Always a pre-filled **Save As** dialog (confirm-to-write, never silent); default = source folder + name `.pdf`, else `Galley document.pdf` in Documents; Letter, 0.75in margins |
-| Print/export wiring | Main-direct menu handlers call `webContents.print`/`printToPDF`; one one-way `setActiveDocPath` mirror feeds the save-dialog default; no renderer round-trip |
-| Print/export shortcuts | Print `Ctrl/Cmd+P`; Export to PDF `Ctrl/Cmd+Shift+P` |
-| Page numbers / headers-footers | Out of scope this version (future) |
+> Note: the GFM/math plugin set was finalized by the rendering spike (`markdown-it-texmath` + `katex`, `markdown-it-task-lists`, `highlight.js`). Exact CodeMirror sub-packages may still vary; the table lists the functional pieces rather than a locked version manifest.
 
 ---
 
@@ -280,7 +187,7 @@ Every operation below uses the **same command** — `galley --project <name> <fi
 
 **Open a file.** If the file isn't open yet, it opens as a new focused tab — launching the project's window first if none is running.
 
-**Focus an open file.** If the file is already open, re-running brings its existing tab to the front instead of opening a duplicate (R15) — re-sending a file is how you focus it.
+**Focus an open file.** If the file is already open, re-running brings its existing tab to the front instead of opening a duplicate — re-sending a file is how you focus it.
 
 > Notes
 > - **Paths** may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory.
