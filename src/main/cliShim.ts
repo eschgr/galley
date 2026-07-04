@@ -12,7 +12,7 @@
  * install, the fallback is a dedicated `bin` dir added to PATH once.)
  *
  * The forwarder launches a fresh `Galley.exe` per call; the app self-arbitrates —
- * claims the project or hands its files off (PRD §5.3). `.cmd` resolves as
+ * claims the project or hands its files off (instance model & file delivery). `.cmd` resolves as
  * `galley` in cmd/PowerShell; Git Bash resolution is a known gap (run via
  * PowerShell, or add a no-extension script later).
  */

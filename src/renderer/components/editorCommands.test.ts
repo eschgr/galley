@@ -14,7 +14,7 @@ function apply(doc: string, r: EditResult): { doc: string; sel: [number, number]
   return { doc: doc.slice(0, r.from) + r.insert + doc.slice(r.to), sel: r.select };
 }
 
-describe('wrapEdit (R24/R25 — toggle + smart selection)', () => {
+describe('wrapEdit (formatting toggle + smart selection)', () => {
   it('wraps a selection in the marker', () => {
     const doc = 'make me bold';
     const { doc: out, sel } = apply(doc, wrapEdit(doc, 8, 12, '**')); // "bold"
@@ -61,7 +61,7 @@ describe('wrapEdit (R24/R25 — toggle + smart selection)', () => {
   });
 });
 
-describe('unwrapSpan (R24 — toggle off from a cursor inside the span)', () => {
+describe('unwrapSpan (formatting toggle off from a cursor inside the span)', () => {
   it('removes the markers of the enclosing span, keeping the cursor in place', () => {
     const doc = '**Hello world**';
     const cursor = 7; // "**Hello| world**"
@@ -77,7 +77,7 @@ describe('unwrapSpan (R24 — toggle off from a cursor inside the span)', () => 
   });
 });
 
-describe('headingEdit (R24 — normalize, not stack)', () => {
+describe('headingEdit (formatting toggle — normalize, not stack)', () => {
   it('adds a heading to a plain line', () => {
     const doc = 'Hello';
     expect(apply(doc, headingEdit(doc, 0, 5, 2)).doc).toBe('## Hello');
@@ -121,7 +121,7 @@ describe('headingEdit (R24 — normalize, not stack)', () => {
   });
 });
 
-describe('fencedEdit (R23 — toggle fenced block)', () => {
+describe('fencedEdit (formatting shortcut — toggle fenced block)', () => {
   it('wraps the selected lines in fences', () => {
     const doc = 'let x = 1';
     expect(apply(doc, fencedEdit(doc, 0, 9)).doc).toBe('```\nlet x = 1\n```');
@@ -149,7 +149,7 @@ describe('fencedEdit (R23 — toggle fenced block)', () => {
   });
 });
 
-describe('listIndentEdit (R26 — CommonMark-correct nesting)', () => {
+describe('listIndentEdit (list indent / outdent — CommonMark-correct nesting)', () => {
   // cursor at the end of line `n` (0-based)
   const atEndOfLine = (doc: string, n: number) => {
     const lines = doc.split('\n');
@@ -189,7 +189,7 @@ describe('listIndentEdit (R26 — CommonMark-correct nesting)', () => {
   });
 });
 
-describe('listContinueEdit (R26b — Enter continues a list with "1.")', () => {
+describe('listContinueEdit (list continuation on Enter — Enter continues a list with "1.")', () => {
   const end = (doc: string, n: number) => {
     const lines = doc.split('\n');
     return lines.slice(0, n).reduce((s, l) => s + l.length + 1, 0) + lines[n].length;

@@ -1,5 +1,6 @@
 /**
- * Pure markdown-formatting transforms for the source editor (PRD R23–R25).
+ * Pure markdown-formatting transforms for the source editor (formatting
+ * shortcuts — apply/toggle + smart selection).
  *
  * Each function takes the whole document plus a selection range [from, to) and
  * returns a single contiguous replacement plus the resulting selection:
@@ -23,8 +24,8 @@ export interface EditResult {
 /**
  * Strip the symmetric markers off an inline span [from, to) — e.g. turn the
  * `**…**` of a StrongEmphasis node back into plain text — keeping the cursor on
- * the same character (R24: toggling a format off from a bare cursor *inside* the
- * span, not just when the selection touches the markers).
+ * the same character (formatting toggle: toggling a format off from a bare
+ * cursor *inside* the span, not just when the selection touches the markers).
  */
 export function unwrapSpan(doc: string, from: number, to: number, markerLen: number, cursor: number): EditResult {
   const inner = doc.slice(from + markerLen, to - markerLen);
@@ -42,9 +43,9 @@ function lineSpan(doc: string, from: number, to: number): { start: number; end: 
 
 /**
  * Toggle a symmetric wrapping marker (`**`, `*`, `` ` ``, `~~`) around the
- * selection (R24). Markers just outside the selection or just inside it are
+ * selection (formatting toggle). Markers just outside the selection or just inside it are
  * removed; otherwise the selection is wrapped. With no selection the markers are
- * inserted with the cursor between them so the user can type (R25).
+ * inserted with the cursor between them so the user can type (smart selection handling).
  */
 export function wrapEdit(doc: string, from: number, to: number, marker: string): EditResult {
   const mlen = marker.length;
@@ -73,7 +74,7 @@ export function wrapEdit(doc: string, from: number, to: number, marker: string):
 }
 
 /**
- * Set the heading level of every line the selection touches (R24). Headings
+ * Set the heading level of every line the selection touches (formatting toggle). Headings
  * normalize rather than stack: applying a different level switches to it;
  * applying the line's current level removes the heading.
  */
@@ -105,7 +106,7 @@ function clampOffset(n: number, lo: number, hi: number): number {
 }
 
 /**
- * Toggle a fenced code block around the line(s) the selection touches (R23). If
+ * Toggle a fenced code block around the line(s) the selection touches (formatting shortcut). If
  * those lines are already a ``` … ``` block, the fences are removed.
  */
 export function fencedEdit(doc: string, from: number, to: number): EditResult {
@@ -211,7 +212,7 @@ export function listIndentEdit(doc: string, pos: number, dir: 'in' | 'out'): Edi
 const LIST_LINE_RE = /^(\s*)(\d+[.)]|[-*+])(\s+)(.*)$/;
 
 /**
- * Continue a list on Enter (R26b). On a non-empty list item, start a new item on
+ * Continue a list on Enter (list continuation on Enter). On a non-empty list item, start a new item on
  * the next line with the same indent and marker — **ordered markers reset to
  * "1"** (lazy numbering: every item is `1.`, so inserting, reordering, and
  * re-nesting never force a renumber; the renderer shows the real sequence). On

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { chord, shortcutGroups } from './shortcuts';
 
-describe('shortcut chord formatting (Help, R48)', () => {
+describe('shortcut chord formatting (Help window)', () => {
   it('uses Ctrl and + joins off macOS', () => {
     expect(chord('win32', 'Mod', 'B')).toBe('Ctrl+B');
     expect(chord('win32', 'Mod', 'Shift', 'X')).toBe('Ctrl+Shift+X');
@@ -22,7 +22,7 @@ describe('shortcut chord formatting (Help, R48)', () => {
   });
 });
 
-describe('shortcut groups (Help, R48)', () => {
+describe('shortcut groups (Help window)', () => {
   it('lists the expected groups, each item with keys + action', () => {
     const groups = shortcutGroups('win32');
     expect(groups.map((g) => g.title)).toEqual([

@@ -1,5 +1,5 @@
 /**
- * App-version IPC (PRD R48, Help window). Registers a synchronous `app:version`
+ * App-version IPC (the Help window). Registers a synchronous `app:version`
  * channel that returns Electron's `app.getVersion()` — which reads package.json
  * in dev and the packaged app's baked-in version in a release. The preload
  * surfaces this as `window.galley.version`, so Help always shows the real

@@ -1,5 +1,5 @@
 /**
- * Startup arbitration (PRD §5.3 R11–R15).
+ * Startup arbitration (instance model & file delivery).
  *
  * Pure decision lifted out of `main.ts` so it's testable without Electron
  * (following the `startupFiles.ts` / `pdfName.ts` precedent). Given the result

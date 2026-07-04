@@ -1,9 +1,9 @@
 /**
- * Application menu (PRD R47 — native menu bar).
+ * Application menu (native menu bar).
  *
  * Three app menus (plus the macOS app menu): File (Open/Save/Reload File/Close
  * Tab, all calling back into main), a role-based Edit menu, and Help (the Help
- * window R48 plus Toggle Developer Tools — DevTools never auto-open; they're
+ * window plus Toggle Developer Tools — DevTools never auto-open; they're
  * opt-in here or via the --devtools flag). The View and Window menus are
  * intentionally omitted: their only deliberate items live in File (Reload File,
  * window close), and the rest (zoom / full screen / etc.) was unused clutter.
@@ -18,13 +18,13 @@ export interface MenuActions {
   saveFile: () => void;
   /** File → Reload File (re-read the open file from disk; keeps the layout). */
   reloadFile: () => void;
-  /** File → Print… (open the OS print dialog for the active tab's preview, R53). */
+  /** File → Print… (open the OS print dialog for the active tab's preview). */
   print: () => void;
-  /** File → Export to PDF… (Save dialog, then write the preview as a PDF, R52). */
+  /** File → Export to PDF… (Save dialog, then write the preview as a PDF). */
   exportPdf: () => void;
   /** File → Close Tab (close the active tab; prompts if it has unsaved edits). */
   closeTab: () => void;
-  /** Help → Galley Help (open the Help window, R48). */
+  /** Help → Galley Help (open the Help window). */
   help: () => void;
 }
 
@@ -39,11 +39,11 @@ export function buildAppMenu(actions: MenuActions): void {
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: actions.openFile },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: actions.saveFile },
         // Ctrl/Cmd+R re-reads the open file from disk, keeping the view layout
-        // (R31a). The webContents reload/forceReload roles are deliberately NOT
+        // (manual reload). The webContents reload/forceReload roles are deliberately NOT
         // here — and HMR is off (vite.renderer.config.ts) — so code changes need
         // a restart, never a silent in-place reload. (In File since View was removed.)
         { label: 'Reload File', accelerator: 'CmdOrCtrl+R', click: actions.reloadFile },
-        // Print / Export to PDF render only the active tab's preview (R52/R53).
+        // Print / Export to PDF render only the active tab's preview.
         // These are plain menu accelerators: unlike Ctrl+W (which Chromium binds
         // to window-close and we intercept in main.ts via before-input-event),
         // Ctrl+P / Ctrl+Shift+P have no default Electron/Chromium binding, so the
@@ -52,7 +52,7 @@ export function buildAppMenu(actions: MenuActions): void {
         { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: actions.exportPdf },
         { type: 'separator' },
         // Ctrl/Cmd+W closes the active tab (with an unsaved-edits prompt), not
-        // the window. The last tab closing returns to the welcome screen (R41/R46).
+        // the window. The last tab closing returns to the welcome screen.
         // The accelerator is shown but NOT registered here — the key is captured
         // in main.ts via before-input-event so Chromium's window-close can't fire;
         // registering it too would double-fire. The click still works (mouse).

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { hashContent, parseCliFileArgs, parseCliProjectArg, readFile, resolveLocalLink, writeFile } from './fileIo';
 
-describe('resolveLocalLink (preview local links, R4)', () => {
+describe('resolveLocalLink (preview local links)', () => {
   const from = path.resolve('docs', 'index.md');
 
   it('resolves a relative link against the source document folder', () => {
