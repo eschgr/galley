@@ -9,10 +9,16 @@ import {
   readProjectRecord,
   materializeProjectRecord,
   createOrAdoptRecord,
+  parseSessionRecord,
+  readSession,
+  writeSession,
   PROJECT_SCHEMA_VERSION,
+  SESSION_SCHEMA_VERSION,
+  SESSION_FILE,
   RUNTIME_DIR,
   PROJECT_FILE,
   type ProjectRecord,
+  type SessionRecord,
 } from './projectStore';
 
 // projectStore owns home-path derivation (§8.4), the §7 layout, and the durable
@@ -217,5 +223,89 @@ describe('materializeProjectRecord (PF3 materialize-or-reuse)', () => {
     const p = projectPaths(base, 'JustRecord');
     materializeProjectRecord(p, 'JustRecord');
     expect(fs.existsSync(p.runtimeDir)).toBe(false);
+  });
+});
+
+describe('session record (§8.6, PF19 — write side only)', () => {
+  const full: SessionRecord = {
+    schemaVersion: SESSION_SCHEMA_VERSION,
+    files: ['/a/one.md', '/b/two.md'],
+    activeIndex: 1,
+    cleanExit: false,
+  };
+
+  describe('parseSessionRecord (tolerant, versioned)', () => {
+    it('round-trips a full record', () => {
+      expect(parseSessionRecord({ ...full })).toEqual(full);
+    });
+
+    it('ignores unknown fields and defaults missing ones', () => {
+      const parsed = parseSessionRecord({ files: ['/x.md'], future: { y: 2 } });
+      expect(parsed?.files).toEqual(['/x.md']);
+      expect(parsed?.schemaVersion).toBe(SESSION_SCHEMA_VERSION);
+      expect(parsed?.activeIndex).toBe(-1); // missing → no active tab
+      expect(parsed?.cleanExit).toBe(true); // missing flag defaults to clean, never a false crash
+      expect(parsed).not.toHaveProperty('future');
+    });
+
+    it('preserves cleanExit true AND false (the load-bearing shutdown flag)', () => {
+      expect(parseSessionRecord({ files: [], cleanExit: false })?.cleanExit).toBe(false);
+      expect(parseSessionRecord({ files: [], cleanExit: true })?.cleanExit).toBe(true);
+    });
+
+    it('accepts an empty open set', () => {
+      const parsed = parseSessionRecord({ files: [], activeIndex: -1, cleanExit: false });
+      expect(parsed?.files).toEqual([]);
+      expect(parsed?.activeIndex).toBe(-1);
+    });
+
+    it('rejects garbage — non-object, or files not a string array', () => {
+      expect(parseSessionRecord(null)).toBeNull();
+      expect(parseSessionRecord('nope')).toBeNull();
+      expect(parseSessionRecord({})).toBeNull(); // no files array
+      expect(parseSessionRecord({ files: 'x.md' })).toBeNull(); // files not an array
+      expect(parseSessionRecord({ files: [1, 2] })).toBeNull(); // not all strings
+    });
+  });
+
+  describe('writeSession / readSession (atomic round-trip)', () => {
+    it('round-trips a record through disk', () => {
+      const home = freshBaseDir();
+      writeSession(home, full);
+      expect(readSession(home)).toEqual(full);
+    });
+
+    it('creates the home dir if absent', () => {
+      const base = freshBaseDir();
+      const home = path.join(base, 'nested', 'home'); // does not exist yet
+      writeSession(home, full);
+      expect(fs.existsSync(path.join(home, SESSION_FILE))).toBe(true);
+      expect(readSession(home)).toEqual(full);
+    });
+
+    it('persists cleanExit false then true across rewrites', () => {
+      const home = freshBaseDir();
+      writeSession(home, { ...full, cleanExit: false });
+      expect(readSession(home)?.cleanExit).toBe(false);
+      writeSession(home, { ...full, cleanExit: true });
+      expect(readSession(home)?.cleanExit).toBe(true);
+    });
+
+    it('leaves a valid, parseable JSON file (atomic write, no stray .swap temp)', () => {
+      const home = freshBaseDir();
+      writeSession(home, full);
+      const onDisk = fs.readFileSync(path.join(home, SESSION_FILE), 'utf8');
+      expect(() => JSON.parse(onDisk)).not.toThrow();
+      // The atomic temp file is renamed away, never left behind.
+      const leftovers = fs.readdirSync(home).filter((f) => f.includes('.swap'));
+      expect(leftovers).toEqual([]);
+    });
+
+    it('readSession returns null when absent or corrupt', () => {
+      const home = freshBaseDir();
+      expect(readSession(home)).toBeNull(); // absent
+      fs.writeFileSync(path.join(home, SESSION_FILE), '{not json');
+      expect(readSession(home)).toBeNull(); // garbage
+    });
   });
 });

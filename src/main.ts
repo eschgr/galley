@@ -10,6 +10,7 @@ import { createPlatformBridge, type SaveResult } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
+import { debounce } from './main/debounce';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
 // that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync
@@ -154,6 +155,26 @@ registerAppVersionIpc(ipcMain, app);
 ipcMain.handle('window:setActiveDocPath', (event, p) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) activeDocPath.set(win.id, typeof p === 'string' ? p : null);
+});
+
+// Session persistence (PF19, §8.6): the renderer reports its open-tab set on
+// every open/close/switch; persist it to the claimed project's session.json as a
+// crash safety net. The write is debounced (~500 ms) so rapid tab churn coalesces
+// into one disk write reflecting the settled set; the bridge no-ops in projectless
+// mode (no home). Slice A only WRITES — nothing reads session.json back yet.
+const SESSION_DEBOUNCE_MS = 500;
+const persistSession = debounce((session: { files: string[]; activeIndex: number }) => {
+  platform.writeSession(session);
+}, SESSION_DEBOUNCE_MS);
+
+ipcMain.handle('window:setSession', (_event, session: unknown) => {
+  if (!session || typeof session !== 'object') return;
+  const { files, activeIndex } = session as { files?: unknown; activeIndex?: unknown };
+  if (!Array.isArray(files) || !files.every((f) => typeof f === 'string')) return;
+  persistSession({
+    files: files as string[],
+    activeIndex: typeof activeIndex === 'number' ? activeIndex : -1,
+  });
 });
 
 // File → Print… (R53): open the OS print dialog on the active tab's preview. The
@@ -356,6 +377,13 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     for (const p of watchedPaths) platform.unwatch(p);
     watchedPaths.clear();
     activeDocPath.delete(mainWindow.id);
+    // Mark this as a CLEAN shutdown (§8.6): drop any pending debounced session
+    // write (the final set is already persisted, or there's nothing to persist),
+    // then flip the on-disk session's cleanExit flag to true. A whole-app crash
+    // never runs this, so `cleanExit:false` surviving to the next launch is the
+    // dirty-shutdown signal a later slice reads. No-ops in projectless mode.
+    persistSession.cancel();
+    platform.markCleanExit();
     void platform.closeChannel();
   });
 
