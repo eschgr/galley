@@ -70,6 +70,14 @@
   border: 1px solid var(--md-border, #d0d7de);
   padding: 6px 13px;
 }
+/* Keep the first column (typically labels/dates) on one line so a wide table
+   scrolls (via the table's overflow:auto) instead of shrinking and wrapping
+   short first-column cells. Markdown has no column-width syntax, so this is
+   purely a renderer concern (#59). */
+.markdown-preview th:first-child,
+.markdown-preview td:first-child {
+  white-space: nowrap;
+}
 .markdown-preview tr:nth-child(2n) {
   background: var(--md-zebra, #f6f8fa);
 }
