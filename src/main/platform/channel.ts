@@ -24,9 +24,13 @@
  *                   are reaped.
  *   <id>.<u>.msg    a committed message: a versioned JSON envelope
  *                   `{ v, type, ... }` (see ./protocol). Read, dispatched, deleted.
- *   <id>.<u>.ping   a liveness probe addressed to owner <id>; the owner answers
- *   <id>.<u>.pong   by RENAMING the ping to `.pong` (one file's lifecycle, not
- *                   two). Distinguishes a live owner from a stale owner.json.
+ *
+ * The channel is messages-only. Liveness is decided by `project.ts` from an
+ * OS-maintained signal (`kill(pid,0)` + start-time), not by a channel handshake:
+ * the old `.ping`→`.pong` ack was answered on the main-process event loop, so a
+ * native modal blocked it and the owner was falsely seen as dead (#56). No owner
+ * code participates in liveness now, so it stays truthful while the owner is
+ * modal-blocked.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,18 +40,11 @@ import { OWNER_FILE } from './project';
 
 const TMP_EXT = '.tmp';
 const MSG_EXT = '.msg';
-const PING_EXT = '.ping';
-const PONG_EXT = '.pong';
-/** Handshake/in-flight files older than this are orphans (crashed sender / abandoned probe); reapStale deletes them. */
+/** In-flight `.tmp` files older than this are orphans (crashed sender); reapStale deletes them. */
 const STALE_MS = 10_000;
-/** Default handshake budget — generous enough to cover an owner whose watcher is still starting. */
-const PING_TIMEOUT_MS = 1_500;
-const PING_INTERVAL_MS = 50;
 
 /** Per-process counter so concurrent drops from one sender get distinct names. */
 let seq = 0;
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** A message addressed to a given channel: `<channelId>.<unique>`. */
 function messageBase(dir: string, channelId: string): string {
@@ -91,8 +88,8 @@ export interface ListenOptions {
    * must recreate them with the SAME identity (see `project.ts#reassertOwner`),
    * and re-materialize `project.json` if the home was nuked; the bridge holds the
    * owner record + paths to do so. Routine channel churn (`.msg` consumed,
-   * `.ping`→`.pong`, `reapStale` deletions) does NOT trigger it — only removal of
-   * `owner.json` or of `runtimeDir` itself.
+   * `reapStale` deletions) does NOT trigger it — only removal of `owner.json` or
+   * of `runtimeDir` itself.
    */
   onReassert?: () => void;
 }
@@ -101,7 +98,7 @@ export interface ListenOptions {
 const REASSERT_DEBOUNCE_MS = 60;
 
 /**
- * Start consuming the channel for owner `channelId`. Reconciles messages/pings
+ * Start consuming the channel for owner `channelId`. Reconciles messages
  * already addressed to us (queued before this window mounted, or left by a prior
  * launch), reaps orphans, then watches for new ones. Each `open` message's path
  * is handed to `onFile`. Only files carrying OUR channelId are touched.
@@ -145,7 +142,6 @@ export function listenOnChannel(
         continue;
       }
       if (name.endsWith(MSG_EXT)) consumeMessage(path.join(dir, name), onFile);
-      else if (name.endsWith(PING_EXT)) ackPing(path.join(dir, name)); // answer a probe that beat us here
     }
   };
 
@@ -178,11 +174,10 @@ export function listenOnChannel(
       const name = path.basename(p);
       if (!name.startsWith(mine)) return; // addressed to a different owner — not ours to touch (also skips owner.json)
       if (name.endsWith(MSG_EXT)) consumeMessage(p, onFile);
-      else if (name.endsWith(PING_EXT)) ackPing(p); // a launching peer is checking we're alive
     });
     // Only `owner.json`'s removal is a discoverability loss; routine channel files
-    // (`.msg` consumed, `.ping`→`.pong` rename, reaped orphans) unlink constantly
-    // and must be ignored, or every message would trigger a needless re-assert.
+    // (`.msg` consumed, reaped `.tmp` orphans) unlink constantly and must be
+    // ignored, or every message would trigger a needless re-assert.
     w.on('unlink', (p) => {
       if (reasserting) return;
       if (path.basename(p) === OWNER_FILE) reassert();
@@ -270,60 +265,11 @@ function consumeMessage(filePath: string, onFile: (absPath: string) => void): vo
   }
 }
 
-/**
- * Probe whether a window is actively consuming owner `targetId`'s channel
- * (R11–R15 liveness). Drops a `.ping` addressed to that owner and waits for it
- * to be renamed to `.pong`. A live owner answers; a recycled-but-unrelated PID
- * consumes nothing and never does — so this is immune to PID reuse. Cleans up.
- */
-export async function pingChannel(
-  runtimeDir: string,
-  targetId: string,
-  { timeoutMs = PING_TIMEOUT_MS, intervalMs = PING_INTERVAL_MS } = {},
-): Promise<boolean> {
-  const dir = runtimeDir;
-  fs.mkdirSync(dir, { recursive: true });
-  const base = messageBase(dir, targetId);
-  const pingPath = base + PING_EXT;
-  const pongPath = base + PONG_EXT;
-  atomicWrite(base, PING_EXT, '');
-
-  const deadline = Date.now() + timeoutMs;
-  try {
-    while (Date.now() < deadline) {
-      if (fs.existsSync(pongPath)) return true;
-      await sleep(intervalMs);
-    }
-    return false;
-  } finally {
-    try {
-      fs.unlinkSync(pongPath);
-    } catch {
-      /* no ack arrived */
-    }
-    try {
-      fs.unlinkSync(pingPath);
-    } catch {
-      /* owner already renamed it to .pong */
-    }
-  }
-}
-
-/** Owner-side ack: rename the probe's `.ping` to `.pong` (one file, no churn). */
-function ackPing(pingPath: string): void {
-  const pongPath = pingPath.slice(0, -PING_EXT.length) + PONG_EXT;
-  try {
-    fs.renameSync(pingPath, pongPath);
-  } catch {
-    /* prober gave up and removed it — fine */
-  }
-}
-
-/** Delete `.tmp`/`.ping`/`.pong` files orphaned by a crashed sender or abandoned probe. */
+/** Delete `.tmp` files orphaned by a crashed sender mid-write. */
 function reapStale(dir: string): void {
   const now = Date.now();
   for (const name of safeReaddir(dir)) {
-    if (!(name.endsWith(TMP_EXT) || name.endsWith(PING_EXT) || name.endsWith(PONG_EXT))) continue;
+    if (!name.endsWith(TMP_EXT)) continue;
     const f = path.join(dir, name);
     try {
       if (now - fs.statSync(f).mtimeMs > STALE_MS) fs.unlinkSync(f);

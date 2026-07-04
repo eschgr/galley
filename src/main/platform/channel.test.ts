@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { sendToChannel, listenOnChannel, pingChannel, type ChannelListener } from './channel';
+import { sendToChannel, listenOnChannel, type ChannelListener } from './channel';
 import { acquireProject, reassertOwner, readProjectOwner, OWNER_FILE, type ProjectOwner } from './project';
 import { PROTOCOL_VERSION, PROTOCOL } from './protocol';
 
@@ -153,40 +153,6 @@ describe('channel message format (versioned envelope)', () => {
   });
 });
 
-describe('channel liveness handshake (PID-reuse defence)', () => {
-  it('a listening owner acknowledges a ping addressed to it', async () => {
-    const dir = freshRuntimeDir();
-    await listen(dir, ID, () => {
-      /* delivery not exercised here */
-    });
-    expect(await pingChannel(dir, ID)).toBe(true);
-  });
-
-  it('an owner ignores a ping addressed to a different id (times out false)', async () => {
-    const dir = freshRuntimeDir();
-    await listen(dir, ID, () => {
-      /* delivery not exercised here */
-    });
-    // Probe a different channel id — our owner must not answer for someone else.
-    expect(await pingChannel(dir, 'not-me', { timeoutMs: 400, intervalMs: 25 })).toBe(false);
-  });
-
-  it('an unconsumed channel does not ack (times out false)', async () => {
-    const dir = freshRuntimeDir();
-    expect(await pingChannel(dir, ID, { timeoutMs: 400, intervalMs: 25 })).toBe(false);
-  });
-
-  it('leaves no ping/pong files behind after a handshake', async () => {
-    const dir = freshRuntimeDir();
-    await listen(dir, ID, () => {
-      /* delivery not exercised here */
-    });
-    await pingChannel(dir, ID);
-    const leftovers = fs.readdirSync(dir).filter((n) => n.endsWith('.ping') || n.endsWith('.pong'));
-    expect(leftovers).toEqual([]);
-  });
-});
-
 // Re-assertion on external removal (PF8, §8.2 — the #60 defense-in-depth). A live
 // owner whose runtime/ or owner.json is deleted out from under it must recreate the
 // discoverable artifacts with the SAME identity, so a later launch's acquireProject
@@ -225,7 +191,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
 
   it('recreates owner.json with the SAME id when it is removed under a listener', async () => {
     const { runtimeDir } = freshHome();
-    const claim = await acquireProject('reassert-owner', runtimeDir, {}, { ping: async () => true });
+    const claim = await acquireProject('reassert-owner', runtimeDir, {}, {});
     const owner = claim.owner;
     const { reasserts } = await listenOwned(runtimeDir, owner);
 
@@ -238,7 +204,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
 
   it('recreates runtimeDir + owner.json (same id) and re-materializes project.json when the whole home is removed', async () => {
     const { home, runtimeDir, recordPath } = freshHome();
-    const claim = await acquireProject('reassert-home', runtimeDir, {}, { ping: async () => true });
+    const claim = await acquireProject('reassert-home', runtimeDir, {}, {});
     const owner = claim.owner;
     fs.writeFileSync(recordPath, JSON.stringify({ schemaVersion: 1, name: 'reassert-home', createdAt: 1 }));
 
@@ -273,6 +239,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
       host: os.hostname(),
       project: 'reassert-handoff',
       dropDir: runtimeDir,
+      startTime: 'st:owner',
     };
     reassertOwner(runtimeDir, owner); // publish owner.json as a live owner would on claim
     // A listener consuming owner's channel, wired (as the bridge does) to re-assert.
@@ -284,11 +251,11 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
     expect(await waitFor(() => readProjectOwner(runtimeDir)?.id === owner.id)).toBe(true);
 
     // A later launch for the same project: the recreated owner.json points at THIS
-    // live listener; an injected ping that acks models the live owner answering, so
-    // acquireProject must defer (owned:false) rather than claim a duplicate.
+    // live owner; an injected start-time that still MATCHES the record models the
+    // owner being alive, so acquireProject must defer (owned:false) not duplicate.
     const second = await acquireProject('reassert-handoff', runtimeDir, {}, {
-      ping: async () => true,
       alive: () => true,
+      queryStartTime: () => 'st:owner',
     });
     expect(second.owned).toBe(false);
     expect(second.owner.id).toBe(owner.id);
@@ -296,7 +263,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
 
   it('still delivers messages after a re-assertion (watch stays healthy)', async () => {
     const { runtimeDir } = freshHome();
-    const claim = await acquireProject('reassert-deliver', runtimeDir, {}, { ping: async () => true });
+    const claim = await acquireProject('reassert-deliver', runtimeDir, {}, {});
     const owner = claim.owner;
     const got: string[] = [];
     const { reasserts } = await listenOwned(runtimeDir, owner, (p) => got.push(p));
@@ -318,7 +285,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
     // We model the peer's synchronous drop inside onReassert (which reassertOwner
     // recreated the dir for), guaranteeing the .msg is present before re-attach.
     const { runtimeDir } = freshHome();
-    const claim = await acquireProject('reassert-drain', runtimeDir, {}, { ping: async () => true });
+    const claim = await acquireProject('reassert-drain', runtimeDir, {}, {});
     const owner = claim.owner;
     const got: string[] = [];
 
@@ -344,7 +311,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
 
   it('does not re-assert on routine channel churn (a consumed message)', async () => {
     const { runtimeDir } = freshHome();
-    const claim = await acquireProject('reassert-churn', runtimeDir, {}, { ping: async () => true });
+    const claim = await acquireProject('reassert-churn', runtimeDir, {}, {});
     const owner = claim.owner;
     const got: string[] = [];
     const { reasserts } = await listenOwned(runtimeDir, owner, (p) => got.push(p));
