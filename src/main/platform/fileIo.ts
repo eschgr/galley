@@ -1,5 +1,6 @@
 /**
- * Node-backed file IO for the platform seam (PRD §5.2, §5.6). Pure helpers +
+ * Node-backed file IO for the platform seam (PRD: file IO and saving &
+ * conflict handling). Pure helpers +
  * thin fs wrappers, kept separate from the bridge factory so they're unit-
  * testable. All OS access for files lives here.
  */
@@ -15,7 +16,7 @@ export function hashContent(content: string): string {
 }
 
 /**
- * Pick the file paths to open from a process argv (R7: `galley <file> [file …]`).
+ * Pick the file paths to open from a process argv (`galley <file> [file …]`).
  *
  * Returns EVERY non-flag argument, each resolved to absolute, in command-line
  * order — so `galley a.md b.md c.md` opens all three. Skips the executable (and,
@@ -39,7 +40,7 @@ export function parseCliFileArgs(argv: readonly string[], packaged: boolean): st
 }
 
 /**
- * Resolve a local-file link clicked in the preview (R4) to an absolute path.
+ * Resolve a local-file link clicked in the preview to an absolute path.
  * `href` is the link target, `fromPath` the absolute path of the document it was
  * clicked in. Drops any `#fragment`, percent-decodes, accepts `file://` URLs, and
  * resolves a relative path against the source document's folder. Returns null for
@@ -64,7 +65,7 @@ export function resolveLocalLink(href: string, fromPath: string): string | null 
 }
 
 /**
- * Pick the project name from a process argv (R11): `galley --project <name> …`
+ * Pick the project name from a process argv: `galley --project <name> …`
  * or `--project=<name>`. The name identifies the project whose window this file
  * belongs to; the app derives the durable home from it (see
  * `projectStore.ts#deriveDirName`). Returns null when no project was passed.
@@ -86,7 +87,7 @@ export async function readFile(absPath: string): Promise<FileSnapshot> {
 
 /**
  * Write UTF-8 content and return the new snapshot (its hash becomes the new
- * baseline). The disk-vs-baseline guard (R34) is the caller's responsibility and
+ * baseline). The disk-vs-baseline guard is the caller's responsibility and
  * is added with the watcher in a later phase.
  */
 export async function writeFile(absPath: string, content: string): Promise<FileSnapshot> {

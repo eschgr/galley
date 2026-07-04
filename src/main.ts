@@ -58,12 +58,12 @@ const platform = createPlatformBridge({
   projectsHome: () => path.join(app.getPath('userData'), 'projects'),
 });
 
-// Files passed on the command line (R7) are held here and pulled by the renderer
+// Files passed on the command line are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
 // renderer has registered its listener. `galley a.md b.md` opens both.
 let startupFilePaths: string[] = [];
 
-// Files delivered over the channel (R11) before the renderer has mounted are
+// Files delivered over the channel before the renderer has mounted are
 // queued here and flushed once the page finishes loading.
 const pendingChannelFiles: string[] = [];
 let rendererReady = false;
@@ -72,11 +72,12 @@ function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-// Every open file (one per tab, R39) is watched for external changes. The set
+// Every open file (one per tab) is watched for external changes. The set
 // tracks what's currently watched so opens are idempotent and closes unwatch.
 const watchedPaths = new Set<string>();
 
-// Watch a file and forward genuine external changes to the renderer (R32/R33).
+// Watch a file and forward genuine external changes to the renderer (watching
+// open files, with self-write detection so our own saves aren't flagged).
 // Additive and idempotent — opening more files doesn't stop watching the others.
 function watchFile(win: BrowserWindow, absPath: string): void {
   if (watchedPaths.has(absPath)) return;
@@ -90,7 +91,8 @@ function unwatchPath(absPath: string): void {
   if (watchedPaths.delete(absPath)) platform.unwatch(absPath);
 }
 
-// Read a file, hand it to the renderer to open (R7/R8), and watch it. Errors
+// Read a file, hand it to the renderer to open (from a CLI arg or the file
+// dialog), and watch it. Errors
 // surface as a dialog rather than crashing the open.
 async function openPath(win: BrowserWindow, absPath: string): Promise<void> {
   try {
@@ -102,7 +104,7 @@ async function openPath(win: BrowserWindow, absPath: string): Promise<void> {
   }
 }
 
-// File → Open… (R8): native dialog, then open the chosen file.
+// File → Open…: native dialog, then open the chosen file.
 async function openFileViaDialog(): Promise<void> {
   const win = targetWindow();
   if (!win) return;
@@ -118,37 +120,37 @@ async function openFileViaDialog(): Promise<void> {
   await openPath(win, filePaths[0]);
 }
 
-// File → Save (R30): the document lives in the renderer, so ask it to save.
+// File → Save: the document lives in the renderer, so ask it to save.
 function requestSave(): void {
   targetWindow()?.webContents.send('menu:save');
 }
 
 // View → Reload File (Ctrl/Cmd+R): ask the renderer to re-read the active tab's
-// file from disk and reload it in place (R31a) — the renderer owns which tab is
+// file from disk and reload it in place — the renderer owns which tab is
 // active, so it does the read and keeps the layout/tab.
 function requestReload(): void {
   targetWindow()?.webContents.send('menu:reloadFile');
 }
 
 // File → Close Tab (Ctrl/Cmd+W): the renderer owns the tabs, so ask it to close
-// the active one (prompting if it has unsaved edits, R41).
+// the active one (prompting if it has unsaved edits).
 function requestCloseTab(): void {
   targetWindow()?.webContents.send('menu:closeTab');
 }
 
-// Help → Galley Help (R48): the Help window is a renderer modal, so ask it to open.
+// Help → Galley Help: the Help window is a renderer modal, so ask it to open.
 function requestHelp(): void {
   targetWindow()?.webContents.send('menu:help');
 }
 
 // The active document's path per window, mirrored from the renderer purely so
-// Export to PDF can default its Save dialog beside the source (R52). This is the
+// Export to PDF can default its Save dialog beside the source. This is the
 // only renderer→main signal for the print/PDF work — the print itself runs here
 // in main (webContents.print / printToPDF), not via a menu round-trip. Multi-
 // window safe, like readingWidth above; null on the welcome screen.
 const activeDocPath = new Map<number, string | null>();
 
-// App version for the Help window (R48) — synchronous `app:version` channel
+// App version for the Help window — synchronous `app:version` channel
 // returning app.getVersion(); see src/main/appVersion.ts (extracted so the
 // handler is unit-testable). The preload exposes it as `window.galley.version`.
 registerAppVersionIpc(ipcMain, app);
@@ -204,7 +206,7 @@ ipcMain.handle('window:getRestore', async (event) => {
   });
 });
 
-// File → Print… (R53): open the OS print dialog on the active tab's preview. The
+// File → Print…: open the OS print dialog on the active tab's preview. The
 // @media print rules (src/renderer/print.css) strip the chrome and paginate the
 // whole document; printBackground pairs with the color-adjust rules.
 //
@@ -229,7 +231,7 @@ function requestPrint(): void {
   win.webContents.print({ printBackground: true });
 }
 
-// File → Export to PDF… (R52): always show a native Save dialog pre-filled
+// File → Export to PDF…: always show a native Save dialog pre-filled
 // beside the source (or Galley document.pdf in Documents with nothing open).
 // Write only on confirm; cancel writes nothing. IO/render errors surface as a
 // dialog, never a crash (mirrors the openPath error pattern).
@@ -251,7 +253,8 @@ async function requestExportPdf(): Promise<void> {
   }
 }
 
-// Save path (R29/R30/R34): the renderer sends content. A `force` write
+// Save path (auto-save, force-save, and the write-path conflict guard): the
+// renderer sends content. A `force` write
 // overwrites unconditionally ("keep mine"); otherwise it is a checked save that
 // refuses to write if disk diverged since we last knew (the write-path guard),
 // returning the on-disk snapshot so the renderer can prompt.
@@ -276,7 +279,7 @@ ipcMain.handle('file:write', async (_event, args: unknown): Promise<SaveResult> 
   return platform.saveChecked(absPath, content);
 });
 
-// R7: the renderer pulls the command-line files (if any) once on mount. Reads
+// The renderer pulls the command-line files (if any) once on mount. Reads
 // each, watches it, and returns the snapshots in command-line order — the
 // renderer opens them as tabs and focuses the first. An unreadable path surfaces
 // a dialog and is skipped, never fatal to the remaining files.
@@ -294,7 +297,7 @@ ipcMain.handle('file:getStartup', async (event) => {
   );
 });
 
-// Read a file on demand (R31a reload, and opening a file already known to the
+// Read a file on demand (manual reload, and opening a file already known to the
 // renderer). Updates the baseline hash and (re)watches it. Errors surface as a
 // dialog and resolve to null.
 ipcMain.handle('file:read', async (event, p: unknown) => {
@@ -310,12 +313,12 @@ ipcMain.handle('file:read', async (event, p: unknown) => {
   }
 });
 
-// A tab closed (R41): stop watching its file.
+// A tab closed: stop watching its file.
 ipcMain.handle('file:closed', (_event, p: unknown) => {
   if (typeof p === 'string') unwatchPath(p);
 });
 
-// A local-file link clicked in the preview (R4): resolve it relative to the
+// A local-file link clicked in the preview: resolve it relative to the
 // source document's folder and open it as a tab. External (web/mail) links go to
 // the system browser; in-page anchors are handled in the renderer.
 ipcMain.handle('file:openLocal', (event, args: unknown) => {
@@ -333,7 +336,7 @@ ipcMain.handle('file:openLocal', (event, args: unknown) => {
 // use View → Toggle Developer Tools (or F12 / Ctrl+Shift+I) in the menu.
 const OPEN_DEVTOOLS = process.argv.includes('--devtools');
 
-// R4: open a preview link in the system default browser. Renderer requests go
+// Open a preview link in the system default browser. Renderer requests go
 // through here (via the preload bridge) so the renderer never navigates itself.
 // Only web/mail schemes are honored; anything else (file:, javascript:, …) is
 // refused, so a crafted href cannot launch an arbitrary handler.
@@ -350,7 +353,7 @@ ipcMain.handle('shell:openExternal', (_event, url: unknown) => {
   }
 });
 
-// Auto-resize on the Show/Hide Source toggle (R45): showing the source roughly
+// Auto-resize on the Show/Hide Source toggle: showing the source roughly
 // doubles the window width to make room for the side-by-side editor; hiding it
 // restores the earlier (reading) width. The reading width is remembered per
 // window so a user's manual resize is respected. Width is clamped to the display
@@ -428,7 +431,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     void platform.closeChannel();
   });
 
-  // R4 / §7 security: links and window.open() from the preview must open in the
+  // §7 security: links and window.open() from the preview must open in the
   // system browser, never navigate the app's own window or spawn an in-app
   // browser. Anything that is not the app's own page is handed to the OS.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -455,7 +458,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
   // Ctrl/Cmd+W must close the active TAB, not the window. A menu accelerator
   // doesn't reliably override Chromium's built-in window-close on this key, so
   // intercept it at the input level, swallow it, and ask the renderer to close
-  // the active tab (R41). The last tab closing returns to the welcome screen.
+  // the active tab. The last tab closing returns to the welcome screen.
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
     const mod = process.platform === 'darwin' ? input.meta : input.control;
@@ -473,7 +476,8 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     }
   });
 
-  // Channel (R11–R15): when this process owns a project (`--project <name>`),
+  // Channel (the instance model & file delivery): when this process owns a
+  // project (`--project <name>`),
   // open any absolute path the caller drops into the project's channel as a new,
   // focused tab. The app self-arbitrated at startup (this window won the claim);
   // a duplicate launch hands its files here rather than opening another window.
@@ -529,7 +533,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     platform.listenOnChannel(project, channelId, (absPath) => {
       if (mainWindow.isDestroyed()) return;
       if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus(); // R14: the delivered file's tab is focused
+      mainWindow.focus(); // the delivered file's tab is focused
       const resolved = path.resolve(absPath);
       if (rendererReady) void openPath(mainWindow, resolved);
       else pendingChannelFiles.push(resolved);
@@ -551,7 +555,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     mainWindow.webContents.openDevTools();
   }
 
-  // R7: record the command-line files for the renderer to pull on mount.
+  // Record the command-line files for the renderer to pull on mount.
   startupFilePaths = files;
 };
 
@@ -568,7 +572,8 @@ app.on('ready', async () => {
     help: requestHelp,
   });
 
-  // Self-arbitration (R11–R15): with `--project <name>`, claim the project. If a
+  // Self-arbitration (the instance model & file delivery): with `--project
+  // <name>`, claim the project. If a
   // live window already owns it (its pid is alive AND its recorded OS start-time
   // still matches — the start-time liveness check, §8.1/#56), drop our files into
   // its channel and exit rather than open a duplicate; otherwise become its window.
@@ -587,7 +592,8 @@ app.on('ready', async () => {
       }
       if (action.kind === 'incompatible') {
         // A different-major Galley owns this project; writing to it would pollute a
-        // queue it can't parse. Surface and exit rather than fail silently (R11–R15).
+        // queue it can't parse. Surface and exit rather than fail silently (part of
+        // the instance model & file delivery).
         dialog.showErrorBox(
           'Galley version mismatch',
           `Another, incompatible version of Galley (channel protocol ${action.ownerProtocol}) already owns ` +
@@ -613,9 +619,10 @@ app.on('ready', async () => {
   createWindow(project, files);
 });
 
-// PRD R46: closing the last tab keeps the app open. Quitting the whole app is a
-// separate, explicit action. The skeleton keeps the default platform behavior
-// for now; window/tab lifecycle is wired up in a later step.
+// PRD (empty-state / welcome screen): closing the last tab keeps the app open.
+// Quitting the whole app is a separate, explicit action. The skeleton keeps the
+// default platform behavior for now; window/tab lifecycle is wired up in a
+// later step.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -629,6 +636,6 @@ app.on('activate', () => {
   }
 });
 
-// All OS-touching work (file IO + hashing, the file watcher + conflict handling
-// R32–R38, and the per-project file-drop channel R11–R15) lives behind the
-// platform seam (src/main/platform). See PRD §7 (architecture notes) and §9.
+// All OS-touching work (file IO + hashing, the file watcher + conflict handling,
+// and the per-project file-drop channel) lives behind the platform seam
+// (src/main/platform). See PRD §7 (architecture notes) and §9.

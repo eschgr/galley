@@ -1,6 +1,6 @@
 /**
  * One self-contained view per open tab (#26). Each TabView owns its OWN editor +
- * preview + the split layout + the editor↔preview scroll-sync (R18). All open
+ * preview + the split layout + the editor↔preview scroll-sync. All open
  * tabs' TabViews stay mounted; only the active one is visible (the rest are
  * display:none via the `hidden` flag). Switching tabs just changes which one is
  * visible — no re-parse, no DOM rebuild, no state-swap. This replaces the old
@@ -40,11 +40,11 @@ export interface TabViewHandle {
   getText(): string;
   /** Top of the editor viewport as a 0-based fractional source line. */
   getTopLine(): number;
-  /** Snapshot the link context at the cursor (Ctrl+K, R27). */
+  /** Snapshot the link context at the cursor (Ctrl+K). */
   requestLink(): ReturnType<EditorHandle['requestLink']>;
-  /** Insert/replace the remembered range with a link (R27). */
+  /** Insert/replace the remembered range with a link. */
   applyLink(text: string, url: string): void;
-  /** Strip the remembered link to plain text (R27). */
+  /** Strip the remembered link to plain text. */
   removeLink(): void;
   /** Move keyboard focus into the editor. */
   focusEditor(): void;
@@ -68,9 +68,9 @@ interface TabViewProps {
   hidden: boolean;
   /** The user edited this tab's source. */
   onSourceChange: (text: string) => void;
-  /** Cmd/Ctrl+K in the editor — host opens the link dialog (R27). */
+  /** Cmd/Ctrl+K in the editor — host opens the link dialog. */
   onLink?: () => void;
-  /** A local-file link was clicked in this tab's preview (R4). */
+  /** A local-file link was clicked in this tab's preview. */
   onOpenLocal?: (href: string) => void;
 }
 
@@ -113,7 +113,7 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
 
   // Reload from disk (Ctrl+R / external refresh / keep-mine): App bumped
   // docVersion, so re-seed the editor with the new text and best-effort restore
-  // the reading line (R31a keeps the reading position rather than jumping to the
+  // the reading line (keep the reading position rather than jumping to the
   // top). Skip the very first run (mount already initialised from initialText).
   const firstVersion = useRef(true);
   useEffect(() => {

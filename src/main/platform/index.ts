@@ -1,5 +1,5 @@
 /**
- * Portability seam (PRD §7 architecture notes, §9 migration path).
+ * Portability seam (PRD: architecture notes & migration path).
  *
  * ALL OS-touching main-process work — file read/write, content hashing,
  * file watching, the per-project channel, and CLI parsing — sits behind this
@@ -41,15 +41,15 @@ import {
 
 export type { ClaimResult } from './project';
 
-/** A file's content plus the baseline hash captured at read/write time (PRD §5.6). */
+/** A file's content plus the baseline hash captured at read/write time (PRD: saving & conflict handling). */
 export interface FileSnapshot {
   readonly path: string;
   readonly content: string;
-  /** Content hash recorded as the "baseline" for conflict detection (R33–R35). */
+  /** Content hash recorded as the "baseline" for conflict detection (self-write detection + read/write-path conflict guards). */
   readonly hash: string;
 }
 
-/** A genuine external change the watcher forwards to the renderer (R32–R33). */
+/** A genuine external change the watcher forwards to the renderer (watch open files + self-write detection). */
 export interface ExternalChangeEvent {
   readonly path: string;
   /** The new on-disk content, so the renderer can reload without a round-trip. */
@@ -58,29 +58,29 @@ export interface ExternalChangeEvent {
   readonly hash: string;
 }
 
-/** Result of a checked save (R34): either it wrote, or disk had diverged. */
+/** Result of a checked save (write-path conflict guard): either it wrote, or disk had diverged. */
 export type SaveResult =
   | { readonly conflict: false; readonly file: FileSnapshot }
   | { readonly conflict: true; readonly disk: FileSnapshot };
 
 export interface PlatformBridge {
-  // --- CLI (R7) -----------------------------------------------------------
+  // --- CLI (open a file via CLI argument) ---------------------------------
   /**
-   * Absolute file paths passed on the command line at launch (R7), in order;
+   * Absolute file paths passed on the command line at launch (open a file via CLI argument), in order;
    * empty if none. `galley a.md b.md` opens both. `packaged` distinguishes
    * `galley.exe …` from a dev `electron . …`.
    */
   parseCliFileArgs(argv: readonly string[], packaged: boolean): string[];
-  /** The `--project <name>` value passed at launch, if any (R11/R12). */
+  /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
 
   /**
-   * Resolve a local-file link clicked in the preview (R4) to an absolute path,
+   * Resolve a local-file link clicked in the preview (preview link handling) to an absolute path,
    * relative to the document it was clicked in. Returns null for an unusable href.
    */
   resolveLocalLink(href: string, fromPath: string): string | null;
 
-  // --- File IO + hashing (R33–R35) ---------------------------------------
+  // --- File IO + hashing (self-write detection + conflict guards) --------
   /** Read a file and record its hash as the last-known on-disk state. */
   readFile(absPath: string): Promise<FileSnapshot>;
   /**
@@ -89,17 +89,17 @@ export interface PlatformBridge {
    */
   writeFile(absPath: string, content: string): Promise<FileSnapshot>;
   /**
-   * Write only if disk still matches what we last knew (R34 write-path guard).
+   * Write only if disk still matches what we last knew (write-path conflict guard).
    * If disk has diverged (an external change landed since our last read/write),
    * returns the on-disk snapshot WITHOUT writing, so the caller can prompt.
    */
   saveChecked(absPath: string, content: string): Promise<SaveResult>;
 
-  // --- File watching (R32, R37) ------------------------------------------
+  // --- File watching (watch open files; watcher debounce) ----------------
   watch(absPath: string, onChange: (event: ExternalChangeEvent) => void): void;
   unwatch(absPath: string): void;
 
-  // --- Per-project channel (R11–R15) -------------------------------------
+  // --- Per-project channel (the instance model & file delivery) ----------
   /**
    * Claim the project for this process, taking over a stale/absent owner. When
    * a *live* instance already owns it (confirmed via an OS start-time match, so a
@@ -174,7 +174,7 @@ export interface PlatformBridgeOptions {
 export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBridge {
   // The hash of the on-disk content as we last knew it (set on read/write and
   // when we forward an external change), per path. Drives both self-write
-  // detection (R33) and the write-path divergence guard (R34): a watcher event
+  // detection and the write-path divergence guard: a watcher event
   // or a save whose disk hash matches `knownHash` is consistent with our view.
   const knownHash = new Map<string, string>();
   const watchers = new Map<string, FSWatcher>();
@@ -221,7 +221,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
     async saveChecked(absPath, content) {
       const onDisk = await fileIo.readFile(absPath); // raw read — does NOT update knownHash
       if (onDisk.hash !== knownHash.get(absPath)) {
-        return { conflict: true, disk: onDisk }; // diverged since we last knew (R34)
+        return { conflict: true, disk: onDisk }; // diverged since we last knew
       }
       const file = await fileIo.writeFile(absPath, content);
       knownHash.set(absPath, file.hash);
@@ -232,13 +232,13 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       closeWatcher(absPath); // one watcher per path
       const watcher = chokidarWatch(absPath, {
         ignoreInitial: true,
-        // Coalesce rapid/partial external writes into one stable event (R37).
+        // Coalesce rapid/partial external writes into one stable event (watcher debounce).
         awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 40 },
       });
       const handle = async (): Promise<void> => {
         try {
           const snapshot = await fileIo.readFile(absPath);
-          if (snapshot.hash === knownHash.get(absPath)) return; // unchanged from our view (R33)
+          if (snapshot.hash === knownHash.get(absPath)) return; // unchanged from our view (self-write detection)
           knownHash.set(absPath, snapshot.hash); // remember the new on-disk state
           onChange({ path: absPath, content: snapshot.content, hash: snapshot.hash });
         } catch {

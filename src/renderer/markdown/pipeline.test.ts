@@ -79,7 +79,7 @@ describe('image sources (#25 — remote web images)', () => {
   });
 });
 
-describe('GFM rendering (R1)', () => {
+describe('GFM rendering', () => {
   it('renders tables', () => {
     const html = renderMarkdown('| A | B |\n|---|---|\n| 1 | 2 |');
     expect(html).toContain('<table'); // may carry a data-source-line attribute
@@ -102,7 +102,7 @@ describe('GFM rendering (R1)', () => {
   });
 });
 
-describe('math delimiters (R2)', () => {
+describe('math delimiters (LaTeX math rendering)', () => {
   it('renders inline dollar math', () => {
     expect(renderMarkdown('the value $a^2 + b^2$ here')).toMatch(/class="katex/);
   });
@@ -127,7 +127,7 @@ describe('math delimiters (R2)', () => {
   });
 });
 
-describe('R6 floor: a bad formula degrades to its source, never throws', () => {
+describe('math floor: a bad formula degrades to its source, never throws', () => {
   it('renders an invalid formula without throwing', () => {
     let html = '';
     expect(() => {
@@ -140,7 +140,7 @@ describe('R6 floor: a bad formula degrades to its source, never throws', () => {
   });
 });
 
-describe('fenced-code highlighting (R3)', () => {
+describe('fenced-code highlighting', () => {
   it('highlights a known language', () => {
     const html = renderMarkdown('```python\ndef f():\n    return 1\n```');
     expect(html).toContain('class="language-python"');
@@ -165,7 +165,7 @@ describe('security: raw HTML is not passed through (§3/§7, html:false)', () =>
   });
 });
 
-describe('source-line anchors for scroll sync (R18)', () => {
+describe('source-line anchors for scroll sync', () => {
   it('annotates a heading and paragraph with their 0-based source line', () => {
     const html = renderMarkdown('# Title\n\nA paragraph.\n');
     expect(html).toMatch(/<h1[^>]*data-source-line="0"/);

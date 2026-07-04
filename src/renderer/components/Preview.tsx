@@ -1,8 +1,9 @@
 /**
- * Live rendered preview (PRD R1–R3, R17). Renders the markdown pipeline output
- * and keeps a line-anchor map (from data-source-line) so the split view can align
- * it with the editor (R18). Anchor clicks are routed to the system browser (R4) —
- * the renderer never navigates itself.
+ * Live rendered preview (PRD: markdown rendering — GFM, math, code highlighting;
+ * live preview as you type). Renders the markdown pipeline output and keeps a
+ * line-anchor map (from data-source-line) so the split view can align it with the
+ * editor. Anchor clicks are routed to the system browser — the renderer never
+ * navigates itself.
  *
  * Each open tab owns its OWN Preview (one per TabView, #26), so the per-tab
  * reading-position stash/restore that used to live here — restoreScrollTop +
@@ -31,7 +32,7 @@ export interface PreviewHandle {
   /** Visible height of the scroller (px) — one screenful, used as the blend window (#18). */
   clientHeight(): number;
   /** The px scrollTop that would put a 0-based fractional source line at the top
-   *  — the line-anchored target, without actually scrolling (R18 / #18). */
+   *  — the line-anchored target, without actually scrolling (scroll sync / #18). */
   scrollTopForLine(line: number): number;
   /** Jump to the heading whose slug is `id` (a file-link `#fragment` target).
    *  Returns false if no such heading exists. */
@@ -45,7 +46,7 @@ interface PreviewProps {
    *  and its line geometry is current. Used to re-align the editor on reveal. */
   onLayout?: () => void;
   /** A local-file link was clicked — open it (host resolves it relative to the
-   *  active document and opens a tab). External links go to the browser (R4). */
+   *  active document and opens a tab). External links go to the browser. */
   onOpenLocal?: (href: string) => void;
 }
 
@@ -124,7 +125,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
   }));
 
   // In-page anchor links (`#heading`) jump within the preview; every other link
-  // opens in the system browser (R4 — the renderer never navigates itself).
+  // opens in the system browser (the renderer never navigates itself).
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const anchor = (e.target as HTMLElement).closest('a');
     if (!anchor) return;
@@ -137,7 +138,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
         break;
       }
       case 'external':
-        void window.galley?.openExternal(href); // → system browser (R4)
+        void window.galley?.openExternal(href); // → system browser
         break;
       case 'local':
         onOpenLocal?.(href); // file path / file:// → open as a tab

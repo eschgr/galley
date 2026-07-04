@@ -1,5 +1,6 @@
 /**
- * Out-of-sync notice (PRD R34/R35, v1 labeled-choice — no diff view, see §3).
+ * Out-of-sync notice (PRD: write-path & read-path conflict guards; v1
+ * labeled-choice — no diff view).
  * Pops once, loudly, the first time the open file diverges on disk while the
  * buffer has unsaved edits. There are only two real choices — take theirs or
  * keep yours. Keeping yours quiets later divergence to the passive status-bar

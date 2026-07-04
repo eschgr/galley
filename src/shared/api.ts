@@ -5,18 +5,18 @@
  *
  * File watching, the channel listener, and conflict signalling get added here
  * (and implemented behind the platform seam) in later phases. Keeping this typed
- * and minimal is the renderer side of the PRD §7 security model and the §9
+ * and minimal is the renderer side of the PRD security model and the
  * portability seam.
  */
 
-/** A file plus the baseline hash captured at read/write time (PRD §5.6). */
+/** A file plus the baseline hash captured at read/write time (PRD: saving & conflict handling). */
 export interface OpenedFile {
   readonly path: string;
   readonly content: string;
   readonly hash: string;
 }
 
-/** Outcome of a save (R34): it wrote, or disk had diverged (no write). */
+/** Outcome of a save (write-path conflict guard): it wrote, or disk had diverged (no write). */
 export type SaveOutcome =
   | { readonly conflict: false; readonly file: OpenedFile }
   | { readonly conflict: true; readonly disk: OpenedFile };
@@ -24,7 +24,7 @@ export type SaveOutcome =
 export interface GalleyApi {
   /** Host platform, surfaced for platform-conditional UI (shortcut labels, etc.). */
   readonly platform: NodeJS.Platform;
-  /** App version, for the Help window (PRD R48). */
+  /** App version, for the Help window (PRD: the Help window). */
   readonly version: string;
   /**
    * The claimed project's name, surfaced in the OS window title (PF24). Fixed
@@ -33,12 +33,12 @@ export interface GalleyApi {
    */
   readonly projectName: string | null;
   /**
-   * Open a URL in the system default browser (PRD R4). Only http/https/mailto
+   * Open a URL in the system default browser (PRD: preview link handling). Only http/https/mailto
    * are honored by the main process; other schemes are silently ignored.
    */
   openExternal(url: string): Promise<void>;
   /**
-   * Open a local-file link clicked in the preview (R4): `href` is resolved
+   * Open a local-file link clicked in the preview: `href` is resolved
    * relative to `fromPath`'s folder and opened as a tab. For relative/absolute
    * file paths and `file://` URLs — external (web/mail) links use openExternal.
    */
@@ -46,12 +46,12 @@ export interface GalleyApi {
   /**
    * Tell the main process whether the source pane is now visible, so it can
    * widen the window for side-by-side editing or shrink it back for reading
-   * (PRD R45). A no-op effect when the window is maximized/fullscreen.
+   * (PRD: split view & Show/Hide Source reading mode). A no-op effect when the window is maximized/fullscreen.
    */
   setSourceVisible(visible: boolean): Promise<void>;
   /**
    * Mirror the active document's path to main so Export to PDF can default the
-   * Save dialog beside the source (R52). Fire-and-forget; null on the welcome
+   * Save dialog beside the source (Export to PDF). Fire-and-forget; null on the welcome
    * screen.
    */
   setActiveDocPath(path: string | null): void;
@@ -73,33 +73,33 @@ export interface GalleyApi {
   getRestore(): Promise<{ files: OpenedFile[]; activeIndex: number } | null>;
 
   /**
-   * Save content to a path (R29/R30). A checked save (default) refuses to write
+   * Save content to a path (debounced auto-save / force-save). A checked save (default) refuses to write
    * if disk diverged since we last knew, resolving to `{ conflict: true, disk }`
-   * (R34); `force` overwrites unconditionally ("keep mine").
+   * (write-path conflict guard); `force` overwrites unconditionally ("keep mine").
    */
   saveFile(filePath: string, content: string, force?: boolean): Promise<SaveOutcome>;
-  /** Read a file on demand — used to reload a tab in place (R31a). Resolves to
+  /** Read a file on demand — used to reload a tab in place (manual reload). Resolves to
    *  null if it can't be read. (Re)watches the file. */
   readFile(filePath: string): Promise<OpenedFile | null>;
-  /** Tell the main process a tab closed so it stops watching that file (R41). */
+  /** Tell the main process a tab closed so it stops watching that file (close a tab). */
   notifyClosed(filePath: string): void;
-  /** Pull the files passed on the command line at launch (R7), once. Returned in
+  /** Pull the files passed on the command line at launch (open a file via CLI argument), once. Returned in
    *  command-line order; empty if none. The renderer opens each as a tab and
    *  focuses the first. */
   getStartupFiles(): Promise<OpenedFile[]>;
   /**
    * Subscribe to "a file was opened" (via CLI at launch, or File → Open).
-   * The renderer opens it in a tab, or focuses the tab if already open (R39).
+   * The renderer opens it in a tab, or focuses the tab if already open (multiple documents in tabs).
    * Returns an unsubscribe function.
    */
   onOpenFile(callback: (file: OpenedFile) => void): () => void;
-  /** Subscribe to the File → Save menu/accelerator (R30). Returns unsubscribe. */
+  /** Subscribe to the File → Save menu/accelerator (force-save). Returns unsubscribe. */
   onMenuSave(callback: () => void): () => void;
   /** Subscribe to View → Reload File (Ctrl/Cmd+R) — reload the active tab in
-   *  place (R31a). Returns unsubscribe. */
+   *  place (manual reload). Returns unsubscribe. */
   onReloadFile(callback: () => void): () => void;
   /** Subscribe to File → Close Tab (Ctrl/Cmd+W) — close the active tab, prompting
-   *  if it has unsaved edits (R41). Returns unsubscribe. */
+   *  if it has unsaved edits (close a tab). Returns unsubscribe. */
   onCloseTab(callback: () => void): () => void;
   /** Subscribe to Ctrl+Tab — switch to the next tab (right, wrapping) (#19).
    *  Returns unsubscribe. */
@@ -107,10 +107,10 @@ export interface GalleyApi {
   /** Subscribe to Ctrl+Shift+Tab — switch to the previous tab (left, wrapping)
    *  (#19). Returns unsubscribe. */
   onPrevTab(callback: () => void): () => void;
-  /** Subscribe to Help → Galley Help — open the Help window (R48). Returns unsubscribe. */
+  /** Subscribe to Help → Galley Help — open the Help window (the Help window). Returns unsubscribe. */
   onHelp(callback: () => void): () => void;
   /**
-   * Subscribe to a genuine external change to the open file (R32/R33) — the
+   * Subscribe to a genuine external change to the open file (watch open files / self-write detection) — the
    * watcher's own saves are already filtered out. Payload is the new on-disk
    * snapshot. Returns an unsubscribe function.
    */

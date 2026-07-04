@@ -1,22 +1,22 @@
 /**
  * Root component. Owns the open tabs and the view-mode switch, and hosts a
- * per-tab split editor/preview view (PRD R45, #26).
+ * per-tab split editor/preview view (PRD: split view & Show/Hide Source reading mode, #26).
  *
- * Tabs (R39): each open file is a tab with its own buffer, baseline, dirty state,
+ * Tabs: each open file is a tab with its own buffer, baseline, dirty state,
  * and conflict state. As of #26 each open tab also renders its OWN self-contained
  * TabView (its own CodeMirror editor + preview + split layout + scroll-sync). All
  * open tabs' TabViews stay mounted; only the active one is visible (the rest are
  * display:none). Switching tabs just changes which one is visible — no re-parse,
  * no DOM rebuild, no editor/preview state-swap. When no tab is open a dedicated
- * welcome TabView shows the built-in sandbox (R46 empty state), editable but
+ * welcome TabView shows the built-in sandbox (empty state), editable but
  * ephemeral.
  *
- * Document lifecycle per tab: a file arrives via the command line (R7) or
- * File → Open (R8); edits mark the tab dirty and trigger a debounced auto-save
- * (R29); Ctrl/Cmd+S force-saves the active tab (R30); each open file is watched
- * for external changes (R32).
+ * Document lifecycle per tab: a file arrives via the command line or
+ * File → Open; edits mark the tab dirty and trigger a debounced auto-save;
+ * Ctrl/Cmd+S force-saves the active tab; each open file is watched
+ * for external changes.
  *
- * Conflict handling (R34/R35/R36) is per tab — for the active tab a divergence
+ * Conflict handling (write-path/read-path guards + the out-of-sync notice) is per tab — for the active tab a divergence
  * pops one loud modal then a passive flag; a background tab's divergence is
  * tracked silently (its tab shows a marker) and surfaces when you switch to it.
  * Two choices only: take theirs (Load from disk) or keep yours (Keep mine).
@@ -43,7 +43,7 @@ import type { LinkContext } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 import { cycleTabTarget, type CycleDirection } from './cycleTab';
 
-// R29: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
+// Debounced auto-save: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
 const AUTOSAVE_MS =
   Number((window as unknown as { __galleyAutosaveMs?: number }).__galleyAutosaveMs) || 5000;
 
@@ -56,9 +56,9 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-/** One open document (R39). The buffer (`text`) is the source of truth; `saved`
+/** One open document. The buffer (`text`) is the source of truth; `saved`
  *  is the last loaded/saved baseline. `conflict`/`noticed`/`showModal`/`edited`
- *  carry the per-tab out-of-sync state (R34–R36). `docVersion` is bumped on a
+ *  carry the per-tab out-of-sync state. `docVersion` is bumped on a
  *  reload-from-disk so the tab's editor re-seeds (it never changes on an edit). */
 export interface Tab {
   id: string;
@@ -82,7 +82,7 @@ export function App() {
   const [welcomeText, setWelcomeText] = useState(welcome);
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
   const [closing, setClosing] = useState<Tab | null>(null); // close-with-unsaved prompt
-  const [showHelp, setShowHelp] = useState(false); // Help window (R48)
+  const [showHelp, setShowHelp] = useState(false); // Help window
   // The session offered for restore after a dirty shutdown (PF20, §8.6), or null.
   // Set once on mount when main reports a restorable session; cleared on the user's
   // Yes/No. Held so the Yes handler can reopen exactly what was loaded from disk.
@@ -128,7 +128,7 @@ export function App() {
     }
   };
 
-  // Out-of-sync for one tab (R36): the first divergence of a run pops the loud
+  // Out-of-sync notice for one tab: the first divergence of a run pops the loud
   // modal; once shown, later divergence recurs as the passive flag.
   const flagDiverged = (id: string, disk: OpenedFile) => {
     clearAutosave(id);
@@ -136,7 +136,7 @@ export function App() {
     updateTab(id, { conflict: disk, noticed: true, showModal: !(t?.noticed ?? false) });
   };
 
-  // Save one tab's buffer (R29/R30/R34). `force` overwrites disk ("keep mine").
+  // Save one tab's buffer (auto-save / force-save / write-path conflict guard). `force` overwrites disk ("keep mine").
   const saveTab = async (id: string, opts?: { manual?: boolean; force?: boolean }) => {
     const t = tabById(id);
     if (!t) return;
@@ -148,7 +148,7 @@ export function App() {
     try {
       const outcome = await window.galley.saveFile(t.path, content, force);
       if (outcome.conflict) {
-        flagDiverged(id, outcome.disk); // write-path divergence (R34)
+        flagDiverged(id, outcome.disk); // write-path divergence
         return;
       }
       const latest = tabById(id);
@@ -164,7 +164,7 @@ export function App() {
 
   // Load disk content into a tab (open, reload, or silent refresh). Resets the tab
   // to a clean, in-sync baseline and bumps `docVersion` so the tab's TabView
-  // re-seeds its editor from the new text (keeping the reading line, R31a).
+  // re-seeds its editor from the new text (keeping the reading line on manual reload).
   const reloadTab = (id: string, file: OpenedFile) => {
     clearAutosave(id);
     const t = tabById(id);
@@ -189,7 +189,7 @@ export function App() {
     setActive(id);
   };
 
-  // Open a file in a tab (R39): focus + refresh if already open, else add a tab.
+  // Open a file in a tab: focus + refresh if already open, else add a tab.
   const openTab = (file: OpenedFile) => {
     const existing = tabsRef.current.find((t) => t.path === file.path);
     if (existing) {
@@ -218,7 +218,7 @@ export function App() {
     const idx = tabsRef.current.findIndex((t) => t.id === id);
     if (idx === -1) return;
     const t = tabsRef.current[idx];
-    window.galley?.notifyClosed(t.path); // R41: stop watching its file
+    window.galley?.notifyClosed(t.path); // closing a tab: stop watching its file
     clearAutosave(id);
     viewRefs.current.delete(id);
     const remaining = tabsRef.current.filter((x) => x.id !== id);
@@ -238,7 +238,7 @@ export function App() {
     commitTabs(reorderToIndex(tabsRef.current, draggedId, insertIndex));
   };
 
-  // R41: closing a tab with unsaved edits prompts first.
+  // Closing a tab with unsaved edits prompts first.
   const requestClose = (id: string) => {
     const t = tabById(id);
     if (t?.dirty) setClosing(t);
@@ -264,7 +264,7 @@ export function App() {
     }
   };
 
-  // Conflict resolutions (R34/R35) on the active tab — take theirs, or keep mine.
+  // Conflict resolutions (write-path/read-path guards) on the active tab — take theirs, or keep mine.
   const resolveKeepMine = () => {
     const id = activeIdRef.current;
     if (!id) return;
@@ -277,7 +277,7 @@ export function App() {
     if (id && t?.conflict) reloadTab(id, t.conflict);
   };
 
-  // Pull a command-line file (R7) and subscribe to opens / save / reload / change.
+  // Pull a command-line file and subscribe to opens / save / reload / change.
   useEffect(() => {
     void window.galley
       ?.getStartupFiles()
@@ -316,7 +316,7 @@ export function App() {
     });
     const offClose = window.galley?.onCloseTab(() => {
       const id = activeIdRef.current;
-      if (id) requestClose(id); // close the active tab (prompts if dirty; R41)
+      if (id) requestClose(id); // close the active tab (prompts if dirty)
     });
     const offExternal = window.galley?.onExternalChange((diskFile) => {
       const t = tabsRef.current.find((x) => x.path === diskFile.path);
@@ -335,7 +335,7 @@ export function App() {
     };
     const offNext = window.galley?.onNextTab(() => cycle('next'));
     const offPrev = window.galley?.onPrevTab(() => cycle('prev'));
-    const offHelp = window.galley?.onHelp(() => setShowHelp(true)); // R48
+    const offHelp = window.galley?.onHelp(() => setShowHelp(true)); // Help window
     return () => {
       offOpen?.();
       offSave?.();
@@ -367,7 +367,7 @@ export function App() {
   };
   const dismissRestore = () => setRestore(null);
 
-  // Cmd/Ctrl+K (R27): snapshot the link context at the cursor, then open the dialog.
+  // Cmd/Ctrl+K (the link dialog): snapshot the link context at the cursor, then open the dialog.
   const openLinkDialog = () => {
     const ctx = activeView()?.requestLink() ?? null;
     if (ctx) setLinkCtx(ctx);
@@ -376,7 +376,7 @@ export function App() {
   const toggleSource = () => {
     const next: ViewMode = showingSource ? 'preview' : 'split';
     setViewMode(next);
-    void window.galley?.setSourceVisible(next === 'split'); // widen/shrink window (R45)
+    void window.galley?.setSourceVisible(next === 'split'); // widen/shrink window (split view & Show/Hide Source)
   };
 
   // Apply a pending #fragment to the now-active tab's preview once it is visible
@@ -425,8 +425,8 @@ export function App() {
     const project = window.galley?.projectName ?? null;
     const file = activePath ? basename(activePath) : null;
     document.title = [file, project, 'Galley'].filter(Boolean).join(' — ');
-    // Mirror the active path to main so Export to PDF defaults beside the source
-    // (R52). null on the welcome screen.
+    // Mirror the active path to main so Export to PDF defaults beside the source.
+    // null on the welcome screen.
     window.galley?.setActiveDocPath(activePath ?? null);
   }, [activePath]);
 
@@ -454,7 +454,7 @@ export function App() {
           {showingSource ? 'Hide Source' : 'Show Source'}
         </button>
       </header>
-      {/* Out-of-sync notice sits just below the tab bar (R36, passive flag). */}
+      {/* Out-of-sync notice sits just below the tab bar (passive flag). */}
       {conflict && !showModal && (
         <div className="sync-flag" role="status">
           <span className="sync-flag-dot" aria-hidden="true">●</span>
@@ -487,7 +487,7 @@ export function App() {
         />
       ))}
       {/* The welcome sandbox: editable but ephemeral, shown only when no tab is
-          open (R46). Mounted/unmounted with the empty state rather than kept
+          open (empty state). Mounted/unmounted with the empty state rather than kept
           hidden behind open tabs — its buffer lives in App's welcomeText, so it
           re-seeds from there each time, and not rendering it while tabs are open
           keeps exactly ONE editor/preview pair in the DOM at a time. */}

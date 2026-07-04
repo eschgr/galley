@@ -1,5 +1,5 @@
 /**
- * Bundled third-party attribution for the Help window (PRD R48, §10). The app is
+ * Bundled third-party attribution for the Help window (PRD: the Help window and in-app license notice). The app is
  * MIT-licensed; this is the in-app summary of the open-source libraries it ships.
  * Forge/electron-builder produce the full per-file license notice for the
  * distributed package — this list is the human-readable acknowledgement.
@@ -13,7 +13,7 @@ export interface Attribution {
   readonly license: string;
 }
 
-/** The application's own license (PRD §10). */
+/** The application's own license (PRD: in-app license notice). */
 export const APP_LICENSE = 'MIT';
 
 export const ATTRIBUTIONS: readonly Attribution[] = [

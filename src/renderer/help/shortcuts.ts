@@ -1,5 +1,5 @@
 /**
- * Keyboard-shortcut reference for the Help window (PRD R48). Kept as pure data,
+ * Keyboard-shortcut reference for the Help window (PRD: the Help window). Kept as pure data,
  * derived from the editor keymap (src/renderer/components/Editor.tsx) and the
  * application menu (src/main/menu.ts), so the Help list and the real bindings
  * stay in step. Formatted per platform (⌘ on macOS, Ctrl elsewhere).

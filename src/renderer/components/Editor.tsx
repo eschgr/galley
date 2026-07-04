@@ -1,20 +1,24 @@
 /**
- * CodeMirror 6 source editor (PRD R16, R19–R28).
+ * CodeMirror 6 source editor (PRD: in-app source editing, editor syntax
+ * highlighting, undo/redo, find & replace, formatting shortcuts, list indent,
+ * the link dialog, and the 2-space indentation setting).
  *
  * Composes the editor from CM6 sub-packages (no `basicSetup` meta-package):
- *  - markdown() language for syntax highlighting (R19)
- *  - history + history/default keymaps for undo/redo (R20)
- *  - search panel + keymap for find/replace (R21; Cmd/Ctrl+F)
- *  - line numbers (R22), line wrapping, 2-space indent unit (R28)
- *  - a highest-precedence formatting keymap (R23–R25): bold/italic/inline code/
- *    strikethrough/heading 1–6/fenced code block, plus list-aware Tab (R26) and
- *    a Cmd/Ctrl+K hook that asks the host to open the link dialog (R27). The
+ *  - markdown() language for editor syntax highlighting
+ *  - history + history/default keymaps for undo/redo
+ *  - search panel + keymap for find/replace (Cmd/Ctrl+F)
+ *  - line numbers, line wrapping, 2-space indent unit
+ *  - a highest-precedence formatting keymap (formatting shortcuts — apply/toggle
+ *    + smart selection): bold/italic/inline code/
+ *    strikethrough/heading 1–6/fenced code block, plus list-aware Tab (list
+ *    indent / outdent) and
+ *    a Cmd/Ctrl+K hook that asks the host to open the link dialog. The
  *    wrap/heading/fence rules live in the pure, tested ./editorCommands module;
  *    link parsing needs the live syntax tree, so it stays on the handle below.
  *
  * Exposes an imperative handle (getTopLine / scrollToLine) in 0-based fractional
  * line units — the same units the preview's data-source-line anchors use — so
- * the split view can keep the two panes aligned (R18). Calls onScroll on user
+ * the split view can keep the two panes aligned (scroll synchronization). Calls onScroll on user
  * scroll and onChange on edits.
  *
  * The editor is UNCONTROLLED: it is initialised from `initialDoc` once on mount
@@ -60,7 +64,7 @@ import {
   type EditResult,
 } from './editorCommands';
 
-/** Link context handed to the host so it can open the dialog prefilled (R27). */
+/** Link context handed to the host so it can open the dialog prefilled. */
 export interface LinkContext {
   text: string;
   url: string;
@@ -84,7 +88,7 @@ export interface EditorHandle {
   /** Visible height of the scroller (px) — one screenful, used as the blend window (#18). */
   clientHeight(): number;
   /** The px scrollTop that would put a 0-based fractional source line at the top
-   *  — the line-anchored target, without actually scrolling (R18 / #18). */
+   *  — the line-anchored target, without actually scrolling (scroll synchronization / #18). */
   scrollTopForLine(line: number): number;
   /** Re-measure layout — call after the editor is re-shown from display:none. */
   refresh(): void;
@@ -102,11 +106,11 @@ export interface EditorHandle {
   /** Move keyboard focus into the editor (e.g. after a tab becomes visible). */
   focus(): void;
   /** Snapshot the link context at the cursor and remember the target range so a
-   *  later applyLink/removeLink edits the right span (R27). */
+   *  later applyLink/removeLink edits the right span. */
   requestLink(): LinkContext | null;
-  /** Insert/replace the remembered range with `[text](url)` (R27). */
+  /** Insert/replace the remembered range with `[text](url)`. */
   applyLink(text: string, url: string): void;
-  /** Strip the remembered link to its plain text (R27). */
+  /** Strip the remembered link to its plain text. */
   removeLink(): void;
 }
 
@@ -114,11 +118,11 @@ interface EditorProps {
   initialDoc: string;
   onChange?: (doc: string) => void;
   onScroll?: () => void;
-  /** Cmd/Ctrl+K — the host opens the link dialog (R27). */
+  /** Cmd/Ctrl+K — the host opens the link dialog. */
   onLink?: () => void;
 }
 
-// Source-like highlighting (R19): colour only — no bold/italic/size/strike — so
+// Source-like highlighting (editor syntax highlighting): colour only — no bold/italic/size/strike — so
 // the editor reads as Markdown *source* (uniform monospace) while colour still
 // conveys structure like a code editor's syntax highlighting.
 const sourceHighlightStyle = HighlightStyle.define([
@@ -176,7 +180,7 @@ function scrollToLine(view: EditorView, line0: number): void {
   view.scrollDOM.scrollTop = scrollTopForLine(view, line0);
 }
 
-// --- Formatting commands (R23–R25) -----------------------------------------
+// --- Formatting commands (formatting shortcuts — apply/toggle + smart selection) ---
 // Each turns an EditResult (computed by the pure helpers over the primary
 // selection) into a single transaction.
 function formatCommand(fn: (doc: string, from: number, to: number) => EditResult): Command {
@@ -197,7 +201,7 @@ function formatCommand(fn: (doc: string, from: number, to: number) => EditResult
 }
 
 // The Lezer node each inline marker produces, used to detect when a bare cursor
-// sits inside an existing span so the shortcut toggles it OFF (R24).
+// sits inside an existing span so the shortcut toggles it OFF (formatting toggle behavior).
 const INLINE_NODE: Record<string, string> = {
   '**': 'StrongEmphasis',
   '_': 'Emphasis',
@@ -243,7 +247,7 @@ const strikeCmd = wrapCommand('~~');
 const fencedCmd = formatCommand(fencedEdit);
 const headingCmd = (level: number) => formatCommand((d, f, t) => headingEdit(d, f, t, level));
 
-// --- List-aware Tab / Shift+Tab (R26/R28) ----------------------------------
+// --- List-aware Tab / Shift+Tab (list indent / outdent; 2-space indentation setting) ---
 // On a list line, Tab/Shift+Tab nest/un-nest the whole item to the CommonMark
 // content column of its parent (so nested lists actually render), from anywhere
 // on the line. Off a list line, Tab inserts spaces at the cursor and Shift+Tab
@@ -291,7 +295,7 @@ const shiftTabCmd: Command = (view) => {
   return indentLess(view);
 };
 
-// Enter continues a list with a fresh "1." item (R26b); off a list line it
+// Enter continues a list with a fresh "1." item (list continuation on Enter); off a list line it
 // returns false so the default newline runs.
 const continueListCmd: Command = (view) => {
   const range = view.state.selection.main;
@@ -358,7 +362,7 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkR
     markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
     search({ top: true }),
-    formattingKeymap(onLinkRef), // R23–R27, highest precedence so it wins
+    formattingKeymap(onLinkRef), // formatting shortcuts + list keys + link dialog, highest precedence so it wins
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
     theme,
     EditorView.updateListener.of((u) => {

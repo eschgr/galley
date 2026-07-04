@@ -1,5 +1,5 @@
 /**
- * Channel protocol version + compatibility (PRD §5.3).
+ * Channel protocol version + compatibility (PRD: instance model & file delivery).
  *
  * The channel is a cross-process message protocol between two *peers* — two
  * instances of this same app, asymmetric only by launch time and possibly app

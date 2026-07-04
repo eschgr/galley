@@ -1,5 +1,5 @@
 /**
- * Pure scroll-sync interpolation (PRD R18), extracted so it can be unit-tested
+ * Pure scroll-sync interpolation, extracted so it can be unit-tested
  * without a DOM. An "anchor" maps a source line to a vertical offset (px) within
  * the preview's scroll container; the preview builds them from the
  * `data-source-line` elements. These functions convert between a scroll offset

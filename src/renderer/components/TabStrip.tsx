@@ -1,7 +1,8 @@
 /**
- * Tab strip (PRD R39/R40). One entry per open file: name, an unsaved-changes dot
- * (R40), an out-of-sync marker, and a close button (R41 — the prompt lives in
- * App). Clicking the label switches tabs; clicking × closes.
+ * Tab strip (PRD: multiple documents in tabs, with a per-tab dirty indicator).
+ * One entry per open file: name, an unsaved-changes dot, an out-of-sync marker,
+ * and a close button (the close prompt lives in App). Clicking the label
+ * switches tabs; clicking × closes.
  *
  * Tabs are draggable to reorder them (issue #20). While dragging, the strip
  * renders a PREVIEW ORDER: the dragged tab is moved to its prospective landing

@@ -1,29 +1,31 @@
 /**
- * Markdown → HTML rendering pipeline (PRD R1–R3).
+ * Markdown → HTML rendering pipeline (PRD: markdown rendering — GFM, math, code highlighting).
  *
- * The R5 spike validated this pipeline and settled the math engine; this is the
- * real, reusable preview renderer the preview pane calls.
+ * The rendering de-risking spike validated this pipeline and settled the math
+ * engine; this is the real, reusable preview renderer the preview pane calls.
  *
  * Pieces:
  *  - markdown-it core   → GFM tables + strikethrough (on by default), headings,
  *                         lists, blockquotes, links, images, HR.
  *  - markdown-it-task-lists → GFM `- [ ]` / `- [x]` checkboxes.
- *  - highlight.js       → fenced-code syntax highlighting by info string (R3),
+ *  - highlight.js       → fenced-code syntax highlighting by info string,
  *                         with a floor: unknown language or a highlight error
  *                         degrades to escaped plain text, never throws.
- *  - markdown-it-texmath (KaTeX engine) → math (R2). Configured for BOTH the
+ *  - markdown-it-texmath (KaTeX engine) → math. Configured for BOTH the
  *                         dollar and bracket delimiter sets, i.e. `$…$`,
  *                         `$$…$$`, `\(…\)`, `\[…\]` — all the styles Claude
  *                         emits. Chosen over @vscode/markdown-it-katex (the
  *                         PRD's rung-1 primary), which renders dollar
- *                         delimiters only; the R5 spike confirmed the gap and
- *                         this is the R6 rung-2 resolution. texmath is
+ *                         delimiters only; the rendering spike confirmed the gap
+ *                         and this is the math fallback ladder's rung-2
+ *                         resolution. texmath is
  *                         structure-aware (skips code spans/fences) and its
  *                         dollar guards keep literal `$` in prose from parsing
  *                         as math.
  *
- * R6 floor: KaTeX runs with throwOnError:false, so a malformed formula renders
- * its raw source (in an error color) instead of breaking the whole preview.
+ * Degrade-to-source floor: KaTeX runs with throwOnError:false, so a malformed
+ * formula renders its raw source (in an error color) instead of breaking the
+ * whole preview.
  * `renderMarkdown` additionally wraps the whole render so a catastrophic failure
  * in one document degrades to an inline error block rather than a blank page.
  *
@@ -38,15 +40,15 @@ import katex from 'katex';
 import hljs from 'highlight.js';
 
 const katexOptions = {
-  throwOnError: false, // R6 floor: degrade a bad formula to raw source, don't throw
+  throwOnError: false, // degrade a bad formula to raw source, don't throw
   errorColor: '#d11',
   strict: false as const, // tolerate the looser LaTeX an LLM may emit
 };
 
 /**
  * Annotate top-of-block elements with `data-source-line` (the 0-based source
- * line they start at), so the preview can be scroll-anchored to the editor
- * (PRD R18). Mirrors VS Code's markdown-preview technique. Invisible in output;
+ * line they start at), so the preview can be scroll-anchored to the editor.
+ * Mirrors VS Code's markdown-preview technique. Invisible in output;
  * fenced code blocks are rendered by the custom highlighter and are not
  * annotated, but their neighbours are, which is enough to interpolate.
  */
@@ -104,7 +106,7 @@ function highlightToHtml(code: string, lang: string, md: MarkdownIt): string {
       /* fall through to the plain-text floor */
     }
   }
-  // Floor (R3): unknown language or highlight failure → escaped plain text.
+  // Floor: unknown language or highlight failure → escaped plain text.
   return `<pre class="hljs"><code>${escaped(code)}</code></pre>`;
 }
 
@@ -119,7 +121,7 @@ export function createRenderer(): MarkdownIt {
   // linking would turn bare `domain.tld` text into links — and since many file
   // extensions are now real TLDs (`.md` is Moldova, also `.sh`, `.zip`, `.app`…),
   // a filename mentioned in prose like `architecture.md` would wrongly become a
-  // clickable link. Explicit `[text](architecture.md)` links still work (R4).
+  // clickable link. Explicit `[text](architecture.md)` links still work.
   md.linkify.set({ fuzzyLink: false });
 
   // Render `file:` links as real anchors. markdown-it's default validateLink
