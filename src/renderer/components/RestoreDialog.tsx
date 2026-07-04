@@ -22,15 +22,10 @@ export function RestoreDialog({ onRestore, onDismiss }: RestoreDialogProps) {
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="restore-title">
         <h2 id="restore-title" className="modal-title">Galley recovered from a crash</h2>
         <p className="modal-body">Restore session from last save?</p>
-        <div className="modal-actions">
-          <button type="button" onClick={onDismiss}>
-            No
-            <span className="modal-hint">start fresh</span>
-          </button>
-          <button type="button" className="modal-primary" onClick={onRestore}>
-            Yes
-            <span className="modal-hint">reopen the last session</span>
-          </button>
+        <div className="modal-actions modal-actions-row">
+          <span className="modal-spacer" />
+          <button type="button" onClick={onDismiss}>No</button>
+          <button type="button" className="modal-primary" onClick={onRestore}>Yes</button>
         </div>
       </div>
     </div>
