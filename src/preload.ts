@@ -24,6 +24,7 @@ const api: GalleyApi = {
   setSession: (session) => {
     void ipcRenderer.invoke('window:setSession', session);
   },
+  getRestore: () => ipcRenderer.invoke('window:getRestore'),
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),

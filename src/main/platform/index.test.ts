@@ -113,3 +113,80 @@ describe('platform bridge session persistence (#61, §8.6, PF19)', () => {
     15_000,
   );
 });
+
+// The restore DECISION (#61 slice B, §8.6, PF20/D2). getRestoreSession is the pure
+// dirty-vs-clean gate: it returns the persisted paths+active only when a claimed
+// project's session is a dirty shutdown (cleanExit:false) with a non-empty open-set,
+// and null in every other branch. Loading the paths from disk is main's job (not
+// here). Each branch is exercised hermetically against a fresh temp projects-home.
+describe('platform bridge session restore decision (#61, §8.6, PF20)', () => {
+  it(
+    'returns the session when dirty (cleanExit:false) with a non-empty open-set + a claimed project',
+    async () => {
+      const home = freshProjectsHome();
+      const bridge = createPlatformBridge({ projectsHome: () => home });
+
+      await bridge.claimProject('TestProj');
+      // writeSession stamps cleanExit:false — the running / crash-safety-net state.
+      bridge.writeSession({ files: ['/x/a.md', '/x/b.md'], activeIndex: 1 });
+
+      expect(bridge.getRestoreSession()).toEqual({
+        files: ['/x/a.md', '/x/b.md'],
+        activeIndex: 1,
+      });
+    },
+    15_000,
+  );
+
+  it(
+    'returns null after a CLEAN shutdown (cleanExit:true) — the whole point of the flag',
+    async () => {
+      const home = freshProjectsHome();
+      const bridge = createPlatformBridge({ projectsHome: () => home });
+
+      await bridge.claimProject('TestProj');
+      bridge.writeSession({ files: ['/x/a.md'], activeIndex: 0 });
+      bridge.markCleanExit(); // flips cleanExit:true — a clean quit starts fresh
+
+      expect(bridge.getRestoreSession()).toBeNull();
+    },
+    15_000,
+  );
+
+  it(
+    'returns null when session.json is absent (no session ever written)',
+    async () => {
+      const home = freshProjectsHome();
+      const bridge = createPlatformBridge({ projectsHome: () => home });
+
+      await bridge.claimProject('TestProj');
+      // No writeSession — nothing on disk to restore.
+      expect(bridge.getRestoreSession()).toBeNull();
+    },
+    15_000,
+  );
+
+  it(
+    'returns null when the open-set is empty even though the shutdown was dirty',
+    async () => {
+      const home = freshProjectsHome();
+      const bridge = createPlatformBridge({ projectsHome: () => home });
+
+      await bridge.claimProject('TestProj');
+      bridge.writeSession({ files: [], activeIndex: -1 }); // dirty, but nothing open
+
+      expect(bridge.getRestoreSession()).toBeNull();
+    },
+    15_000,
+  );
+
+  it('returns null when projectless (no claim) — projectless never restores (D2)', () => {
+    const home = freshProjectsHome();
+    const bridge = createPlatformBridge({ projectsHome: () => home });
+
+    // No claimProject: a projectless window has no home, so nothing to restore —
+    // even though writeSession is a no-op, the decision must be null regardless.
+    bridge.writeSession({ files: ['/x/a.md'], activeIndex: 0 });
+    expect(bridge.getRestoreSession()).toBeNull();
+  });
+});

@@ -102,6 +102,7 @@ async function installMockBridge(page: Page): Promise<void> {
       setSourceVisible: async () => {},
       setActiveDocPath: () => {},
       setSession: () => {},
+      getRestore: async () => null,
       getStartupFiles: async () => [],
       saveFile: async (path: string, content: string) => ({
         conflict: false,

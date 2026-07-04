@@ -34,6 +34,9 @@ type Harness = {
   nextSaveConflict: MockFile | null;
   // What readFile() (reload) returns next.
   nextRead: MockFile | null;
+  // What getRestore() returns on mount (#61 slice B). Null = no restore (default);
+  // a spec arms it via installMockBridge's `restore` arg or setRestore() below.
+  restore: { files: MockFile[]; activeIndex: number } | null;
 };
 
 /**
@@ -49,14 +52,16 @@ type Harness = {
 export async function installMockBridge(
   page: Page,
   startup: MockFile | MockFile[] | null = null,
+  restore: { files: MockFile[]; activeIndex: number } | null = null,
 ): Promise<void> {
-  await page.addInitScript((startupArg) => {
+  await page.addInitScript(({ startupArg, restoreArg }) => {
     const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: Harness = {
       openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
       nextTabCb: null, prevTabCb: null,
       saveCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
       nextSaveConflict: null, nextRead: null,
+      restore: restoreArg,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { galley: unknown }).galley = {
@@ -75,6 +80,10 @@ export async function installMockBridge(
       // App reports the open-tab session (files + active) to main on every tab
       // change (#61 slice A). Same rule as above: a missing method crashes <App>.
       setSession: () => {},
+      // App pulls the restore session on mount (#61 slice B). Default null (no
+      // restore); a spec arms `harness.restore` to make it offer one. Same rule
+      // as above: a missing method crashes <App> on mount in a clean-server run.
+      getRestore: async () => harness.restore,
       getStartupFiles: async () => startupFiles,
       saveFile: async (path: string, content: string, force?: boolean) => {
         harness.saveCalls.push({ path, content, force: !!force });
@@ -126,7 +135,7 @@ export async function installMockBridge(
       // instead of a runtime "X is not a function" crash that only surfaces in a
       // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
     } satisfies GalleyApi;
-  }, startup);
+  }, { startupArg: startup, restoreArg: restore });
 }
 
 /**
