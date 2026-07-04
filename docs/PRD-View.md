@@ -43,8 +43,7 @@ The view also tracks **what it is showing as an explicit state**, not as a null-
 ## 5. Non-goals
 
 - **Text color / font color** — not part of standard markdown (no CommonMark/GFM syntax); Claude does not emit it, and supporting it would require enabling raw-HTML passthrough.
-- **Word / character count.**
-- **Smart list-item selection** — extending a selection (or `Home`) to a list line's start stopping at the item's *content*, skipping the marker (`-` / `1.`). *(Future: [#89](https://github.com/eschgr/mdtool/issues/89).)*
+- **Word / character count** — Galley is a review/edit surface, not a writing-stats tool.
 
 ## 6. Requirements
 

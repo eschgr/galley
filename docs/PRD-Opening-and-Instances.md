@@ -32,10 +32,8 @@ The instance model is **per-project self-arbitration**. On launch with `--projec
 
 ## 5. Non-goals
 
-- **Directory / folder tree view / file browser** — Galley opens files; it is not a file manager or IDE. *(Future: [#86](https://github.com/eschgr/mdtool/issues/86).)*
-- **Drag-and-drop file opening.** *(Future: [#87](https://github.com/eschgr/mdtool/issues/87).)*
+- **Directory / folder tree view / file browser** — Galley opens the files it is handed; it is deliberately not a file manager or IDE.
 - **"Reveal in Finder/Explorer".**
-- **New-file creation** from within the app. *(Tracked as [#68](https://github.com/eschgr/mdtool/issues/68).)*
 
 ## 6. Requirements
 

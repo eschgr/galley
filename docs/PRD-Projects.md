@@ -13,7 +13,7 @@ A **project** in Galley is a **named, durable context** for working across a set
 
 A project is a **first-class, persistent concept**: it has a stable, app-managed on-disk home, persistent session state, and a robust ownership/liveness model — one live window per project. The launcher contract the LLM relies on stays a single command, and a launch with no project name runs **projectless** (an independent, ephemeral window).
 
-This realizes **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** (make the project concept genuinely useful), incorporating the ownership/liveness robustness of **[#60](https://github.com/eschgr/mdtool/issues/60)** and **[#56](https://github.com/eschgr/mdtool/issues/56)** and session restore ([#61](https://github.com/eschgr/mdtool/issues/61)). Capabilities explored during design but out of scope for the simple project concept are listed in section 4, each tracked as its own issue.
+This realizes **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** (make the project concept genuinely useful), incorporating the ownership/liveness robustness of **[#60](https://github.com/eschgr/mdtool/issues/60)** and **[#56](https://github.com/eschgr/mdtool/issues/56)** and session restore ([#61](https://github.com/eschgr/mdtool/issues/61)). Deliberate by-design exclusions are in section 4; capabilities deferred rather than rejected are tracked as their own issues.
 
 ---
 
@@ -38,18 +38,12 @@ Requirements here are numbered **PF#** (project feature). The numbering is stabl
 
 ## 4. Non-goals (this version)
 
-Each was considered during design and deliberately cut; each is a candidate future topic.
+These are deliberate, by-design exclusions. Capabilities that are simply deferred rather than rejected are tracked as their own GitHub issues, not listed here.
 
-- **Project instructions / `claude.md`.** Does not fit the LLM's filesystem-anchored context model, and the document files already serve as the LLM-to-human bridge. A future **"managed session"** mode — where the LLM is told a session is Galley-managed and reads Galley's help to organize accordingly — could reintroduce structured project context, but only when a concrete feature needs it; it imposes per-session structure and agreement the base concept should not require. **Tracked in [#69](https://github.com/eschgr/mdtool/issues/69).** *(Was PF10, PF13.)*
-- **Cross-project information / a project registry.** Projects are independent and do not know about each other. No shared index, no cross-project settings, no project switcher. *(A future app-level global-settings concept is reasonable but separate from the project concept — **[#70](https://github.com/eschgr/mdtool/issues/70)**.)* *(Was PF4.)*
-- **Templating.** Its own future topic that works differently from what a project would model. **Tracked in [#67](https://github.com/eschgr/mdtool/issues/67).** *(Was PF12, PF15.)*
 - **Per-project settings surface.** No user-editable project settings; the only candidate (a reading-vs-split default) is not worth a surface. `project.json` holds identity and metadata only. *(Was PF14, PF16, PF17, PF18.)*
 - **A curated / tracked member-file list.** Membership is **ephemeral**: a file is associated with a project only while open in that project's session. *(Was PF22.)*
-- **New-file creation.** Deferred, bound up with templating. **Tracked in [#68](https://github.com/eschgr/mdtool/issues/68).** *(Was PF23.)*
 - **A default project name.** If no `--project` is given, Galley runs **projectless** (PF27), not under an inferred name (e.g. from the current directory). Inferring identity the caller did not ask for is out of scope.
-- **Human-driven project creation UI** (a "New Project" dialog with setup questions). The project is created implicitly when files are opened for review (section 8.5); a guided human-initiated flow is a future nicety. **Tracked in [#71](https://github.com/eschgr/mdtool/issues/71).**
 - **A "Reveal Home" (or any project-directory) menu affordance.** The durable home is app-managed and not a place the user is expected to visit; when directory access is genuinely needed, the user asks the LLM to open the path or browses to it directly. A dedicated menu item is not worth the surface. *(Was PF26.)*
-- **A directory / folder tree view or file browser** in the renderer (Galley opens files, it is not a file browser; see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and [#86](https://github.com/eschgr/mdtool/issues/86)).
 - **In-tree project homes.** Rejected on principle (section 8.4): a project's context spans directories, so there is no coherent tree to colocate in.
 
 ---
