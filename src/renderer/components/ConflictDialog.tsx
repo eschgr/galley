@@ -1,5 +1,5 @@
 /**
- * Out-of-sync notice (PRD: write-path & read-path conflict guards; v1
+ * Out-of-sync notice (write-path & read-path conflict guards; v1
  * labeled-choice — no diff view).
  * Pops once, loudly, the first time the open file diverges on disk while the
  * buffer has unsaved edits. There are only two real choices — take theirs or

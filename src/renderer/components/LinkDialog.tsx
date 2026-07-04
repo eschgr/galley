@@ -1,5 +1,5 @@
 /**
- * Link dialog (PRD: the link dialog). Cmd/Ctrl+K opens this instead of inserting raw syntax,
+ * Link dialog (the link dialog). Cmd/Ctrl+K opens this instead of inserting raw syntax,
  * so the user never has to remember `[text](url)` ordering. Prefilled from the
  * selection or, when the cursor is inside an existing link, from that link —
  * confirming then updates it in place. In edit mode a Remove-link action strips

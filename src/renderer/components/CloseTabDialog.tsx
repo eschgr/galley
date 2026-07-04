@@ -1,5 +1,5 @@
 /**
- * Close-with-unsaved-edits prompt (PRD: close a tab). Auto-save means most closes have
+ * Close-with-unsaved-edits prompt (close a tab). Auto-save means most closes have
  * nothing pending; this covers the un-debounced window — save, discard, or keep
  * the tab open.
  */

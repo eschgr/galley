@@ -1,5 +1,5 @@
 /**
- * CodeMirror 6 source editor (PRD: in-app source editing, editor syntax
+ * CodeMirror 6 source editor (in-app source editing, editor syntax
  * highlighting, undo/redo, find & replace, formatting shortcuts, list indent,
  * the link dialog, and the 2-space indentation setting).
  *

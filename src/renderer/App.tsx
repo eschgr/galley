@@ -1,6 +1,6 @@
 /**
  * Root component. Owns the open tabs and the view-mode switch, and hosts a
- * per-tab split editor/preview view (PRD: split view & Show/Hide Source reading mode, #26).
+ * per-tab split editor/preview view (split view & Show/Hide Source reading mode, #26).
  *
  * Tabs: each open file is a tab with its own buffer, baseline, dirty state,
  * and conflict state. As of #26 each open tab also renders its OWN self-contained

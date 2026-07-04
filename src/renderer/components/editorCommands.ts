@@ -1,5 +1,5 @@
 /**
- * Pure markdown-formatting transforms for the source editor (PRD: formatting
+ * Pure markdown-formatting transforms for the source editor (formatting
  * shortcuts — apply/toggle + smart selection).
  *
  * Each function takes the whole document plus a selection range [from, to) and

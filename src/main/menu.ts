@@ -1,5 +1,5 @@
 /**
- * Application menu (PRD: native menu bar).
+ * Application menu (native menu bar).
  *
  * Three app menus (plus the macOS app menu): File (Open/Save/Reload File/Close
  * Tab, all calling back into main), a role-based Edit menu, and Help (the Help

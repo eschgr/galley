@@ -1,5 +1,5 @@
 /**
- * Live rendered preview (PRD: markdown rendering — GFM, math, code highlighting;
+ * Live rendered preview (markdown rendering — GFM, math, code highlighting;
  * live preview as you type). Renders the markdown pipeline output and keeps a
  * line-anchor map (from data-source-line) so the split view can align it with the
  * editor. Anchor clicks are routed to the system browser — the renderer never

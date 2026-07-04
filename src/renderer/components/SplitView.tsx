@@ -1,5 +1,5 @@
 /**
- * The split view (PRD: split view & Show/Hide Source reading mode): rendered view
+ * The split view (split view & Show/Hide Source reading mode): rendered view
  * on the LEFT, source editor on the RIGHT, a draggable divider, and synchronized
  * scrolling. As of #26 the split
  * layout + its scroll-sync live PER TAB inside TabView (each open tab owns its own

@@ -1,5 +1,5 @@
 /**
- * Node-backed file IO for the platform seam (PRD: file IO and saving &
+ * Node-backed file IO for the platform seam (file IO and saving &
  * conflict handling). Pure helpers +
  * thin fs wrappers, kept separate from the bridge factory so they're unit-
  * testable. All OS access for files lives here.

@@ -9,7 +9,7 @@
  * portability seam.
  */
 
-/** A file plus the baseline hash captured at read/write time (PRD: saving & conflict handling). */
+/** A file plus the baseline hash captured at read/write time (saving & conflict handling). */
 export interface OpenedFile {
   readonly path: string;
   readonly content: string;
@@ -24,7 +24,7 @@ export type SaveOutcome =
 export interface GalleyApi {
   /** Host platform, surfaced for platform-conditional UI (shortcut labels, etc.). */
   readonly platform: NodeJS.Platform;
-  /** App version, for the Help window (PRD: the Help window). */
+  /** App version, for the Help window. */
   readonly version: string;
   /**
    * The claimed project's name, surfaced in the OS window title (PF24). Fixed
@@ -33,7 +33,7 @@ export interface GalleyApi {
    */
   readonly projectName: string | null;
   /**
-   * Open a URL in the system default browser (PRD: preview link handling). Only http/https/mailto
+   * Open a URL in the system default browser (preview link handling). Only http/https/mailto
    * are honored by the main process; other schemes are silently ignored.
    */
   openExternal(url: string): Promise<void>;
@@ -46,7 +46,7 @@ export interface GalleyApi {
   /**
    * Tell the main process whether the source pane is now visible, so it can
    * widen the window for side-by-side editing or shrink it back for reading
-   * (PRD: split view & Show/Hide Source reading mode). A no-op effect when the window is maximized/fullscreen.
+   * (split view & Show/Hide Source reading mode). A no-op effect when the window is maximized/fullscreen.
    */
   setSourceVisible(visible: boolean): Promise<void>;
   /**
@@ -107,7 +107,7 @@ export interface GalleyApi {
   /** Subscribe to Ctrl+Shift+Tab — switch to the previous tab (left, wrapping)
    *  (#19). Returns unsubscribe. */
   onPrevTab(callback: () => void): () => void;
-  /** Subscribe to Help → Galley Help — open the Help window (the Help window). Returns unsubscribe. */
+  /** Subscribe to Help → Galley Help — open the Help window. Returns unsubscribe. */
   onHelp(callback: () => void): () => void;
   /**
    * Subscribe to a genuine external change to the open file (watch open files / self-write detection) — the

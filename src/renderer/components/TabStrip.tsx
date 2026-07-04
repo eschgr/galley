@@ -1,5 +1,5 @@
 /**
- * Tab strip (PRD: multiple documents in tabs, with a per-tab dirty indicator).
+ * Tab strip (multiple documents in tabs, with a per-tab dirty indicator).
  * One entry per open file: name, an unsaved-changes dot, an out-of-sync marker,
  * and a close button (the close prompt lives in App). Clicking the label
  * switches tabs; clicking × closes.

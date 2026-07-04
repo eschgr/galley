@@ -1,5 +1,5 @@
 /**
- * Markdown → HTML rendering pipeline (PRD: markdown rendering — GFM, math, code highlighting).
+ * Markdown → HTML rendering pipeline (markdown rendering — GFM, math, code highlighting).
  *
  * The rendering de-risking spike validated this pipeline and settled the math
  * engine; this is the real, reusable preview renderer the preview pane calls.

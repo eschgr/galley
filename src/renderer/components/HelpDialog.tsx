@@ -1,5 +1,5 @@
 /**
- * Help window (PRD: the Help window): basic app info, a keyboard-shortcut reference, and the
+ * Help window: basic app info, a keyboard-shortcut reference, and the
  * license + bundled third-party attribution (satisfying the in-app license notice).
  * A renderer modal — consistent with the app's other dialogs — opened from the
  * Help menu (main sends `menu:help`). Closes on the × button, the overlay, or Esc.

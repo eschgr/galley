@@ -1,5 +1,5 @@
 /**
- * Portability seam (PRD: architecture notes & migration path).
+ * Portability seam (architecture notes & migration path).
  *
  * ALL OS-touching main-process work — file read/write, content hashing,
  * file watching, the per-project channel, and CLI parsing — sits behind this
@@ -41,7 +41,7 @@ import {
 
 export type { ClaimResult } from './project';
 
-/** A file's content plus the baseline hash captured at read/write time (PRD: saving & conflict handling). */
+/** A file's content plus the baseline hash captured at read/write time (saving & conflict handling). */
 export interface FileSnapshot {
   readonly path: string;
   readonly content: string;
