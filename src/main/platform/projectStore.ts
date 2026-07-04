@@ -26,6 +26,12 @@ import { createHash } from 'node:crypto';
 /** Durable-record format version — bumped only on a breaking `project.json` change. */
 export const PROJECT_SCHEMA_VERSION = 1;
 
+/** Session-record format version — bumped only on a breaking `session.json` change (§7.1). */
+export const SESSION_SCHEMA_VERSION = 1;
+
+/** The session filename inside a home (§7). */
+export const SESSION_FILE = 'session.json';
+
 /** The durable identity/metadata record at `<home>/project.json` (§7.1). */
 export interface ProjectRecord {
   /** Format version for forward migration. */
@@ -46,6 +52,27 @@ export interface ProjectPaths {
   readonly runtimeDir: string;
   /** The durable identity record, `<home>/project.json`. */
   readonly recordPath: string;
+}
+
+/**
+ * The durable session record at `<home>/session.json` (§7, §8.6, PF19). A
+ * separately-versioned record under the same tolerant discipline as
+ * `project.json`. Persisted continuously as tabs open/close/switch — purely a
+ * crash safety net, only ever read back after a dirty shutdown (Slice B).
+ */
+export interface SessionRecord {
+  /** Format version for forward migration. */
+  readonly schemaVersion: number;
+  /** Absolute paths of the open tabs, in tab order. */
+  readonly files: readonly string[];
+  /** Index of the active tab within `files`, or -1 when none is active. */
+  readonly activeIndex: number;
+  /**
+   * False while the window is running; set true on a clean shutdown. A whole-app
+   * crash never rewrites it, so `cleanExit:false` surviving to the next launch is
+   * the dirty-shutdown signal (§8.6). This slice only WRITES it; nothing reads it.
+   */
+  readonly cleanExit: boolean;
 }
 
 /** The runtime subdirectory name inside a home (§7). */
@@ -199,4 +226,56 @@ export function materializeProjectRecord(
   // Create exclusively (first-writer-wins). A launch that lost the race between
   // the read above and this create adopts the winner's record — never clobbers it.
   return createOrAdoptRecord(paths.recordPath, record);
+}
+
+// --- Session record (§7, §8.6, PF19) ---------------------------------------
+
+/**
+ * Tolerant, versioned parse of a `session.json` (§7.1 discipline) — unknown
+ * fields ignored, missing fields defaulted. `files` is the only structurally
+ * load-bearing field: a record whose `files` is not an array of strings is
+ * unusable (null), since a garbage open-set is worse than none. `activeIndex`
+ * defaults to -1 (no active tab) and `cleanExit` defaults to true (a record we
+ * cannot trust the flag on should NOT masquerade as a crash).
+ */
+export function parseSessionRecord(raw: unknown): SessionRecord | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (!Array.isArray(r.files) || !r.files.every((f) => typeof f === 'string')) return null;
+  return {
+    schemaVersion: typeof r.schemaVersion === 'number' ? r.schemaVersion : SESSION_SCHEMA_VERSION,
+    files: r.files as string[],
+    activeIndex: typeof r.activeIndex === 'number' ? r.activeIndex : -1,
+    // A missing/garbage flag defaults to clean, so only an explicit `false` — the
+    // value a running window writes — is ever read as a dirty shutdown (Slice B).
+    cleanExit: typeof r.cleanExit === 'boolean' ? r.cleanExit : true,
+  };
+}
+
+/**
+ * Read and validate `<home>/session.json`; null if absent/unreadable/garbage.
+ * (Slice A does not act on this; it exists to make `writeSession` round-trippable
+ * and unit-testable, and is the surface Slice B's restore path will consume.)
+ */
+export function readSession(homeDir: string): SessionRecord | null {
+  try {
+    return parseSessionRecord(JSON.parse(fs.readFileSync(path.join(homeDir, SESSION_FILE), 'utf8')));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write `<home>/session.json` atomically (temp file, then rename over), mirroring
+ * `writeOwnerAtomic` in project.ts: a partial write from a crash mid-save can
+ * never leave a truncated record readers would parse as a real (empty) session.
+ * The temp uses a `.swap` suffix — NOT `.tmp` — so it lives in the home, not the
+ * runtime dir, and shares no namespace with the channel's stale-`.tmp` reaper.
+ * The home dir is created if needed.
+ */
+export function writeSession(homeDir: string, record: SessionRecord): void {
+  fs.mkdirSync(homeDir, { recursive: true });
+  const tmp = path.join(homeDir, `${SESSION_FILE}.${process.pid}.${process.hrtime.bigint()}.swap`);
+  fs.writeFileSync(tmp, JSON.stringify(record, null, 2));
+  fs.renameSync(tmp, path.join(homeDir, SESSION_FILE));
 }

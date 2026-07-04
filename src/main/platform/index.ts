@@ -30,7 +30,14 @@ import {
   listenOnChannel as listenOnChannelFs,
   type ChannelListener,
 } from './channel';
-import { projectPaths, materializeProjectRecord, type ProjectPaths } from './projectStore';
+import {
+  projectPaths,
+  materializeProjectRecord,
+  readSession,
+  writeSession as writeSessionFs,
+  SESSION_SCHEMA_VERSION,
+  type ProjectPaths,
+} from './projectStore';
 
 export type { ClaimResult } from './project';
 
@@ -111,6 +118,23 @@ export interface PlatformBridge {
   listenOnChannel(project: string, channelId: string, onFile: (absPath: string) => void): void;
   /** Stop consuming the channel and release the project (ownership-guarded). */
   closeChannel(): Promise<void>;
+
+  // --- Session persistence (PF19, §8.6) ----------------------------------
+  /**
+   * Persist the claimed project's open-tab set to `<home>/session.json` with
+   * `cleanExit:false` (§8.6) — the crash safety net, rewritten as tabs change.
+   * `files` are absolute paths in tab order; `activeIndex` is the active tab's
+   * index (or -1). NO-OP when there is no claimed project: a projectless window
+   * (PF27) has no home, so it persists nothing.
+   */
+  writeSession(session: { files: string[]; activeIndex: number }): void;
+  /**
+   * Flag a clean shutdown: rewrite the claimed project's existing session with
+   * `cleanExit:true` (§8.6), so a later launch can tell this quit from a crash.
+   * NO-OP when there is no claimed project OR no session on disk yet — a clean
+   * quit before any session was written leaves nothing to (and needs no) marking.
+   */
+  markCleanExit(): void;
 }
 
 /**
@@ -273,6 +297,27 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       claimedOwner = null;
       claimedProject = null;
       claimedAppVersion = undefined;
+    },
+
+    // Session persistence (PF19, §8.6). Both derive the home from the retained
+    // `claimedProject` and no-op in projectless mode — a window with no claimed
+    // project has no home and writes no session.
+    writeSession(session) {
+      if (!claimedProject) return;
+      writeSessionFs(pathsFor(claimedProject).homeDir, {
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        files: session.files,
+        activeIndex: session.activeIndex,
+        cleanExit: false, // running; flipped true only by markCleanExit on a clean close
+      });
+    },
+
+    markCleanExit() {
+      if (!claimedProject) return;
+      const homeDir = pathsFor(claimedProject).homeDir;
+      const existing = readSession(homeDir);
+      if (!existing) return; // nothing was ever persisted — nothing to mark
+      writeSessionFs(homeDir, { ...existing, cleanExit: true });
     },
   };
 }

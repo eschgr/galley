@@ -21,6 +21,9 @@ const api: GalleyApi = {
   setActiveDocPath: (path) => {
     void ipcRenderer.invoke('window:setActiveDocPath', path);
   },
+  setSession: (session) => {
+    void ipcRenderer.invoke('window:setSession', session);
+  },
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),

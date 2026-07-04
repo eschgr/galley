@@ -360,6 +360,26 @@ export function App() {
     if (!view.jumpToFragment(frag)) view.scrollPreviewTop();
   }, [activeId]);
 
+  // Report the open-tab set to main so it can persist the session as a crash
+  // safety net (PF19, §8.6). Fires on open/close/switch/reorder — anything that
+  // changes the open paths in order or which one is active. The welcome sandbox
+  // has no path and is excluded; an empty tab set reports `files: []`. Main
+  // debounces the write and no-ops in projectless mode. Mirrors setActiveDocPath.
+  //
+  // Keyed on an order-sensitive signature of the open paths plus the active id, so
+  // it re-runs on any open/close/reorder/switch but not on unrelated per-tab edits.
+  const sessionSignature = JSON.stringify({ paths: tabs.map((t) => t.path), activeId });
+  useEffect(() => {
+    const { paths, activeId: active } = JSON.parse(sessionSignature) as {
+      paths: string[];
+      activeId: string | null;
+    };
+    // paths and activeId came from the same render's `tabs`, so the active tab's
+    // slot is its position in that ordered path list (paths are unique per tab).
+    const activeIndex = active === null ? -1 : paths.indexOf(tabById(active)?.path ?? '\0');
+    window.galley?.setSession({ files: paths, activeIndex });
+  }, [sessionSignature]);
+
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
   const conflict = activeTab?.conflict ?? null;
   const showModal = activeTab?.showModal ?? false;

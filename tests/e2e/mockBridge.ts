@@ -72,6 +72,9 @@ export async function installMockBridge(
       // and `?.` only guards galley being null — a MISSING method still throws and
       // crashes <App> on mount. So the mock must implement the whole bridge.
       setActiveDocPath: () => {},
+      // App reports the open-tab session (files + active) to main on every tab
+      // change (#61 slice A). Same rule as above: a missing method crashes <App>.
+      setSession: () => {},
       getStartupFiles: async () => startupFiles,
       saveFile: async (path: string, content: string, force?: boolean) => {
         harness.saveCalls.push({ path, content, force: !!force });

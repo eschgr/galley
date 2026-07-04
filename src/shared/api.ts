@@ -49,6 +49,13 @@ export interface GalleyApi {
    * screen.
    */
   setActiveDocPath(path: string | null): void;
+  /**
+   * Mirror the open-tab set to main so it can persist the session as a crash
+   * safety net (PF19, §8.6): `files` are the open tabs' absolute paths in order,
+   * `activeIndex` the active tab's index (or -1). Fire-and-forget; reported on
+   * every tab open/close/switch. A no-op in projectless mode (main has no home).
+   */
+  setSession(session: { files: string[]; activeIndex: number }): void;
 
   /**
    * Save content to a path (R29/R30). A checked save (default) refuses to write
