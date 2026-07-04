@@ -5,7 +5,7 @@
  *
  * File watching, the channel listener, and conflict signalling get added here
  * (and implemented behind the platform seam) in later phases. Keeping this typed
- * and minimal is the renderer side of the PRD security model and the
+ * and minimal is the renderer side of the security model and the
  * portability seam.
  */
 
@@ -27,9 +27,9 @@ export interface GalleyApi {
   /** App version, for the Help window. */
   readonly version: string;
   /**
-   * The claimed project's name, surfaced in the OS window title (PF24). Fixed
+   * The claimed project's name, surfaced in the OS window title. Fixed
    * for the window's lifetime, like `platform`/`version`; null in projectless
-   * mode (PF27), where the title shows no project.
+   * mode, where the title shows no project.
    */
   readonly projectName: string | null;
   /**
@@ -57,13 +57,13 @@ export interface GalleyApi {
   setActiveDocPath(path: string | null): void;
   /**
    * Mirror the open-tab set to main so it can persist the session as a crash
-   * safety net (PF19, §8.6): `files` are the open tabs' absolute paths in order,
+   * safety net: `files` are the open tabs' absolute paths in order,
    * `activeIndex` the active tab's index (or -1). Fire-and-forget; reported on
    * every tab open/close/switch. A no-op in projectless mode (main has no home).
    */
   setSession(session: { files: string[]; activeIndex: number }): void;
   /**
-   * Pull the session to restore after a dirty shutdown (PF20, §8.6), once on
+   * Pull the session to restore after a dirty shutdown, once on
    * mount. Non-null only when the claimed project's last session was left dirty
    * (a crash / unclean exit): main loads each persisted path from disk (skipping
    * any that no longer read, adjusting `activeIndex`) and returns the loaded
@@ -101,11 +101,11 @@ export interface GalleyApi {
   /** Subscribe to File → Close Tab (Ctrl/Cmd+W) — close the active tab, prompting
    *  if it has unsaved edits (close a tab). Returns unsubscribe. */
   onCloseTab(callback: () => void): () => void;
-  /** Subscribe to Ctrl+Tab — switch to the next tab (right, wrapping) (#19).
+  /** Subscribe to Ctrl+Tab — switch to the next tab (right, wrapping).
    *  Returns unsubscribe. */
   onNextTab(callback: () => void): () => void;
-  /** Subscribe to Ctrl+Shift+Tab — switch to the previous tab (left, wrapping)
-   *  (#19). Returns unsubscribe. */
+  /** Subscribe to Ctrl+Shift+Tab — switch to the previous tab (left, wrapping).
+   *  Returns unsubscribe. */
   onPrevTab(callback: () => void): () => void;
   /** Subscribe to Help → Galley Help — open the Help window. Returns unsubscribe. */
   onHelp(callback: () => void): () => void;

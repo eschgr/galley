@@ -4,7 +4,7 @@
  * and a close button (the close prompt lives in App). Clicking the label
  * switches tabs; clicking × closes.
  *
- * Tabs are draggable to reorder them (issue #20). While dragging, the strip
+ * Tabs are draggable to reorder them. While dragging, the strip
  * renders a PREVIEW ORDER: the dragged tab is moved to its prospective landing
  * slot and shown there as a translucent "shadow", with the other tabs shifted to
  * make room — so it's obvious where the drop will land. Reordering never changes

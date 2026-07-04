@@ -58,7 +58,7 @@ describe('parseCliFileArgs', () => {
     expect(path.isAbsolute(r[0])).toBe(true);
   });
 
-  it('returns EVERY file arg, in command-line order, each absolute (#37)', () => {
+  it('returns EVERY file arg, in command-line order, each absolute', () => {
     expect(parseCliFileArgs(['galley.exe', 'a.md', 'b.md', 'c.md'], true)).toEqual([
       path.resolve('a.md'),
       path.resolve('b.md'),

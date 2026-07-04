@@ -122,9 +122,9 @@ describe('acquireProject', () => {
     expect(readProjectOwner(dir)?.pid).toBe(process.pid); // we took over
   });
 
-  it('DEFERS (does not take over) when the live start-time query returns null (#56 transient-failure safety)', async () => {
+  it('DEFERS (does not take over) when the live start-time query returns null (transient-failure safety)', async () => {
     // pid is provably alive but the OS start-time query failed / timed out this time.
-    // A false take-over here would reopen #56's duplicate window, so we must hand off.
+    // A false take-over here would reopen the duplicate window, so we must hand off.
     const dir = freshRuntimeDir();
     writeOwner(dir, { pid: 999999, startTime: OWNER_START });
     const r = await acquireProject('unqueryable', dir, {}, { alive: alwaysAlive, queryStartTime: startNever });
@@ -204,7 +204,7 @@ describe('isProjectLive', () => {
     expect(isProjectLive(dir, () => true, () => '1783107999999')).toBe(false); // alive but recycled pid
     expect(isProjectLive(dir, () => false, () => '1783107891272')).toBe(false); // pid dead
   });
-  it('treats an unqueryable live pid as live (defers), not recycled (#56)', () => {
+  it('treats an unqueryable live pid as live (defers), not recycled', () => {
     // A record WITH a start-time whose live query returns null (failed/timed out):
     // the pid is alive, so we must NOT read it as a recycled/dead pid.
     const dir = freshRuntimeDir();
@@ -213,7 +213,7 @@ describe('isProjectLive', () => {
   });
 });
 
-describe('queryProcessStartTime — output parsing (§8.1, the only per-OS code)', () => {
+describe('queryProcessStartTime — output parsing (the only per-OS code)', () => {
   it('parses a wmic CreationDate block to canonical UTC epoch-ms', () => {
     // wmic prints a header line, then the WMI datetime (local wall-clock + offset), then blanks.
     const out = 'CreationDate\r\n20260703124451.272290-420\r\n\r\n';
@@ -240,12 +240,12 @@ describe('queryProcessStartTime — output parsing (§8.1, the only per-OS code)
     expect(parseFileTimeUtc('not-a-number')).toBeNull();
   });
 
-  // FIX 2 (§8.1, #56): the two Windows query paths report the SAME process instant
+  // The two Windows query paths report the SAME process instant
   // in different encodings. Canonicalizing both to epoch-ms MUST make them equal,
   // else an owner claimed via wmic and re-queried via CIM (or vice-versa) reads as a
   // recycled pid ⇒ false take-over ⇒ duplicate window. This asserts they agree; it
   // FAILS against the old source-tagged impl (`wmi:…` !== `ft:…`) and passes now.
-  it('canonicalizes wmic and FileTimeUtc of the SAME instant to the SAME value (cross-path #56)', () => {
+  it('canonicalizes wmic and FileTimeUtc of the SAME instant to the SAME value (cross-path)', () => {
     const viaWmic = parseWmicCreationDate('CreationDate\r\n20260703124451.272290-420\r\n');
     const viaFileTime = parseFileTimeUtc('134275814912722900');
     expect(viaWmic).not.toBeNull();
@@ -281,7 +281,7 @@ describe('queryProcessStartTime — output parsing (§8.1, the only per-OS code)
   });
 });
 
-describe('reassertOwner (§8.2, #60 re-assertion)', () => {
+describe('reassertOwner (re-assertion)', () => {
   it('recreates owner.json verbatim after an external delete', async () => {
     const dir = freshRuntimeDir();
     const claim = await acquireProject('reassert', dir, {}, {});
@@ -325,7 +325,7 @@ describe('releaseProject (ownership guard, non-destructive)', () => {
     expect(fs.existsSync(dir)).toBe(false);
   });
   it('removes ONLY runtime/, leaving the durable home (incl. project.json) intact', async () => {
-    // The #60 data-safety guarantee: release clears coordination state, never
+    // The data-safety guarantee: release clears coordination state, never
     // durable data. Model the layout with a home containing project.json + runtime/.
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-home-'));
     roots.push(home);

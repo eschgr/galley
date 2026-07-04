@@ -13,7 +13,7 @@ describe('shortcut chord formatting (Help window)', () => {
     expect(chord('darwin', 'Mod', 'Shift', 'X')).toBe('⌘⇧X');
   });
 
-  it('renders literal Ctrl+Tab chords per platform (#19)', () => {
+  it('renders literal Ctrl+Tab chords per platform', () => {
     expect(chord('win32', 'Ctrl', 'Tab')).toBe('Ctrl+Tab');
     expect(chord('win32', 'Ctrl', 'Shift', 'Tab')).toBe('Ctrl+Shift+Tab');
     // macOS: Control symbol ⌃ and Tab ⇥, never ⌘.

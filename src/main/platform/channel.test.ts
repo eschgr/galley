@@ -6,7 +6,7 @@ import { sendToChannel, listenOnChannel, type ChannelListener } from './channel'
 import { acquireProject, reassertOwner, readProjectOwner, OWNER_FILE, type ProjectOwner } from './project';
 import { PROTOCOL_VERSION, PROTOCOL } from './protocol';
 
-// The channel transport (§7, §8.1): a launching peer writes a message file
+// The channel transport: a launching peer writes a message file
 // addressed to the owning instance's channel id into the project's `runtime/`
 // dir; the owner reads each, version-checks it, and dispatches. Filenames carry
 // the channel id, so a message only ever reaches its intended owner. Tests inject
@@ -52,7 +52,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-describe('channel file-drop transport (§7, §8.1)', () => {
+describe('channel file-drop transport', () => {
   it('delivers an open message and deletes it', async () => {
     const dir = freshRuntimeDir();
     const got: string[] = [];
@@ -153,13 +153,13 @@ describe('channel message format (versioned envelope)', () => {
   });
 });
 
-// Re-assertion on external removal (PF8, §8.2 — the #60 defense-in-depth). A live
+// Re-assertion on external removal (defense-in-depth). A live
 // owner whose runtime/ or owner.json is deleted out from under it must recreate the
 // discoverable artifacts with the SAME identity, so a later launch's acquireProject
 // finds the live owner and hands off instead of duplicating. The bridge wires
 // `onReassert` to project.ts#reassertOwner (+ project.json re-materialization); the
 // tests here mirror that wiring directly.
-describe('channel re-assertion on external removal (§8.2, #60)', () => {
+describe('channel re-assertion on external removal', () => {
   /** A home dir with a project.json + runtime/ layout (mirrors projectStore). */
   function freshHome(): { home: string; runtimeDir: string; recordPath: string } {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-home-'));
@@ -225,9 +225,9 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
     expect(fs.existsSync(recordPath)).toBe(true); // project.json re-materialized
   });
 
-  it('#60: after re-assertion a fresh acquireProject finds the live owner (handoff, not duplicate)', async () => {
+  it('after re-assertion a fresh acquireProject finds the live owner (handoff, not duplicate)', async () => {
     const { runtimeDir } = freshHome();
-    // Model the owner as a SEPARATE live process (a foreign pid), the real #60
+    // Model the owner as a SEPARATE live process (a foreign pid), the real
     // scenario — the re-asserting owner is a different process than the launch that
     // later probes it. (Using this test process's own pid would trip acquireProject's
     // "re-claim my own record" path and mask the handoff.)
@@ -278,7 +278,7 @@ describe('channel re-assertion on external removal (§8.2, #60)', () => {
   });
 
   it('drains a message queued into the recreated dir before the watch re-attaches', async () => {
-    // #60 dropped-open: after re-assert recreates runtime/ + owner.json, a launching
+    // Dropped-open: after re-assert recreates runtime/ + owner.json, a launching
     // peer reads the recreated owner.json and drops a `.msg` — all within the ~60ms
     // heal debounce, so the file PRE-EXISTS the watcher re-attach. The re-created
     // watcher uses ignoreInitial, so only the heal-path reconcile can pick it up.

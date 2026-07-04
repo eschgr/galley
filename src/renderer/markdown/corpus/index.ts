@@ -1,6 +1,6 @@
 /**
  * The rendering-spike corpus: representative real Claude markdown output across the
- * four stress categories the PRD calls out (math-heavy, table-heavy, code-heavy,
+ * four common stress categories (math-heavy, table-heavy, code-heavy,
  * task lists), plus a mixed "typical reply" document. Loaded as raw text and
  * rendered through the candidate pipeline so fidelity can be eyeballed.
  */

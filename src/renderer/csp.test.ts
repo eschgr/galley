@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 // The renderer's Content-Security-Policy lives in index.html. These tests guard
-// the security posture the #25 change touched: remote https images are allowed
+// the security posture around images: remote https images are allowed
 // to load, but code execution stays locked down. Parsing the meta tag keeps the
 // policy honest (e.g. nobody silently re-tightens img-src or loosens script-src).
 function cspDirectives(): Record<string, string> {
@@ -21,7 +21,7 @@ function cspDirectives(): Record<string, string> {
 }
 
 describe('renderer Content-Security-Policy (index.html)', () => {
-  it('allows remote web images (http + https), plus inline data: and self (#25)', () => {
+  it('allows remote web images (http + https), plus inline data: and self', () => {
     const img = cspDirectives()['img-src'];
     expect(img).toContain("'self'");
     expect(img).toContain('data:');

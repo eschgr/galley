@@ -14,8 +14,8 @@ import { debounce } from './main/debounce';
 import { decideCrashReload, materializeRestore } from './main/crashReload';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
-// that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync
-// (#42). Squirrel runs `Galley.exe --squirrel-<event>` on every version bump, so
+// that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync.
+// Squirrel runs `Galley.exe --squirrel-<event>` on every version bump, so
 // we (re)write the shim to point at THIS exe — `process.execPath` is the current
 // versioned `app-x.y.z\Galley.exe`. Best-effort: a shim failure must not block
 // install/uninstall. Then the app quits (the Squirrel event isn't a real launch).
@@ -37,10 +37,10 @@ if (started) {
   app.quit();
 }
 
-// `--help` / `-h` (issue #38): print the LLM-oriented usage to stdout and exit
+// `--help` / `-h`: print the LLM-oriented usage to stdout and exit
 // before opening any window. Handled here, as early as possible, so a `galley
 // --help` never flashes a window. The text (src/main/cliHelp.ts) is geared at an
-// LLM driving the app and mirrors the PRD Appendix A launcher contract.
+// LLM driving the app and mirrors the launcher contract.
 //
 // Caveat: a Windows GUI-subsystem packaged build may not attach to the parent
 // console, so stdout can be lost there; it works from a dev launch
@@ -50,7 +50,7 @@ if (wantsHelp(process.argv)) {
   app.exit(0);
 }
 
-// All OS-touching file work goes through the platform seam (PRD §7/§9). The
+// All OS-touching file work goes through the platform seam. The
 // projects-home root (`userData/projects`) is passed as a LAZY thunk: the seam
 // stays Electron-free, and `app.getPath` is only read once a project op runs
 // (always post-`ready`), never at module load.
@@ -160,11 +160,11 @@ ipcMain.handle('window:setActiveDocPath', (event, p) => {
   if (win) activeDocPath.set(win.id, typeof p === 'string' ? p : null);
 });
 
-// Session persistence (PF19, §8.6): the renderer reports its open-tab set on
+// Session persistence: the renderer reports its open-tab set on
 // every open/close/switch; persist it to the claimed project's session.json as a
 // crash safety net. The write is debounced (~500 ms) so rapid tab churn coalesces
 // into one disk write reflecting the settled set; the bridge no-ops in projectless
-// mode (no home). Slice A only WRITES — nothing reads session.json back yet.
+// mode (no home).
 const SESSION_DEBOUNCE_MS = 500;
 const persistSession = debounce((session: { files: string[]; activeIndex: number }) => {
   platform.writeSession(session);
@@ -180,10 +180,10 @@ ipcMain.handle('window:setSession', (_event, session: unknown) => {
   });
 });
 
-// Session restore (PF20, §8.6): the renderer pulls this once on mount. The bridge
+// Session restore: the renderer pulls this once on mount. The bridge
 // makes the restore DECISION (dirty shutdown + non-empty open-set + a claimed
 // project — else null); here we materialize it, loading each persisted path from
-// disk (which re-watches it) so restored content is the last save (D2). A path
+// disk (which re-watches it) so restored content is the last save. A path
 // that no longer reads (deleted/moved) is skipped, and `activeIndex` is shifted
 // down by each skipped path that preceded it so it still points at the same tab.
 // Null decision, or every path unreadable, resolves null → the renderer stays with
@@ -220,7 +220,7 @@ ipcMain.handle('window:getRestore', async (event) => {
 // we cannot surface print failures here: in Electron 42 the print callback's
 // failureReason cannot distinguish a user cancel from a real failure. A normal
 // cancel reports "Print job canceled" (and "Print job failed" for Microsoft
-// Print to PDF on Windows, per electron/electron#36084) — string-identical to a
+// Print to PDF on Windows) — string-identical to a
 // genuine failure — so any error box keyed on failureReason would false-alarm on
 // every cancel. The OS print dialog reports its own printer errors interactively,
 // and it appears without the callback in this Electron version, so dropping the
@@ -393,16 +393,16 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     center: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // Security hardening (PRD §7 architecture notes):
+      // Security hardening:
       // isolate the renderer from Node and the Electron internals; the only
       // bridge across the boundary is the minimal preload API.
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      // Carry the per-window project name to the preload (PF24). Unlike the
+      // Carry the per-window project name to the preload. Unlike the
       // app-global version (a sync IPC call), the project differs per window, so
       // it rides in on this window's argv; the preload surfaces it as
-      // window.galley.projectName. Omitted (⇒ null) in projectless mode (PF27).
+      // window.galley.projectName. Omitted (⇒ null) in projectless mode.
       additionalArguments: project ? [`--galley-project=${project}`] : [],
     },
   });
@@ -421,7 +421,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     for (const p of watchedPaths) platform.unwatch(p);
     watchedPaths.clear();
     activeDocPath.delete(mainWindow.id);
-    // Mark this as a CLEAN shutdown (§8.6): drop any pending debounced session
+    // Mark this as a CLEAN shutdown: drop any pending debounced session
     // write (the final set is already persisted, or there's nothing to persist),
     // then flip the on-disk session's cleanExit flag to true. A whole-app crash
     // never runs this, so `cleanExit:false` surviving to the next launch is the
@@ -431,7 +431,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     void platform.closeChannel();
   });
 
-  // §7 security: links and window.open() from the preview must open in the
+  // Security: links and window.open() from the preview must open in the
   // system browser, never navigate the app's own window or spawn an in-app
   // browser. Anything that is not the app's own page is handed to the OS.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -466,7 +466,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
       event.preventDefault();
       mainWindow.webContents.send('menu:closeTab');
     }
-    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs (issue #19). Always literal Ctrl,
+    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs. Always literal Ctrl,
     // even on macOS — Cmd+Tab is reserved by the OS for app switching, and the
     // CM6 editor can swallow Tab when focused, so intercept here. Never fire
     // when Alt or Cmd are held.
@@ -488,7 +488,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     for (const f of pendingChannelFiles.splice(0)) void openPath(mainWindow, f);
   });
 
-  // Renderer-crash recovery (PF21, §8.6): if the renderer process dies while main
+  // Renderer-crash recovery: if the renderer process dies while main
   // is alive — and it is NOT a normal teardown (`clean-exit`, which fires during
   // ordinary quit) and the window is not already closing — reload the renderer.
   // The reloaded page re-runs its mount flow and hits `getRestore`; session.json
@@ -524,7 +524,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
       mainWindow.webContents.reload(); // re-mount → getRestore offers the last session
     }
   });
-  // A merely-hung renderer is logged, never auto-reloaded (D2 / §8.6) — reloading a
+  // A merely-hung renderer is logged, never auto-reloaded — reloading a
   // window that might recover on its own would drop unsaved edits gratuitously.
   mainWindow.webContents.on('unresponsive', () => {
     console.warn('[galley] renderer unresponsive');
@@ -575,7 +575,7 @@ app.on('ready', async () => {
   // Self-arbitration (the instance model & file delivery): with `--project
   // <name>`, claim the project. If a
   // live window already owns it (its pid is alive AND its recorded OS start-time
-  // still matches — the start-time liveness check, §8.1/#56), drop our files into
+  // still matches — the start-time liveness check), drop our files into
   // its channel and exit rather than open a duplicate; otherwise become its window.
   // A plain launch (no --project) just opens a window with no channel.
   const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
@@ -619,7 +619,7 @@ app.on('ready', async () => {
   createWindow(project, files);
 });
 
-// PRD (empty-state / welcome screen): closing the last tab keeps the app open.
+// Empty-state / welcome screen: closing the last tab keeps the app open.
 // Quitting the whole app is a separate, explicit action. The skeleton keeps the
 // default platform behavior for now; window/tab lifecycle is wired up in a
 // later step.
@@ -638,4 +638,4 @@ app.on('activate', () => {
 
 // All OS-touching work (file IO + hashing, the file watcher + conflict handling,
 // and the per-project file-drop channel) lives behind the platform seam
-// (src/main/platform). See PRD §7 (architecture notes) and §9.
+// (src/main/platform).
