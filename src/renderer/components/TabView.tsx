@@ -1,5 +1,5 @@
 /**
- * One self-contained view per open tab (#26). Each TabView owns its OWN editor +
+ * One self-contained view per open tab. Each TabView owns its OWN editor +
  * preview + the split layout + the editor↔preview scroll-sync. All open
  * tabs' TabViews stay mounted; only the active one is visible (the rest are
  * display:none via the `hidden` flag). Switching tabs just changes which one is

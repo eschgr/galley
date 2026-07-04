@@ -26,7 +26,7 @@
  * tab is RELOADED from disk (Ctrl+R / external refresh / keep-mine) the host
  * pushes the new text down imperatively via setDoc(); ordinary edits flow up
  * through onChange and never round-trip back. Since every open tab now owns its
- * OWN Editor (one CodeMirror per TabView, #26), the per-tab state-swap machinery
+ * OWN Editor (one CodeMirror per TabView), the per-tab state-swap machinery
  * that used to live here — getState/setState + the scrollSnapshot/restoreScroll
  * warm-sweep — is gone: switching tabs just toggles which TabView is visible.
  */

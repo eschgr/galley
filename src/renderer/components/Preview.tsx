@@ -5,7 +5,7 @@
  * editor. Anchor clicks are routed to the system browser — the renderer never
  * navigates itself.
  *
- * Each open tab owns its OWN Preview (one per TabView, #26), so the per-tab
+ * Each open tab owns its OWN Preview (one per TabView), so the per-tab
  * reading-position stash/restore that used to live here — restoreScrollTop +
  * reassertRestore + watchImagesForRestore + the onScroll-cancel (reflow-settle
  * machinery) — is gone: a hidden TabView simply keeps its scroller mounted, so

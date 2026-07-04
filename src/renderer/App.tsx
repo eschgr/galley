@@ -1,9 +1,9 @@
 /**
  * Root component. Owns the open tabs and the view-mode switch, and hosts a
- * per-tab split editor/preview view (split view & Show/Hide Source reading mode, #26).
+ * per-tab split editor/preview view (split view & Show/Hide Source reading mode).
  *
  * Tabs: each open file is a tab with its own buffer, baseline, dirty state,
- * and conflict state. As of #26 each open tab also renders its OWN self-contained
+ * and conflict state. Each open tab also renders its OWN self-contained
  * TabView (its own CodeMirror editor + preview + split layout + scroll-sync). All
  * open tabs' TabViews stay mounted; only the active one is visible (the rest are
  * display:none). Switching tabs just changes which one is visible — no re-parse,
