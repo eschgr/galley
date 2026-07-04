@@ -1,11 +1,45 @@
 # PRD: Galley — Editing & Formatting
 
-**Status:** Draft (split from the main PRD v11, 2026-07-04)
+**Status:** Draft
 **Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **editing**, **formatting-shortcut**, and **document-state** requirements; the main PRD's **§6 Features** section indexes it. Requirement IDs (**R#**) are numbered locally within this sub-PRD.
 
 ---
 
-## 1. Editing
+## 1. Summary
+
+Galley edits the markdown **source** directly, with live preview and synchronized scrolling. The editor is deliberately *source*: uniform monospace with colour-only highlighting, kept visually distinct from the rendered view the way a code editor is distinct from what it produces. Formatting shortcuts apply markdown to the selection — bold, italic, code, headings, lists, links — so the user never has to remember or type the syntax by hand. The editor tracks an explicit **document-state** model for what it is showing rather than inferring intent from a null path.
+
+## 2. Relationship to the main PRD
+
+- **Serves** the main-PRD goal (docs/PRD.md §3) "directly edit files with live preview, syntax highlighting, and undo/redo."
+- **Leaves unchanged:** rendering of the preview lives in [`PRD-Rendering.md`](PRD-Rendering.md); saving, auto-save, and conflict handling live in [`PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).
+
+Requirements here are numbered **R#**, local to this sub-PRD.
+
+## 3. Concept
+
+The source pane is source. It shows the markdown as written — no bold, no enlarged headings, no rendered structure — and uses colour alone to convey syntax, exactly as a code editor highlights a program. The preview is the rendered view. The two are separate surfaces, and scroll sync keeps them aligned so the reader can move through a long document without losing their place in either.
+
+Formatting is applied, not typed. A shortcut wraps, toggles, or prefixes the current selection (or the cursor position) with the right markdown, so the user expresses intent — *make this bold*, *make this a level-3 heading* — without recalling the syntax. Wrapping shortcuts toggle: applying a marker that is already present removes it. List indentation, continuation, and ordered-list numbering follow markdown's structure so nesting renders as nesting and editing stays cheap.
+
+The editor also tracks **what it is showing as an explicit state**, not as a null-path heuristic. The never-saved welcome sandbox, a real file on disk, and (in future) an untitled buffer are distinct states with distinct behavior, so the app never has to guess whether an empty path means "scratch space" or "unsaved work."
+
+## 4. Goals
+
+- Edit the markdown source directly, with the rendered preview updating as the user types.
+- Keep the editor clearly *source* — colour-only highlighting, uniform monospace — never a second rendered view.
+- Provide undo/redo and find & replace.
+- Apply markdown formatting via keyboard shortcuts (toggle plus smart selection handling) so the user never types the syntax.
+- Model document state explicitly rather than inferring it from a missing file path.
+
+## 5. Non-goals
+
+- **Word / character count.**
+- **Smart list-item selection** — extending a selection (or `Home`) to a list line's start stopping at the item's *content*, skipping the marker (`-` / `1.`). *(Future: [#89](https://github.com/eschgr/mdtool/issues/89).)*
+
+## 6. Requirements
+
+### Editing
 
 - **R1.** Edit the markdown **source** directly in-app.
 - **R2.** **Live preview**: the rendered view updates as the user types.
@@ -15,7 +49,7 @@
 - **R6.** **Find and replace** within the current document, via the editor's search panel (opened with `Cmd/Ctrl+F`). The built-in feature set: incremental find with match highlighting, find next / previous, replace and replace-all, and toggles for **case-sensitive**, **whole-word**, and **regular-expression** matching. *(Provided by CodeMirror's search extension out of the box; a frequently used operation, especially in larger files. The toggle set is the component's default — captured here for completeness, not separately required.)*
 - **R7.** **Line numbers** — nice-to-have, optional. *(Typically free from the editor component.)*
 
-## 2. Formatting shortcuts
+### Formatting shortcuts
 
 Keyboard shortcuts that apply markdown formatting to the editor selection, so the user does not have to type or remember the syntax.
 
@@ -64,15 +98,10 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
 
 > Implementation note: CodeMirror 6 exposes keybindings via its keymap system, and wrap/toggle logic operates on selection ranges; existing markdown-command helpers cover much of R9–R10. The link dialog (R14) is a small renderer-side popover reading/writing the editor selection; detecting "cursor within a link" uses the markdown syntax tree (Lezer) CodeMirror already maintains.
 
-## 3. Document states
+### Document states
 
 The editor tracks **what it is showing as an explicit state**, not as a null-path heuristic. Two kinds exist today (a third, `untitled`, arrives with Save As):
 
 - **Welcome screen** — a built-in **sandbox** shown whenever no file is open. It introduces the app and lets the user play with the renderer. It is **never saved** (no auto-save, no watcher, no Save), the title bar reads **"Welcome!"**, and it makes no claim to be a file. Opening a file replaces it.
 - **File** — a document opened from disk, with a path, baseline hash, watcher, and the full save/auto-save/conflict behavior.
 - **Untitled** *(future, with Save As)* — an editable buffer with **no destination yet**. Unlike the welcome screen it holds the user's work: auto-save and watching can't run, but unsaved changes must be surfaced and the user offered a way to save (Save As). *Not implemented yet — do not treat the welcome screen as an unsaved buffer.*
-
-## 4. Non-goals
-
-- **Word / character count.**
-- **Smart list-item selection** — extending a selection (or `Home`) to a list line's start stopping at the item's *content*, skipping the marker (`-` / `1.`). *(Future: [#89](https://github.com/eschgr/mdtool/issues/89).)*

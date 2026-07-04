@@ -62,7 +62,7 @@ Each substantial feature area is specified in its own **sub-PRD** under `docs/` 
 - **Editing & formatting — [`docs/PRD-Editing.md`](PRD-Editing.md).** Source editing, live preview, scroll sync, editor syntax highlighting, undo/redo, find & replace, the formatting-shortcut set, and document states. **R1–R15.**
 - **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R1–R11.**
 - **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R1–R15.**
-- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model & file delivery in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#2-instance-model--file-delivery).
+- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model & file delivery in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery).
 
 ---
 
@@ -194,7 +194,7 @@ Every operation below uses the **same command** — `galley --project <name> <fi
 > - **Several files at once:** `galley --project <name> a.md b.md`.
 > - Handing a file to an already-open window makes the command **exit immediately** — a fast exit means delivered, not failed.
 > - `galley --project <name>` **with no file** opens (or reuses) the project's window with nothing loaded.
-> - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#2-instance-model--file-delivery)) — not an error condition.
+> - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery)) — not an error condition.
 > - Delivery is coordinated through ordinary files, not sockets, so it works from a sandboxed shell.
 
 ### A.4 Prompt-ready instructions

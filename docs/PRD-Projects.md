@@ -21,7 +21,7 @@ It addresses **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** 
 
 ## 2. Relationship to the main PRD
 
-- **Supersedes** the **instance model & file delivery** in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#2-instance-model--file-delivery): the ephemeral `<tmpdir>/galley-<name>/` scratch dir is replaced by a **durable, app-managed project home** with a runtime/durable split (sections 7 and 8). The *caller contract* — a single `galley --project <name> <file>` command, and a plain `galley <file>` for a projectless window; the app self-arbitrates — is preserved verbatim.
+- **Supersedes** the **instance model & file delivery** in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery): the ephemeral `<tmpdir>/galley-<name>/` scratch dir is replaced by a **durable, app-managed project home** with a runtime/durable split (sections 7 and 8). The *caller contract* — a single `galley --project <name> <file>` command, and a plain `galley <file>` for a projectless window; the app self-arbitrates — is preserved verbatim.
 - **Extends** main PRD **section 7 (architecture / portability seam)** with a `ProjectStore` seam member (section 9).
 - **Specifies session persistence & restore** (section 6, group C).
 - **Leaves unchanged** everything about rendering, editing, saving, conflict handling, tabs, and print/export — a project is context *around* files, not a change to how a file is viewed or edited.
