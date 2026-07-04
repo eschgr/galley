@@ -144,6 +144,13 @@ export interface PlatformBridge {
    * This is the pure decision; the caller (main) loads the paths from disk.
    */
   getRestoreSession(): { files: string[]; activeIndex: number } | null;
+
+  // --- Project identity (PF24) -------------------------------------------
+  /**
+   * The claimed project's name, or null in projectless mode (PF27). Fixed for
+   * the window's lifetime — surfaced in the OS title bar (PF24).
+   */
+  projectName(): string | null;
 }
 
 /**
@@ -342,6 +349,12 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       // open-set all yield null — nothing to offer.
       if (!session || session.cleanExit || session.files.length === 0) return null;
       return { files: [...session.files], activeIndex: session.activeIndex };
+    },
+
+    // Project identity (PF24). Reads the retained `claimedProject`, null in
+    // projectless mode — a window with no claim has no name to show.
+    projectName() {
+      return claimedProject;
     },
   };
 }

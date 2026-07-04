@@ -6,6 +6,14 @@
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
 import { contextBridge, ipcRenderer } from 'electron';
 import type { GalleyApi, OpenedFile } from './shared/api';
+import { parseProjectArg } from './main/projectArg';
+
+// The claimed project name is a PER-WINDOW static (PF24) — unlike the app-global
+// `version`, it differs per window — so it rides in on this window's
+// `additionalArguments` (createWindow injects `--galley-project=<name>`), read
+// here at load. Its absence (projectless mode, PF27) yields null. The parse lives
+// in a pure, electron-free helper (src/main/projectArg) so it can be unit-tested.
+const projectName = parseProjectArg(process.argv);
 
 const api: GalleyApi = {
   platform: process.platform,
@@ -13,6 +21,8 @@ const api: GalleyApi = {
   // package.json in dev / the packaged version in a release), so it tracks every
   // release with no manual edits. sendSync is fine here: one tiny call at load.
   version: ipcRenderer.sendSync('app:version') as string,
+  // The claimed project's name for the OS title bar (PF24); null projectless.
+  projectName,
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   openLocalFile: (href: string, fromPath: string) => {
     void ipcRenderer.invoke('file:openLocal', { href, from: fromPath });

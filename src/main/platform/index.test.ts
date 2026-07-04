@@ -190,3 +190,28 @@ describe('platform bridge session restore decision (#61, §8.6, PF20)', () => {
     expect(bridge.getRestoreSession()).toBeNull();
   });
 });
+
+// Project identity getter (PF24). projectName surfaces the claimed project's
+// name for the title bar; null before a claim (and in projectless mode) and the
+// name afterwards.
+describe('platform bridge project identity (PF24)', () => {
+  it('projectName is null before any claim (projectless)', () => {
+    const home = freshProjectsHome();
+    const bridge = createPlatformBridge({ projectsHome: () => home });
+
+    expect(bridge.projectName()).toBeNull();
+  });
+
+  it(
+    'after a successful claim, projectName is the claimed name',
+    async () => {
+      const home = freshProjectsHome();
+      const bridge = createPlatformBridge({ projectsHome: () => home });
+
+      await bridge.claimProject('TestProj');
+
+      expect(bridge.projectName()).toBe('TestProj');
+    },
+    15_000,
+  );
+});
