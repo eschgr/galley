@@ -27,7 +27,7 @@
  * pushes the new text down imperatively via setDoc(); ordinary edits flow up
  * through onChange and never round-trip back. Since every open tab now owns its
  * OWN Editor (one CodeMirror per TabView, #26), the per-tab state-swap machinery
- * that used to live here — getState/setState + the #18 scrollSnapshot/restoreScroll
+ * that used to live here — getState/setState + the scrollSnapshot/restoreScroll
  * warm-sweep — is gone: switching tabs just toggles which TabView is visible.
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
@@ -81,14 +81,14 @@ export interface EditorHandle {
   scrollToLine(line: number): void;
   /** Raw scroll offset (px) of the editor's scroller. */
   getScrollTop(): number;
-  /** Set the scroller's scrollTop directly (px) — used by co-arrival blending (#18). */
+  /** Set the scroller's scrollTop directly (px) — used by co-arrival blending. */
   setScrollTop(px: number): void;
   /** Max scrollTop of the scroller (scrollHeight - clientHeight), clamped >= 0. */
   maxScroll(): number;
-  /** Visible height of the scroller (px) — one screenful, used as the blend window (#18). */
+  /** Visible height of the scroller (px) — one screenful, used as the blend window. */
   clientHeight(): number;
   /** The px scrollTop that would put a 0-based fractional source line at the top
-   *  — the line-anchored target, without actually scrolling (scroll synchronization / #18). */
+   *  — the line-anchored target, without actually scrolling (scroll synchronization). */
   scrollTopForLine(line: number): number;
   /** Re-measure layout — call after the editor is re-shown from display:none. */
   refresh(): void;
@@ -166,7 +166,7 @@ function getTopLine(view: EditorView): number {
 
 // The px scrollTop that puts a 0-based fractional source line at the viewport
 // top — the inverse of getTopLine. Shared by scrollToLine and the handle's
-// scrollTopForLine so SplitView can blend toward the editor's own max (#18).
+// scrollTopForLine so SplitView can blend toward the editor's own max.
 function scrollTopForLine(view: EditorView, line0: number): number {
   const total = view.state.doc.lines;
   const lineNo = clamp(Math.floor(line0) + 1, 1, total); // 1-based

@@ -7,7 +7,7 @@
  *
  * Each open tab owns its OWN Preview (one per TabView, #26), so the per-tab
  * reading-position stash/restore that used to live here — restoreScrollTop +
- * reassertRestore + watchImagesForRestore + the onScroll-cancel (#18 reflow-settle
+ * reassertRestore + watchImagesForRestore + the onScroll-cancel (reflow-settle
  * machinery) — is gone: a hidden TabView simply keeps its scroller mounted, so
  * its scroll position persists across a switch with no HTML re-swap to clamp.
  */
@@ -29,10 +29,10 @@ export interface PreviewHandle {
   setScrollTop(px: number): void;
   /** Max scrollTop of the scroller (scrollHeight - clientHeight), clamped >= 0. */
   maxScroll(): number;
-  /** Visible height of the scroller (px) — one screenful, used as the blend window (#18). */
+  /** Visible height of the scroller (px) — one screenful, used as the blend window. */
   clientHeight(): number;
   /** The px scrollTop that would put a 0-based fractional source line at the top
-   *  — the line-anchored target, without actually scrolling (scroll sync / #18). */
+   *  — the line-anchored target, without actually scrolling (scroll sync). */
   scrollTopForLine(line: number): number;
   /** Jump to the heading whose slug is `id` (a file-link `#fragment` target).
    *  Returns false if no such heading exists. */

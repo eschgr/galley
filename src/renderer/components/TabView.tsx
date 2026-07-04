@@ -194,7 +194,7 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
 
   // Drive the follower from the leader: keep the line-anchored alignment in the
   // middle, but blend the follower toward its OWN max over the leader's final
-  // screenful so both panes reach the bottom together (#18).
+  // screenful so both panes reach the bottom together.
   const syncFollower = (
     leader: EditorHandle | PreviewHandle,
     follower: EditorHandle | PreviewHandle,

@@ -110,7 +110,7 @@ describe('blendedFollowerTop', () => {
   });
 
   it('does not pull the follower off its top when blendPx == leaderMax', () => {
-    // SplitView caps blendPx at leaderMax (Fix #18): a leader whose content
+    // SplitView caps blendPx at leaderMax (the bottom-alignment fix): a leader whose content
     // barely exceeds its viewport has clientHeight > maxScroll, so the cap makes
     // blendPx == leaderMax and the blend window spans the whole range. At the
     // leader's top (leaderTop=0) the weight must be 0 — w = (0-(max-max))/max = 0
