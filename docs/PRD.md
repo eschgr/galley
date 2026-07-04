@@ -49,7 +49,7 @@ These are the **product-level** exclusions — the things Galley is deliberately
 ## 5. Non-functional requirements
 
 - **NFR1. Cross-platform:** runs on Windows and macOS.
-- **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
+- **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(How this is achieved — the bundled engine, the print/export APIs — is in §7.)*
 
 ---
 
@@ -81,6 +81,8 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 | File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process. |
 | Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/galley-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>`. File transport works in a sandbox where socket `listen()` is denied. |
 | Packaging | **Electron Forge** (or electron-builder) | Produces installers (see §8). |
+
+**Self-contained packaging (NFR2).** Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine, JS runtime, and file IO; from the user's perspective it is a single self-contained app requiring no separately-installed runtime or browser. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.
 
 ### Architecture notes
 

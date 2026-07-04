@@ -1,7 +1,6 @@
 # PRD: Galley — Saving & Conflict Handling
 
 **Status:** Draft
-**Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **saving**, **auto-refresh**, and **conflict-handling** requirements; the main PRD's **§6 Features** section indexes it. Requirement IDs (**R#**) are numbered locally within this sub-PRD.
 
 ---
 

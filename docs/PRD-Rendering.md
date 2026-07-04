@@ -1,7 +1,6 @@
 # PRD: Galley — Markdown Rendering
 
 **Status:** Draft
-**Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **markdown-rendering** requirements (the preview pipeline and the pre-build rendering spike); the main PRD's **§6 Features** section indexes it. Requirement IDs (**R#**) are numbered locally within this sub-PRD.
 
 ---
 
@@ -45,7 +44,11 @@ A **robustness floor** keeps the preview from ever collapsing on bad input. A ma
 - **R1.** Render a markdown flavor matching Claude's typical output: **GitHub Flavored Markdown (GFM)** — ATX headings, bold/italic, nested ordered/unordered lists, fenced code blocks with language info strings, tables, blockquotes, links, images, horizontal rules, and task lists (`- [ ]` / `- [x]`). *(GFM is assembled from markdown-it plugins/presets, not a single switch — see the spike subsection below and main PRD §11.)*
 - **R2.** Render **LaTeX math**: at minimum inline `$...$` and block `$$...$$`. The delimiter set and rendering engine must be validated against real Claude output (see the spike subsection below), since Claude also emits `\(...\)` / `\[...\]` and literal `$` can appear in prose.
 - **R3.** Apply **syntax highlighting inside fenced code blocks** based on the language info string.
-- **R4.** Clicking a link **in the preview** opens it in the **system default browser**, never inside the app's own window. *(Also a safety requirement — prevents the renderer from navigating away or spawning an in-app browser window.)* **Exceptions:** (a) **in-page anchor links** (`#heading`) scroll the preview to that heading instead of leaving the app — headings are given GitHub-style id slugs so the LLM's cross-reference links work; (b) **local-file links** (relative/absolute paths or `file://`) open the target as a tab, resolved against the current document's folder, so cross-document links between an LLM's files navigate in-app — and a `#fragment` on such a link (`other.md#section`) scrolls the opened tab to that heading. **Autolinking** is limited to text carrying an explicit scheme (`https://…`, `mailto:…`); bare `name.ext` text (e.g. `architecture.md`) is left as plain text rather than autolinked — many extensions are also TLDs, so fuzzy autolinking would wrongly make filenames in prose clickable. Use `[label](architecture.md)` for an explicit, clickable file link.
+- **R4. Link handling in the preview.** Each kind of link in the rendered preview is handled by its type:
+  - **Web / mail links** (`https://…`, `mailto:…`) open in the **system default browser**, never inside the app's own window. *(Also a safety requirement — the renderer must not navigate away or spawn an in-app browser window.)*
+  - **In-page anchor links** (`#heading`) scroll the preview to that heading. Headings are given GitHub-style id slugs so the LLM's cross-reference links resolve.
+  - **Local-file links** (relative or absolute paths, or `file://`) open the target as a tab, resolved against the current document's folder, so cross-document links between an LLM's files navigate in-app. A `#fragment` on such a link (`other.md#section`) scrolls the opened tab to that heading.
+  - **Bare filenames in prose** (e.g. `architecture.md`) are left as plain text, **not** autolinked — many extensions are also TLDs, so fuzzy autolinking would wrongly make filenames clickable. Autolinking applies only to text carrying an explicit scheme; use `[label](architecture.md)` for an explicit, clickable file link.
 
 ### Rendering de-risking spike (pre-build)
 

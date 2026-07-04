@@ -1,7 +1,6 @@
 # PRD: Galley — Editing & Formatting
 
 **Status:** Draft
-**Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **editing**, **formatting-shortcut**, and **document-state** requirements; the main PRD's **§6 Features** section indexes it. Requirement IDs (**R#**) are numbered locally within this sub-PRD.
 
 ---
 

@@ -1,7 +1,6 @@
 # PRD: Galley — UI Shell (Tabs, Layout, Menu, Help, Print & Export)
 
 **Status:** Draft
-**Companion to:** [`docs/PRD.md`](PRD.md) — the main Galley PRD. This sub-PRD holds the detailed **tabs**, **layout & empty state**, **application menu**, **help**, and **print & export** requirements — the application-shell feature areas; the main PRD's **§6 Features** section indexes it. Requirement IDs (**R#**) are numbered locally within this sub-PRD.
 
 ---
 
