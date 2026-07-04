@@ -12,6 +12,9 @@ import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
 import { debounce } from './main/debounce';
 import { decideCrashReload, materializeRestore } from './main/crashReload';
+import { mapInputToCommand } from './main/keyCommand';
+import { computeSourceVisibleBounds } from './main/sourceVisibleBounds';
+import { PendingQueue } from './main/pendingQueue';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
 // that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync
@@ -62,11 +65,6 @@ const platform = createPlatformBridge({
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
 // renderer has registered its listener. `galley a.md b.md` opens both.
 let startupFilePaths: string[] = [];
-
-// Files delivered over the channel (R11) before the renderer has mounted are
-// queued here and flushed once the page finishes loading.
-const pendingChannelFiles: string[] = [];
-let rendererReady = false;
 
 function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
@@ -360,23 +358,19 @@ const readingWidth = new Map<number, number>();
 ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isFullScreen() || win.isMaximized()) return;
-  const [w, h] = win.getSize();
-  const area = screen.getDisplayMatching(win.getBounds()).workArea;
-
-  let target: number;
-  if (visible === true) {
-    readingWidth.set(win.id, w);
-    target = Math.min(w * 2, area.width);
-  } else {
-    target = readingWidth.get(win.id) ?? Math.round(w / 2);
-  }
-  target = Math.round(Math.max(480, Math.min(target, area.width)));
-
-  const [x, y] = win.getPosition();
-  let nx = x;
-  if (nx + target > area.x + area.width) nx = area.x + area.width - target;
-  if (nx < area.x) nx = area.x;
-  win.setBounds({ x: Math.round(nx), y, width: target, height: h });
+  const show = visible === true;
+  const size = win.getSize() as [number, number];
+  // On show, remember the current width as the reading width to restore later.
+  if (show) readingWidth.set(win.id, size[0]);
+  // The doubling / work-area clamp / on-screen nudge is pure — computeSourceVisibleBounds.
+  const bounds = computeSourceVisibleBounds({
+    size,
+    position: win.getPosition() as [number, number],
+    workArea: screen.getDisplayMatching(win.getBounds()).workArea,
+    reading: readingWidth.get(win.id),
+    visible: show,
+  });
+  win.setBounds(bounds);
 });
 
 const createWindow = (project: string | null = null, files: string[] = [], channelId: string | null = null) => {
@@ -452,24 +446,17 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     }
   });
 
-  // Ctrl/Cmd+W must close the active TAB, not the window. A menu accelerator
-  // doesn't reliably override Chromium's built-in window-close on this key, so
-  // intercept it at the input level, swallow it, and ask the renderer to close
-  // the active tab (R41). The last tab closing returns to the welcome screen.
+  // Ctrl/Cmd+W must close the active TAB, not the window, and Ctrl+Tab /
+  // Ctrl+Shift+Tab must cycle tabs (issue #19, R41) — a menu accelerator doesn't
+  // reliably override Chromium's built-in window-close, and CM6 can swallow Tab
+  // when focused, so intercept at the input level. `mapInputToCommand` owns the
+  // pure combo → command decision (unit-tested); here we just swallow the key and
+  // forward the command to the renderer.
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return;
-    const mod = process.platform === 'darwin' ? input.meta : input.control;
-    if (mod && !input.shift && !input.alt && input.key.toLowerCase() === 'w') {
+    const command = mapInputToCommand(input, process.platform);
+    if (command) {
       event.preventDefault();
-      mainWindow.webContents.send('menu:closeTab');
-    }
-    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs (issue #19). Always literal Ctrl,
-    // even on macOS — Cmd+Tab is reserved by the OS for app switching, and the
-    // CM6 editor can swallow Tab when focused, so intercept here. Never fire
-    // when Alt or Cmd are held.
-    if (input.control && !input.alt && !input.meta && input.key === 'Tab') {
-      event.preventDefault();
-      mainWindow.webContents.send(input.shift ? 'menu:prevTab' : 'menu:nextTab');
+      mainWindow.webContents.send(command);
     }
   });
 
@@ -477,11 +464,12 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
   // open any absolute path the caller drops into the project's channel as a new,
   // focused tab. The app self-arbitrated at startup (this window won the claim);
   // a duplicate launch hands its files here rather than opening another window.
-  // Paths arriving before the renderer mounts are queued and flushed on load.
-  rendererReady = false;
+  // Paths arriving before the renderer mounts are queued and flushed on load —
+  // `channelQueue` (PendingQueue) owns that queue-then-flush ordering.
+  const channelQueue = new PendingQueue<string>();
+  const openInWindow = (f: string) => void openPath(mainWindow, f);
   mainWindow.webContents.on('did-finish-load', () => {
-    rendererReady = true;
-    for (const f of pendingChannelFiles.splice(0)) void openPath(mainWindow, f);
+    channelQueue.flush(openInWindow);
   });
 
   // Renderer-crash recovery (PF21, §8.6): if the renderer process dies while main
@@ -516,7 +504,7 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
       return;
     }
     if (decision.reload) {
-      rendererReady = false; // a --project file dropped mid-reload queues instead of dropping
+      channelQueue.suspend(); // a --project file dropped mid-reload queues instead of dropping
       mainWindow.webContents.reload(); // re-mount → getRestore offers the last session
     }
   });
@@ -530,9 +518,8 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
       if (mainWindow.isDestroyed()) return;
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus(); // R14: the delivered file's tab is focused
-      const resolved = path.resolve(absPath);
-      if (rendererReady) void openPath(mainWindow, resolved);
-      else pendingChannelFiles.push(resolved);
+      // Open now if the renderer has mounted, else queue for the flush on load.
+      channelQueue.deliver(path.resolve(absPath), openInWindow);
     });
   }
 
