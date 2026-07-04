@@ -11,11 +11,9 @@
 
 A **project** in Galley is a **named, durable context** for working across a set of markdown files — a stable home for the grouping, workspace state, and cross-file coordination that live *across* files rather than inside any one of them. It is deliberately **not** a folder of files: its content files may live anywhere on disk, may be scattered, and may be shared with other projects.
 
-Today "project" is an ephemeral, main-process-only window-grouping key: `--project <name>` maps to a scratch directory under the OS temp dir that is torn down on close, holds only the liveness record and the file-drop channel, and the renderer has no awareness of it.
+A project is a **first-class, persistent concept**: it has a stable, app-managed on-disk home, persistent session state, and a robust ownership/liveness model — one live window per project. The launcher contract the LLM relies on stays a single command, and a launch with no project name runs **projectless** (an independent, ephemeral window).
 
-This document promotes "project" into a **first-class, persistent concept** with a stable on-disk home, persistent session state, and a robust ownership/liveness model — while keeping the launcher contract the LLM already relies on unchanged, and preserving today's **projectless** behavior when no project is named.
-
-It addresses **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** (make the project concept genuinely useful) and folds in the ownership/liveness robustness of **[#60](https://github.com/eschgr/mdtool/issues/60)** and **[#56](https://github.com/eschgr/mdtool/issues/56)** and the session-restore gap of **[#61](https://github.com/eschgr/mdtool/issues/61)**. Capabilities explored during design but deferred as out of scope for v1 — because they do not fit the simple project concept — are listed in section 4, each tracked as its own issue.
+This realizes **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** (make the project concept genuinely useful), incorporating the ownership/liveness robustness of **[#60](https://github.com/eschgr/mdtool/issues/60)** and **[#56](https://github.com/eschgr/mdtool/issues/56)** and session restore ([#61](https://github.com/eschgr/mdtool/issues/61)). Capabilities explored during design but out of scope for the simple project concept are listed in section 4, each tracked as its own issue.
 
 ---
 

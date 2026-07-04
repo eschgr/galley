@@ -11,7 +11,7 @@ The UI Shell is the application frame around the documents: multiple open docume
 ## 2. Relationship to the main PRD
 
 - **Serves** the main-PRD goal "manage multiple open documents in a tabbed interface" ([`PRD.md`](PRD.md) §3) and the reading-first review workflow it implies.
-- **Leaves unchanged** rendering ([`PRD-Rendering.md`](PRD-Rendering.md)), editing ([`PRD-Editing.md`](PRD-Editing.md)), and saving/conflicts ([`PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md)) — this sub-PRD frames and commands the documents those features produce.
+- **Leaves unchanged** the document view ([`PRD-View.md`](PRD-View.md)), and saving/conflicts ([`PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md)) — this sub-PRD frames and commands the documents those features produce.
 - The Help window carries the third-party attribution notice that satisfies the main PRD §10 obligation in-app, and Print / Export honour the self-contained goal (main PRD §5) by using only built-in Electron APIs.
 
 Requirements here are numbered **R#**, local to this sub-PRD.
@@ -59,7 +59,7 @@ One CodeMirror instance is shared across tabs; each tab stashes/restores its ful
 - **R7. Split view & reading mode.** The live rendered view (left) and source editor (right) are shown side by side with synchronized scrolling. A **Show Source / Hide Source** toggle in the title bar collapses the editor so the rendered view fills the window for distraction-free reading, and restores the side-by-side split for editing. *(Pane order is fixed; a dynamic in-app swap is out of scope — future: [#90](https://github.com/eschgr/mdtool/issues/90).)*
   - **Default to reading view.** Because the primary use is reviewing rendered output, the app opens with the source hidden (rendered view only); one click on **Show Source** reveals the editor to make corrections, and **Hide Source** returns to full-window reading. The editor stays mounted while hidden, so edits, undo history, and scroll position are preserved across toggles.
   - **Window auto-resize.** Showing the source roughly **doubles the window width** to make room for the side-by-side editor, and hiding it restores the earlier (reading) width — so the reading view stays comfortably narrow and the editing view stays roomy. The reading width is remembered per window (respecting a manual resize), the target is clamped to the display work area and nudged to stay on-screen, and the height is unchanged. No resize happens when the window is maximized or full screen.
-- **R8. Empty state.** When no files are open — whether at a fresh launch with no file argument or after the last tab is closed — the app remains open and displays the **welcome screen** (the document-states sandbox in [`PRD-Editing.md`](PRD-Editing.md#document-states)), which serves as the "no files open" state; the tab strip is hidden. Closing the last tab does **not** quit the app.
+- **R8. Empty state.** When no files are open — whether at a fresh launch with no file argument or after the last tab is closed — the app remains open and displays the **welcome screen** (the document-states sandbox in [`PRD-View.md`](PRD-View.md#document-states)), which serves as the "no files open" state; the tab strip is hidden. Closing the last tab does **not** quit the app.
 
 ### Application menu & commands
 

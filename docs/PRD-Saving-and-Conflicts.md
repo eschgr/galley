@@ -12,7 +12,7 @@ How edits persist and how Galley stays consistent with the file on disk. Edits a
 
 - **Serves** the main-PRD goal "auto-refresh open files when they change on disk," together with the auto-save workflow that keeps edits persisted without manual saving.
 - **Builds on** the product-level framing that concurrent LLM editing is not a primary flow ([`PRD.md`](PRD.md) §4): divergence is treated as the rare exception, not the common case.
-- **Leaves unchanged** rendering ([`PRD-Rendering.md`](PRD-Rendering.md)), editing ([`PRD-Editing.md`](PRD-Editing.md)), and the tab/shell surface ([`PRD-UI-Shell.md`](PRD-UI-Shell.md)).
+- **Leaves unchanged** the document view ([`PRD-View.md`](PRD-View.md)), and the tab/shell surface ([`PRD-UI-Shell.md`](PRD-UI-Shell.md)).
 
 Requirements here are numbered **R#**, local to this sub-PRD.
 

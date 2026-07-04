@@ -49,7 +49,7 @@ These are the **product-level** exclusions — the things Galley is deliberately
 ## 5. Non-functional requirements
 
 - **NFR1. Cross-platform:** runs on Windows and macOS.
-- **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(How this is achieved — the bundled engine, the print/export APIs — is in §7.)*
+- **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser.
 
 ---
 
@@ -57,9 +57,8 @@ These are the **product-level** exclusions — the things Galley is deliberately
 
 Each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`); this section indexes them. The main PRD is the **hub** — the product overview and user journeys (§1–§4), the non-functional requirements (§5), and the cross-cutting concerns below (technical stack, build & distribution, licensing, dependencies). The detailed **functional requirements** live in the sub-PRDs.
 
-- **Markdown rendering — [`docs/PRD-Rendering.md`](PRD-Rendering.md).** The preview pipeline (GFM, LaTeX math, fenced-code highlighting, link handling) and the pre-build rendering de-risking spike. **R1–R6.**
+- **Document view — [`docs/PRD-View.md`](PRD-View.md).** The two reflecting surfaces of a document: the **rendered preview** (GFM, LaTeX math, code highlighting, link handling, the pre-build rendering spike) and the **source editor** (live preview, scroll sync, editor highlighting, undo/redo, find & replace, formatting shortcuts, document states). **R1–R21.**
 - **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R1–R9.** *(The Projects sub-PRD below makes the instance model a persistent feature.)*
-- **Editing & formatting — [`docs/PRD-Editing.md`](PRD-Editing.md).** Source editing, live preview, scroll sync, editor syntax highlighting, undo/redo, find & replace, the formatting-shortcut set, and document states. **R1–R15.**
 - **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R1–R11.**
 - **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R1–R15.**
 - **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model & file delivery in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery).
@@ -79,7 +78,7 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 | Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the rendering spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor. MathJax remains the documented heavier fallback if ever needed. |
 | File watching | **chokidar** (or Node `fs.watch`) | In the main process. |
 | File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process. |
-| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/galley-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>`. File transport works in a sandbox where socket `listen()` is denied. |
+| Instance model | **App self-arbitrates per project** via a file-drop channel in the durable per-project home (`owner.json` + `*.msg` files) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>`. File transport works in a sandbox where socket `listen()` is denied. See [`PRD-Projects.md`](PRD-Projects.md). |
 | Packaging | **Electron Forge** (or electron-builder) | Produces installers (see §8). |
 
 **Self-contained packaging (NFR2).** Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine, JS runtime, and file IO; from the user's perspective it is a single self-contained app requiring no separately-installed runtime or browser. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.
@@ -181,7 +180,7 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 ### A.2 The project name
 
 - Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name is an easy choice, but any short name that identifies the project works). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions.
-- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/galley-<name>/`); you never touch that directory.
+- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private, app-managed directory; you never touch it.
 
 ### A.3 Operations
 
