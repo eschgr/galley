@@ -416,11 +416,15 @@ export function App() {
   const conflict = activeTab?.conflict ?? null;
   const showModal = activeTab?.showModal ?? false;
 
-  // The OS window title carries the active file name (the in-app title line was
-  // removed in favour of the single toolbar row).
+  // The OS window title carries the active file name, then the project name, then
+  // the app (PF24) — the in-app title line was removed in favour of the single
+  // toolbar row. The project name is a per-window constant, so it need not be an
+  // effect dependency: file (project) Galley, dropping any null parts.
   const activePath = activeTab?.path;
   useEffect(() => {
-    document.title = activePath ? `${basename(activePath)} — Galley` : 'Galley';
+    const project = window.galley?.projectName ?? null;
+    const file = activePath ? basename(activePath) : null;
+    document.title = [file, project, 'Galley'].filter(Boolean).join(' — ');
     // Mirror the active path to main so Export to PDF defaults beside the source
     // (R52). null on the welcome screen.
     window.galley?.setActiveDocPath(activePath ?? null);

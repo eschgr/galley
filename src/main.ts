@@ -396,6 +396,11 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Carry the per-window project name to the preload (PF24). Unlike the
+      // app-global version (a sync IPC call), the project differs per window, so
+      // it rides in on this window's argv; the preload surfaces it as
+      // window.galley.projectName. Omitted (⇒ null) in projectless mode (PF27).
+      additionalArguments: project ? [`--galley-project=${project}`] : [],
     },
   });
 

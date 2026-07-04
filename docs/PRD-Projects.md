@@ -50,6 +50,7 @@ Each was considered during design and deliberately cut; each is a candidate futu
 - **New-file creation.** Deferred, bound up with templating. **Tracked in [#68](https://github.com/eschgr/mdtool/issues/68).** *(Was PF23; also the main PRD section 12 item.)*
 - **A default project name.** If no `--project` is given, Galley runs **projectless** (PF27), not under an inferred name (e.g. from the current directory). Inferring identity the caller did not ask for is out of scope.
 - **Human-driven project creation UI** (a "New Project" dialog with setup questions). The project is created implicitly when files are opened for review (section 8.5); a guided human-initiated flow is a future nicety. **Tracked in [#71](https://github.com/eschgr/mdtool/issues/71).**
+- **A "Reveal Home" (or any project-directory) menu affordance.** The durable home is app-managed and not a place the user is expected to visit; when directory access is genuinely needed, the user asks the LLM to open the path or browses to it directly. A dedicated menu item is not worth the surface. *(Was PF26.)*
 - **A directory / folder tree view or file browser** in the renderer (consistent with the main PRD section 3).
 - **In-tree project homes.** Rejected on principle (section 8.4): a project's context spans directories, so there is no coherent tree to colocate in.
 
@@ -108,7 +109,6 @@ A project is not declared up front; it comes into being at review time. The norm
 ### D. Renderer surface — minimal
 
 - **PF24. Project identity in the UI.** A named project's `name` appears in the title bar; a projectless window shows no project.
-- **PF26. Project menu.** A small native menu group with **Reveal Home** (open the project home in the OS file explorer). Absent or disabled in projectless mode.
 
 ### E. Operations
 
@@ -199,7 +199,6 @@ The verbs a project supports and how each behaves. The LLM's entire interface is
 |---|---|---|
 | **Attach / open project** | `galley --project <name> [files]` | Derive and materialize-or-reuse the home; test liveness (PF7). If becoming owner: restore the last session (PF20) and open any CLI files. If a live owner exists: hand off the files and exit. |
 | **Open a file into the project** | same command, with a file | Routed via the channel to the owner window as a new focused tab (or focus the tab if already open), per main PRD R14/R15. The opened file joins the ephemeral session. |
-| **Reveal home** | Project menu → Reveal Home | Open the project home directory in the OS file explorer. |
 | **Update session** | opening/closing/switching tabs | Persist the session record (PF19) as it changes. |
 | **Close window** | window close | Persist the final session; release runtime ownership non-destructively (PF8). Durable data is kept. |
 
@@ -226,7 +225,7 @@ It is an **in-app modal** (like the existing conflict / close-tab dialogs), not 
 ## 9. Architecture & the portability seam
 
 - **`ProjectStore` seam member.** All project persistence and OS-specific coordination sit behind a new seam interface alongside the existing `platform/` members (`fileIo`, `project`, `channel`, `protocol`). The rest of the main process talks to `ProjectStore` (load/save the entity, derive the home, acquire/release ownership, open/consume the channel), never to Node `fs` or a concrete path layout directly. This is the layer a future Tauri/Rust shell rewrites; the React/CodeMirror/markdown frontend and the project entity (pure data) port as-is.
-- **Renderer boundary.** The little project data the renderer needs (PF24, PF26) crosses the contextIsolation boundary through additions to the typed `GalleyApi` bridge — the renderer never touches Node or the store directly, consistent with the main PRD section 7 security model.
+- **Renderer boundary.** The little project data the renderer needs (PF24) crosses the contextIsolation boundary through additions to the typed `GalleyApi` bridge — the renderer never touches Node or the store directly, consistent with the main PRD section 7 security model.
 - **Entity is OS-clean.** The project entity is JSON-serializable data plus path references; the only OS-touching parts (home derivation, the ownership lock, store IO) live in the seam.
 
 ---
@@ -238,7 +237,7 @@ Conventions: branch off `main` (the repo default); a unit test ships with every 
 1. **Phase 1 — Persistent-home foundation** *(recommended first slice).* Introduce the `ProjectStore` seam and the section 7 layout; move the home to `userData` and derive it from the name (section 8.4); relocate ownership + channel under `runtime/`; make **release non-destructive** and add **re-assertion on removal** ([#60](https://github.com/eschgr/mdtool/issues/60)); land the minimal `project.json` (v1); preserve projectless mode (PF27). Today's `.ping`→`.pong` liveness is kept as-is (decoupled from [#56](https://github.com/eschgr/mdtool/issues/56)). No renderer changes. Fully unit-tested behind the seam.
 2. **Phase 2 — Liveness rework** *([#56](https://github.com/eschgr/mdtool/issues/56)).* Spike the passive liveness mechanism (section 8.1) on Windows and macOS → adopt it; retire the handshake.
 3. **Phase 3 — Session restore** *([#61](https://github.com/eschgr/mdtool/issues/61)).* `session.json` persist/restore (PF19/PF20) + dirty-shutdown crash recovery and the restore prompt (PF21, section 8.6).
-4. **Phase 4 — Minimal renderer surface.** Title-bar project identity (PF24) + the Project menu's Reveal Home (PF26); the small `GalleyApi` additions to carry the project name to the renderer.
+4. **Phase 4 — Minimal renderer surface.** Title-bar project identity (PF24); the small `GalleyApi` addition to carry the project name to the renderer.
 
 Phases 2–4 are independent slices with no fixed order; they are sequenced during implementation. Each phase is one or more focused PRs behind the seam, each with tests, each opened for review and merged by you.
 

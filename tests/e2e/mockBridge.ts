@@ -53,8 +53,12 @@ export async function installMockBridge(
   page: Page,
   startup: MockFile | MockFile[] | null = null,
   restore: { files: MockFile[]; activeIndex: number } | null = null,
+  // The claimed project name surfaced as window.galley.projectName (PF24). Fixed
+  // for the window's lifetime; null (default) is projectless mode (PF27). Threaded
+  // like startup/restore so a spec can arm a named project for the title tests.
+  projectName: string | null = null,
 ): Promise<void> {
-  await page.addInitScript(({ startupArg, restoreArg }) => {
+  await page.addInitScript(({ startupArg, restoreArg, projectNameArg }) => {
     const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: Harness = {
       openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
@@ -67,6 +71,8 @@ export async function installMockBridge(
     (window as unknown as { galley: unknown }).galley = {
       platform: 'win32',
       version: '0.0.0-test',
+      // Per-window static (PF24): the claimed project name, or null projectless.
+      projectName: projectNameArg,
       openExternal: async (url: string) => {
         harness.openExternalCalls.push(url);
       },
@@ -135,7 +141,7 @@ export async function installMockBridge(
       // instead of a runtime "X is not a function" crash that only surfaces in a
       // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
     } satisfies GalleyApi;
-  }, { startupArg: startup, restoreArg: restore });
+  }, { startupArg: startup, restoreArg: restore, projectNameArg: projectName });
 }
 
 /**

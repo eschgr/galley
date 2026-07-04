@@ -27,6 +27,12 @@ export interface GalleyApi {
   /** App version, for the Help window (PRD R48). */
   readonly version: string;
   /**
+   * The claimed project's name, surfaced in the OS window title (PF24). Fixed
+   * for the window's lifetime, like `platform`/`version`; null in projectless
+   * mode (PF27), where the title shows no project.
+   */
+  readonly projectName: string | null;
+  /**
    * Open a URL in the system default browser (PRD R4). Only http/https/mailto
    * are honored by the main process; other schemes are silently ignored.
    */
