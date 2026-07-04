@@ -14,37 +14,9 @@ This version targets a **working prototype**: built on Electron for fastest path
 
 ---
 
-## 2. Goals
+## 2. Target workflow
 
-- View markdown files rendered as they would be expected from Claude's output.
-- Auto-refresh open files when they change on disk.
-- Directly edit files with live preview, syntax highlighting, and undo/redo.
-- Run as a single, fully self-contained, cross-platform application.
-- Manage multiple open documents in a tabbed interface.
-- Be easy for Claude (or any CLI caller) to drive: a simple command opens a file in the right project window (see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and Appendix A).
-
-## 3. Non-goals (this version)
-
-- New-file creation from within the app *(planned for a future version)*.
-- Drag-and-drop file opening.
-- Directory / folder tree view.
-- Opening multiple files in a single command.
-- Concurrent LLM-edit conflict handling as a primary flow *(the conflict handling exists, but the expected use is manual correction, not simultaneous LLM writes)*.
-- **Session restore** — reopening the set of files/tabs that were open in a previous run. On a fresh start the app opens with no files. *(Planned as a possible future enhancement.)*
-- **Bulk tab operations** — "close all" / "close others". A fresh launch already starts empty, so closing the window (or individual tabs) is the way to clear state.
-- **Diff view** for conflicts — showing a rendered line-diff of disk vs. buffer. v1 uses a labeled choice instead. *(Possible future enhancement.)*
-- **Text color / font color** — not part of standard markdown (no CommonMark/GFM syntax); Claude does not emit it, and supporting it would require enabling raw-HTML passthrough.
-- **Word / character count.**
-- **"Reveal in Finder/Explorer".**
-- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout.
-- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype.)*
-- **Dynamically swapping the editor/preview pane order in-app** — the layout is fixed (**rendered view on the left, source editor on the right**); a runtime control to flip which side each pane is on is out of scope. It is a possible future nice-to-have, bound up with the i18n/RTL and accessibility work above. *(See §12.)*
-- **Page numbers / running headers / footers** in printed and exported PDFs — fixed defaults only this version *(future).*
-- **In-app page-size / margin chooser** — Export uses fixed Letter / 0.75in defaults; Print defers paper choices to the OS print dialog *(future).*
-
----
-
-## 4. Target workflow
+Galley is one stage in an **LLM-driven authoring loop**, not a standalone markdown viewer — a framing that shapes the rest of this document:
 
 1. Claude generates a markdown file on disk.
 2. Claude routes the file to the project's viewer: it sends the file to the existing window for that project if one is running, or launches a new window bound to the project's channel if not (see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and Appendix A).
@@ -57,24 +29,65 @@ The app may also be launched **with no file**; it opens to an empty state from w
 
 ---
 
-## 5. Features
+## 3. Goals
 
-As Galley grows, each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`). This section is the index: the main PRD stays a lean **hub** — the high-level, current-state source of truth and the basic user journeys above (§1–§4) — while the detailed **functional requirements** live in the sub-PRDs below. Requirement IDs (**R#**) are stable across the split, so the decision log (§13) and any code/doc reference to an `R#` still resolves. The **non-functional** requirements (R49–R51) stay in the hub (§6).
+- View markdown files rendered as they would be expected from Claude's output.
+- Auto-refresh open files when they change on disk.
+- Directly edit files with live preview, syntax highlighting, and undo/redo.
+- Run as a single, fully self-contained, cross-platform application.
+- Manage multiple open documents in a tabbed interface.
+- Be easy for Claude (or any CLI caller) to drive: a simple command opens a file in the right project window (see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and Appendix A).
 
-- **Markdown rendering — [`docs/PRD-Rendering.md`](PRD-Rendering.md).** The preview pipeline (GFM, LaTeX math, fenced-code highlighting, link handling) and the pre-build rendering de-risking spike. **R1–R6.**
-- **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R7–R15.** *(The instance model is reworked into a persistent feature by the Projects sub-PRD below.)*
-- **Editing & formatting — [`docs/PRD-Editing.md`](PRD-Editing.md).** Source editing, live preview, scroll sync, editor syntax highlighting, undo/redo, find & replace, the formatting-shortcut set, and document states. **R16–R28.**
-- **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R29–R38.**
-- **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R39–R48, R52–R53.**
-- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Promotes the **project** concept (originally an ephemeral window-grouping key) into a first-class, persistent feature: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness rework (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model (R11–R15) in `PRD-Opening-and-Instances.md`.
+## 4. Non-goals (this version)
+
+### Files & opening
+- New-file creation from within the app *(planned for a future version)*.
+- Drag-and-drop file opening.
+- Directory / folder tree view.
+- Opening multiple files in a single command.
+- **"Reveal in Finder/Explorer".**
+
+### Editing & rendering
+- **Text color / font color** — not part of standard markdown (no CommonMark/GFM syntax); Claude does not emit it, and supporting it would require enabling raw-HTML passthrough.
+- **Word / character count.**
+
+### Conflict handling & session
+- Concurrent LLM-edit conflict handling as a primary flow *(the conflict handling exists, but the expected use is manual correction, not simultaneous LLM writes)*.
+- **Session restore** — reopening the set of files/tabs that were open in a previous run. On a fresh start the app opens with no files. *(Planned as a possible future enhancement.)*
+- **Diff view** for conflicts — showing a rendered line-diff of disk vs. buffer. v1 uses a labeled choice instead. *(Possible future enhancement.)*
+
+### Tabs & layout
+- **Bulk tab operations** — "close all" / "close others". A fresh launch already starts empty, so closing the window (or individual tabs) is the way to clear state.
+- **Dynamically swapping the editor/preview pane order in-app** — the layout is fixed (**rendered view on the left, source editor on the right**); a runtime control to flip which side each pane is on is out of scope. It is a possible future nice-to-have, bound up with the i18n/RTL and accessibility work below. *(See §12.)*
+
+### Platform & inclusivity
+- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout.
+- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype.)*
+
+### Print & export
+- **Page numbers / running headers / footers** in printed and exported PDFs — fixed defaults only this version *(future).*
+- **In-app page-size / margin chooser** — Export uses fixed Letter / 0.75in defaults; Print defers paper choices to the OS print dialog *(future).*
 
 ---
 
-## 6. Non-functional requirements
+## 5. Non-functional requirements
 
 - **R49. Cross-platform:** runs on Windows and macOS.
 - **R50. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
 - **R51. Prototype-appropriate footprint:** bundle size and memory are heavier than a native-webview approach (bundled engine), an accepted tradeoff for this version. See §9 for the migration path if footprint becomes a concern.
+
+---
+
+## 6. Features
+
+Each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`); this section indexes them. The main PRD is the **hub** — the product overview and user journeys (§1–§4), the non-functional requirements (§5), and the cross-cutting concerns below (technical stack, build & distribution, licensing, and the decision log). The detailed **functional requirements** live in the sub-PRDs; the decision log (§13) traces the key decisions.
+
+- **Markdown rendering — [`docs/PRD-Rendering.md`](PRD-Rendering.md).** The preview pipeline (GFM, LaTeX math, fenced-code highlighting, link handling) and the pre-build rendering de-risking spike. **R1–R6.**
+- **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R7–R15.** *(The Projects sub-PRD below makes the instance model a persistent feature.)*
+- **Editing & formatting — [`docs/PRD-Editing.md`](PRD-Editing.md).** Source editing, live preview, scroll sync, editor syntax highlighting, undo/redo, find & replace, the formatting-shortcut set, and document states. **R16–R28.**
+- **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R29–R38.**
+- **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R39–R48, R52–R53.**
+- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model (R11–R15) in `PRD-Opening-and-Instances.md`.
 
 ---
 
@@ -196,7 +209,7 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 
 ## 13. Requirements traceability (decision log)
 
-This log records the *decisions*; the referenced requirement IDs (`R#`) are specified in full in the feature sub-PRDs indexed in §5 (`R#` numbering is stable across that split). The non-functional requirements (R49–R51) live in §6.
+This log records the *decisions*; the referenced requirement IDs (`R#`) are specified in full in the feature sub-PRDs indexed in §6. The non-functional requirements (R49–R51) are in §5.
 
 | Decision | Resolution |
 |---|---|
