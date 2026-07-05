@@ -40,8 +40,9 @@ import { CloseTabDialog } from './components/CloseTabDialog';
 import { RestoreDialog } from './components/RestoreDialog';
 import { HelpDialog } from './components/HelpDialog';
 import type { LinkContext } from './components/Editor';
-import type { OpenedFile } from '../shared/api';
+import type { OpenedFile, OpenTarget } from '../shared/api';
 import { cycleTabTarget, type CycleDirection } from './cycleTab';
+import { dropPaths } from './dropOpen';
 
 // Debounced auto-save: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
 const AUTOSAVE_MS =
@@ -104,6 +105,12 @@ export function App() {
   // A `#fragment` from a clicked file link, applied to the target tab's preview
   // once it renders/activates.
   const pendingFragment = useRef<string | null>(null);
+  // 1-based reveal lines (open at a specific line), keyed BY TAB id, applied to a
+  // tab's preview once it is the visible tab. Per-tab (not a single ref) so several
+  // channel opens arriving in one render batch never cross-wire — each file only
+  // ever reveals its own line on its own tab, and an unfocused tab's reveal simply
+  // waits until it is switched to (a hidden pane can't be scrolled).
+  const pendingReveals = useRef<Map<string, number>>(new Map());
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const idSeq = useRef(0);
 
@@ -205,12 +212,31 @@ export function App() {
     setActive(id);
   };
 
-  // Open a file in a tab: focus + refresh if already open, else add a tab.
-  const openTab = (file: OpenedFile) => {
+  // Apply (and consume) a tab's pending open-at-line reveal, if it has one and its
+  // view is mounted. Per-tab, so a reveal is always applied to the file it was
+  // meant for — never a line from a different open that raced into the same batch.
+  const applyReveal = (id: string) => {
+    const line = pendingReveals.current.get(id);
+    if (line === undefined) return;
+    pendingReveals.current.delete(id);
+    viewRefs.current.get(id)?.revealLine(line);
+  };
+
+  // Open a file in a tab: focus + refresh if already open, else add a tab. An
+  // optional reveal line (open at a specific line) is recorded for THAT tab and
+  // applied once it is the visible tab — immediately if it already is, otherwise by
+  // the [activeId] effect after the switch (which is also when a fresh tab first
+  // renders).
+  const openTab = (file: OpenTarget) => {
     const existing = tabsRef.current.find((t) => t.path === file.path);
     if (existing) {
       reloadTab(existing.id, file);
-      switchTo(existing.id);
+      if (file.line !== undefined) pendingReveals.current.set(existing.id, file.line);
+      if (file.line !== undefined && activeIdRef.current === existing.id) {
+        applyReveal(existing.id); // already the visible tab (no switch to trigger the effect)
+      } else {
+        switchTo(existing.id);
+      }
       return;
     }
     const id = `tab${idSeq.current++}`;
@@ -228,6 +254,7 @@ export function App() {
       orphanAck: false,
       docVersion: 0,
     };
+    if (file.line !== undefined) pendingReveals.current.set(id, file.line); // revealed once the new tab activates
     commitTabs([...tabsRef.current, tab]);
     setActive(id);
   };
@@ -239,6 +266,7 @@ export function App() {
     window.galley?.notifyClosed(t.path); // closing a tab: stop watching its file
     clearAutosave(id);
     viewRefs.current.delete(id);
+    pendingReveals.current.delete(id); // drop any unapplied reveal for the closed tab
     const remaining = tabsRef.current.filter((x) => x.id !== id);
     commitTabs(remaining);
     if (activeIdRef.current !== id) return;
@@ -345,7 +373,8 @@ export function App() {
       .then((files) => {
         files.forEach((file) => openTab(file));
         // openTab leaves the LAST-opened tab active; when several files were passed
-        // on the command line, re-assert the FIRST (leftmost) as the focused tab.
+        // on the command line, re-assert the FIRST (leftmost) as the focused tab. Its
+        // own reveal (recorded per-tab by its openTab call) applies on the switch.
         if (files.length > 1) {
           const first = tabsRef.current.find((t) => t.path === files[0].path);
           if (first) switchTo(first.id);
@@ -420,6 +449,32 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Drag-and-drop file opening: dropping files anywhere on the window opens each
+  // as a tab (dedup/focus handled by openTab). Both dragover and drop must
+  // preventDefault, or Electron navigates the window to the dropped file and
+  // replaces the app. Paths are resolved in the preload (webUtils) since the
+  // renderer cannot read File.path; main opens them through the CLI/dialog path.
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      const paths = dropPaths(Array.from(files), (file) => window.galley?.getDroppedPath(file) ?? '');
+      if (paths.length > 0) window.galley?.openFiles(paths);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
   // Restore resolutions. Yes → open each restored file (openTab dedups
   // by path: a file already open from the CLI is focused/kept, never duplicated),
   // then focus the restored active tab. No → start fresh (keep the CLI files /
@@ -449,17 +504,23 @@ export function App() {
     void window.galley?.setSourceVisible(next === 'split'); // widen/shrink window (split view & Show/Hide Source)
   };
 
-  // Apply a pending #fragment to the now-active tab's preview once it is visible
-  // (a file link with a #fragment jumps to that heading; no match → the top). The
-  // active TabView keeps its own reading position when no fragment is pending, so
-  // there is nothing else to restore on a switch.
+  // Apply a pending reveal to the now-active tab's preview once it is visible —
+  // either a #fragment (a file link jumps to that heading; no match → the top) or a
+  // target line (open at a specific line). This is also when a freshly opened tab
+  // first renders, so a new file reveals its line here. The active TabView keeps
+  // its own reading position when nothing is pending, so there is nothing else to
+  // restore on a switch.
   useEffect(() => {
     const frag = pendingFragment.current;
     pendingFragment.current = null;
-    if (!frag) return;
-    const view = activeView();
-    if (!view) return;
-    if (!view.jumpToFragment(frag)) view.scrollPreviewTop();
+    if (frag) {
+      const view = activeView();
+      if (view && !view.jumpToFragment(frag)) view.scrollPreviewTop();
+      return;
+    }
+    // Apply the now-active tab's own pending reveal (if any). Keyed per-tab, so the
+    // line applied is always the one addressed to THIS file.
+    if (activeId) applyReveal(activeId);
   }, [activeId]);
 
   // Report the open-tab set to main so it can persist the session as a crash

@@ -13,11 +13,12 @@
  * acts on the verdict (create a window, or drop + quit).
  */
 import type { ClaimResult } from './platform/project';
+import type { OpenRequest } from './platform';
 import { isCompatibleWith } from './platform/protocol';
 
 export type StartupAction =
   | { readonly kind: 'own' }
-  | { readonly kind: 'handoff'; readonly files: readonly string[] }
+  | { readonly kind: 'handoff'; readonly files: readonly OpenRequest[] }
   | { readonly kind: 'incompatible'; readonly ownerProtocol: string };
 
 /**
@@ -29,7 +30,7 @@ export type StartupAction =
  *   ⇒ `incompatible`: do NOT pollute its queue with messages it can't parse. The
  *   sender surfaces an error and exits (a rare cross-version-install case).
  */
-export function decideStartupAction(claim: ClaimResult, files: readonly string[]): StartupAction {
+export function decideStartupAction(claim: ClaimResult, files: readonly OpenRequest[]): StartupAction {
   if (claim.owned) return { kind: 'own' };
   if (!isCompatibleWith(claim.owner.protocol)) {
     return { kind: 'incompatible', ownerProtocol: claim.owner.protocol };

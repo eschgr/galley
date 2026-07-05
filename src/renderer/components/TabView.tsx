@@ -32,6 +32,7 @@ import {
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
 import { blendedFollowerTop } from './scrollSync';
+import { clampTargetLine } from '../revealLine';
 import type { ViewMode } from './SplitView';
 
 /** What App drives on the ACTIVE tab through a ref. */
@@ -53,6 +54,10 @@ export interface TabViewHandle {
   jumpToFragment(id: string): boolean;
   /** Put this tab's preview reading position back at the top. */
   scrollPreviewTop(): void;
+  /** Reveal a 1-based target line (open at a specific line): scroll the preview to
+   *  it with context + a brief highlight, clamped to the document, and position
+   *  the editor to the same line when the source pane is shown. */
+  revealLine(line: number): void;
 }
 
 interface TabViewProps {
@@ -109,6 +114,12 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
     focusEditor: () => editorRef.current?.focus(),
     jumpToFragment: (id) => previewRef.current?.scrollToAnchor(id) ?? false,
     scrollPreviewTop: () => previewRef.current?.setScrollTop(0),
+    revealLine: (line) => {
+      const line0 = clampTargetLine(line, text.split('\n').length);
+      previewRef.current?.revealLine(line0);
+      // Keep the editor in step so a later Show Source lands on the same line.
+      if (viewMode === 'split') editorRef.current?.scrollToLine(line0);
+    },
   }));
 
   // Reload from disk (Ctrl+R / external refresh / keep-mine): App bumped

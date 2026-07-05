@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArgs, parseCliProjectArg, readFile, resolveLocalLink, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliProjectArg, readFile, resolveLocalLink, splitLineSuffix, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -51,31 +51,74 @@ describe('hashContent', () => {
   });
 });
 
+describe('splitLineSuffix (open at a specific line — path:line)', () => {
+  it('splits a trailing :line off the path', () => {
+    expect(splitLineSuffix('notes.md:120')).toEqual({ path: 'notes.md', line: 120 });
+  });
+
+  it('leaves a plain path unchanged (no line)', () => {
+    expect(splitLineSuffix('notes.md')).toEqual({ path: 'notes.md' });
+  });
+
+  it('keeps a Windows drive letter intact — only a trailing :digits is the line', () => {
+    // The drive colon (`C:`) is followed by a backslash, not the end, so it is
+    // never mistaken for the line separator.
+    expect(splitLineSuffix('C:\\Users\\me\\notes.md:120')).toEqual({
+      path: 'C:\\Users\\me\\notes.md',
+      line: 120,
+    });
+    expect(splitLineSuffix('C:\\Users\\me\\notes.md')).toEqual({
+      path: 'C:\\Users\\me\\notes.md',
+    });
+  });
+
+  it('accepts and ignores a trailing :col', () => {
+    expect(splitLineSuffix('notes.md:120:8')).toEqual({ path: 'notes.md', line: 120 });
+  });
+});
+
 describe('parseCliFileArgs', () => {
   it('returns the single file arg as an absolute path (packaged launch)', () => {
     const r = parseCliFileArgs(['galley.exe', 'notes.md'], true);
-    expect(r).toEqual([path.resolve('notes.md')]);
-    expect(path.isAbsolute(r[0])).toBe(true);
+    expect(r).toEqual([{ path: path.resolve('notes.md') }]);
+    expect(path.isAbsolute(r[0].path)).toBe(true);
   });
 
   it('returns EVERY file arg, in command-line order, each absolute', () => {
     expect(parseCliFileArgs(['galley.exe', 'a.md', 'b.md', 'c.md'], true)).toEqual([
-      path.resolve('a.md'),
-      path.resolve('b.md'),
-      path.resolve('c.md'),
+      { path: path.resolve('a.md') },
+      { path: path.resolve('b.md') },
+      { path: path.resolve('c.md') },
     ]);
   });
 
+  it('parses a path:line arg into an absolute path plus the 1-based line', () => {
+    expect(parseCliFileArgs(['galley.exe', 'notes.md:120'], true)).toEqual([
+      { path: path.resolve('notes.md'), line: 120 },
+    ]);
+  });
+
+  it('resolves the path but not the drive letter when a line is appended', () => {
+    // The line comes off first, so the resolved path is the real file (the
+    // suffix never contaminates it) and the line rides alongside.
+    const r = parseCliFileArgs(['galley.exe', 'sub/notes.md:42'], true);
+    expect(r).toEqual([{ path: path.resolve('sub/notes.md'), line: 42 }]);
+  });
+
   it('skips the app-path argv[1] in a dev launch', () => {
-    expect(parseCliFileArgs(['electron.exe', '.', 'notes.md'], false)).toEqual([path.resolve('notes.md')]);
+    expect(parseCliFileArgs(['electron.exe', '.', 'notes.md'], false)).toEqual([
+      { path: path.resolve('notes.md') },
+    ]);
   });
 
   it('skips flags and the --project <name> value, keeping the rest of the files', () => {
-    expect(parseCliFileArgs(['galley.exe', '--devtools', 'notes.md'], true)).toEqual([path.resolve('notes.md')]);
+    expect(parseCliFileArgs(['galley.exe', '--devtools', 'notes.md'], true)).toEqual([
+      { path: path.resolve('notes.md') },
+    ]);
     // --project consumes its value; the files on either side still come through.
     expect(
       parseCliFileArgs(['galley.exe', 'a.md', '--project', 'pack-325', 'b.md'], true),
-    ).toEqual([path.resolve('a.md'), path.resolve('b.md')]);
+    ).toEqual([{ path: path.resolve('a.md') }, { path: path.resolve('b.md') }]);
   });
 
   it('returns an empty array when no file argument is present', () => {
