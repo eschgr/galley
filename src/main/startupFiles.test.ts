@@ -4,7 +4,7 @@ import type { FileSnapshot } from './platform';
 
 const snap = (p: string): FileSnapshot => ({ path: p, content: `content of ${p}`, hash: `h:${p}` });
 
-describe('readStartupFiles (#37 — the file:getStartup path)', () => {
+describe('readStartupFiles (the file:getStartup path)', () => {
   it('reads every path and returns snapshots in command-line order', async () => {
     const read = vi.fn(async (p: string) => snap(p));
     const watch = vi.fn();

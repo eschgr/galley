@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { cycleTabTarget } from './cycleTab';
 
-describe('cycleTabTarget (Ctrl+Tab cycling, #19)', () => {
+describe('cycleTabTarget (Ctrl+Tab cycling)', () => {
   const ids = ['a', 'b', 'c'];
 
   it('moves right and wraps last → first', () => {

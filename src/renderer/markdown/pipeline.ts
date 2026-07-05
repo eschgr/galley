@@ -14,11 +14,9 @@
  *  - markdown-it-texmath (KaTeX engine) → math. Configured for BOTH the
  *                         dollar and bracket delimiter sets, i.e. `$…$`,
  *                         `$$…$$`, `\(…\)`, `\[…\]` — all the styles Claude
- *                         emits. Chosen over @vscode/markdown-it-katex (the
- *                         PRD's rung-1 primary), which renders dollar
- *                         delimiters only; the rendering spike confirmed the gap
- *                         and this is the math fallback ladder's rung-2
- *                         resolution. texmath is
+ *                         emits. Chosen over @vscode/markdown-it-katex, which
+ *                         renders dollar delimiters only; the rendering spike
+ *                         confirmed the gap and settled on texmath. texmath is
  *                         structure-aware (skips code spans/fences) and its
  *                         dollar guards keep literal `$` in prose from parsing
  *                         as math.
@@ -29,7 +27,7 @@
  * `renderMarkdown` additionally wraps the whole render so a catastrophic failure
  * in one document degrades to an inline error block rather than a blank page.
  *
- * Security (PRD §3/§7): html:false — raw HTML in the source is NOT passed
+ * Security: html:false — raw HTML in the source is NOT passed
  * through. Claude does not emit raw HTML and enabling it would be an injection
  * surface in the renderer.
  */

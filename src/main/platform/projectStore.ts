@@ -1,14 +1,13 @@
 /**
- * ProjectStore — the durable-home seam member (PRD §7 layout, §8.4 derivation,
- * §9 seam).
+ * ProjectStore — the durable-home seam member.
  *
  * This is the piece that knows *where a project lives on disk* and *what its
  * durable record is*. It owns:
- *  - home-path derivation from the project name (§8.4): a deterministic,
+ *  - home-path derivation from the project name: a deterministic,
  *    collision-free, filesystem-safe token under `<baseDir>/`;
- *  - the on-disk layout (§7): `<home>/project.json` (durable) and
+ *  - the on-disk layout: `<home>/project.json` (durable) and
  *    `<home>/runtime/` (ephemeral coordination — ownership + channel);
- *  - reading/writing/materializing `project.json` (§7.1, PF3).
+ *  - reading/writing/materializing `project.json`.
  *
  * It sits ABOVE `project.ts` (owner.json liveness) and `channel.ts` (file-drop
  * messaging): those operate on a plain directory and know nothing about the home
@@ -26,13 +25,13 @@ import { createHash } from 'node:crypto';
 /** Durable-record format version — bumped only on a breaking `project.json` change. */
 export const PROJECT_SCHEMA_VERSION = 1;
 
-/** Session-record format version — bumped only on a breaking `session.json` change (§7.1). */
+/** Session-record format version — bumped only on a breaking `session.json` change. */
 export const SESSION_SCHEMA_VERSION = 1;
 
-/** The session filename inside a home (§7). */
+/** The session filename inside a home. */
 export const SESSION_FILE = 'session.json';
 
-/** The durable identity/metadata record at `<home>/project.json` (§7.1). */
+/** The durable identity/metadata record at `<home>/project.json`. */
 export interface ProjectRecord {
   /** Format version for forward migration. */
   readonly schemaVersion: number;
@@ -46,19 +45,19 @@ export interface ProjectRecord {
 
 /** The resolved on-disk locations for one project. */
 export interface ProjectPaths {
-  /** The durable project home, `<baseDir>/<derived>/` (§7). */
+  /** The durable project home, `<baseDir>/<derived>/`. */
   readonly homeDir: string;
-  /** The ephemeral coordination dir, `<home>/runtime/` — release (PF8) clears ONLY this. */
+  /** The ephemeral coordination dir, `<home>/runtime/` — release clears ONLY this. */
   readonly runtimeDir: string;
   /** The durable identity record, `<home>/project.json`. */
   readonly recordPath: string;
 }
 
 /**
- * The durable session record at `<home>/session.json` (§7, §8.6, PF19). A
+ * The durable session record at `<home>/session.json`. A
  * separately-versioned record under the same tolerant discipline as
  * `project.json`. Persisted continuously as tabs open/close/switch — purely a
- * crash safety net, only ever read back after a dirty shutdown (Slice B).
+ * crash safety net, only ever read back after a dirty shutdown.
  */
 export interface SessionRecord {
   /** Format version for forward migration. */
@@ -70,18 +69,18 @@ export interface SessionRecord {
   /**
    * False while the window is running; set true on a clean shutdown. A whole-app
    * crash never rewrites it, so `cleanExit:false` surviving to the next launch is
-   * the dirty-shutdown signal (§8.6). This slice only WRITES it; nothing reads it.
+   * the dirty-shutdown signal. This slice only WRITES it; nothing reads it.
    */
   readonly cleanExit: boolean;
 }
 
-/** The runtime subdirectory name inside a home (§7). */
+/** The runtime subdirectory name inside a home. */
 export const RUNTIME_DIR = 'runtime';
-/** The durable identity record filename (§7). */
+/** The durable identity record filename. */
 export const PROJECT_FILE = 'project.json';
 
 /**
- * Validate a project name as a launch key. Names MAY contain spaces (PF1), but
+ * Validate a project name as a launch key. Names MAY contain spaces, but
  * must stay traversal-safe — the derivation (below) is what makes them
  * filesystem-safe, but a name that is itself a path fragment is rejected outright
  * as a caller error rather than silently sanitized away. Mirrors the guard the
@@ -106,7 +105,7 @@ function assertSafeName(name: string): void {
 }
 
 /**
- * Derive the home directory *token* from a project name (§8.4):
+ * Derive the home directory *token* from a project name:
  * `<sanitized>-<first 8 hex of sha256(name)>`.
  *
  * The sanitized prefix keeps the directory human-recognizable; the hash suffix
@@ -131,7 +130,7 @@ export function deriveDirName(name: string): string {
   return `${slug}-${hash}`;
 }
 
-/** Resolve the full set of on-disk paths for a project under `baseDir` (§7, §8.4). */
+/** Resolve the full set of on-disk paths for a project under `baseDir`. */
 export function projectPaths(baseDir: string, name: string): ProjectPaths {
   const homeDir = path.join(baseDir, deriveDirName(name));
   return {
@@ -142,7 +141,7 @@ export function projectPaths(baseDir: string, name: string): ProjectPaths {
 }
 
 /**
- * Tolerant, versioned parse of a `project.json` (§7.1) — unknown fields ignored,
+ * Tolerant, versioned parse of a `project.json` — unknown fields ignored,
  * missing fields defaulted, mirroring `protocol.ts`'s additive discipline. Only
  * `name` is load-bearing; a record missing it is treated as unusable (null).
  */
@@ -201,7 +200,7 @@ export function createOrAdoptRecord(recordPath: string, record: ProjectRecord): 
 }
 
 /**
- * Materialize-or-reuse the durable record (PF3): create `<home>/project.json` if
+ * Materialize-or-reuse the durable record: create `<home>/project.json` if
  * absent, otherwise keep the existing one untouched — crucially, never clobber
  * `createdAt`. Returns the record now on disk.
  *
@@ -228,10 +227,10 @@ export function materializeProjectRecord(
   return createOrAdoptRecord(paths.recordPath, record);
 }
 
-// --- Session record (§7, §8.6, PF19) ---------------------------------------
+// --- Session record --------------------------------------------------------
 
 /**
- * Tolerant, versioned parse of a `session.json` (§7.1 discipline) — unknown
+ * Tolerant, versioned parse of a `session.json` — unknown
  * fields ignored, missing fields defaulted. `files` is the only structurally
  * load-bearing field: a record whose `files` is not an array of strings is
  * unusable (null), since a garbage open-set is worse than none. `activeIndex`
@@ -247,15 +246,15 @@ export function parseSessionRecord(raw: unknown): SessionRecord | null {
     files: r.files as string[],
     activeIndex: typeof r.activeIndex === 'number' ? r.activeIndex : -1,
     // A missing/garbage flag defaults to clean, so only an explicit `false` — the
-    // value a running window writes — is ever read as a dirty shutdown (Slice B).
+    // value a running window writes — is ever read as a dirty shutdown.
     cleanExit: typeof r.cleanExit === 'boolean' ? r.cleanExit : true,
   };
 }
 
 /**
  * Read and validate `<home>/session.json`; null if absent/unreadable/garbage.
- * (Slice A does not act on this; it exists to make `writeSession` round-trippable
- * and unit-testable, and is the surface Slice B's restore path will consume.)
+ * (This makes `writeSession` round-trippable and unit-testable, and is the surface
+ * the restore path consumes.)
  */
 export function readSession(homeDir: string): SessionRecord | null {
   try {

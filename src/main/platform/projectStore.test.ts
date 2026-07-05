@@ -21,7 +21,7 @@ import {
   type SessionRecord,
 } from './projectStore';
 
-// projectStore owns home-path derivation (§8.4), the §7 layout, and the durable
+// projectStore owns home-path derivation, the layout, and the durable
 // project.json record. Hermetic: a temp baseDir per test, cleaned up; nothing
 // touches the real userData.
 const roots: string[] = [];
@@ -34,7 +34,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe('deriveDirName (§8.4 home derivation)', () => {
+describe('deriveDirName (home derivation)', () => {
   it('is deterministic — same name ⇒ same token', () => {
     expect(deriveDirName('My Project')).toBe(deriveDirName('My Project'));
   });
@@ -101,7 +101,7 @@ describe('deriveDirName (§8.4 home derivation)', () => {
   });
 });
 
-describe('projectPaths (§7 layout)', () => {
+describe('projectPaths (layout)', () => {
   it('places home under baseDir with runtime/ and project.json inside', () => {
     const base = '/tmp/base';
     const p = projectPaths(base, 'Proj');
@@ -144,7 +144,7 @@ describe('readProjectRecord', () => {
   });
 });
 
-describe('materializeProjectRecord (PF3 materialize-or-reuse)', () => {
+describe('materializeProjectRecord (materialize-or-reuse)', () => {
   it('creates project.json on first materialization', () => {
     const base = freshBaseDir();
     const p = projectPaths(base, 'New One');
@@ -226,7 +226,7 @@ describe('materializeProjectRecord (PF3 materialize-or-reuse)', () => {
   });
 });
 
-describe('session record (§8.6, PF19 — write side only)', () => {
+describe('session record (write side only)', () => {
   const full: SessionRecord = {
     schemaVersion: SESSION_SCHEMA_VERSION,
     files: ['/a/one.md', '/b/two.md'],

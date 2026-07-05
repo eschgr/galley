@@ -2,7 +2,7 @@
  * A minimal trailing-edge debounce: coalesces a burst of calls into one, firing
  * `fn` with the LATEST arguments `waitMs` after the last call.
  *
- * Used to coalesce rapid session writes (PF19): opening/closing/switching tabs
+ * Used to coalesce rapid session writes: opening/closing/switching tabs
  * in quick succession would otherwise hammer `session.json` on every change, so
  * the renderer's reports are debounced in main before touching disk. Trailing-
  * edge (not leading) so the persisted record reflects the settled tab set, not

@@ -1,5 +1,5 @@
 /**
- * Pure index math for Ctrl+Tab / Ctrl+Shift+Tab tab cycling (issue #19).
+ * Pure index math for Ctrl+Tab / Ctrl+Shift+Tab tab cycling.
  * Kept separate from App.tsx so the wraparound logic is unit-testable in
  * isolation. Given the ordered tab ids, the currently active id, and a
  * direction, return the id to switch to — or null when it's a no-op (fewer

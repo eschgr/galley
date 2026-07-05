@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createPlatformBridge } from './index';
 import { projectPaths, readSession, SESSION_FILE } from './projectStore';
 
-// Bridge-level session persistence (#61 clean-vs-crash invariant, §8.6, PF19).
+// Bridge-level session persistence (clean-vs-crash invariant).
 //
 // The file-layer (projectStore.writeSession/readSession/parseSessionRecord) is
 // covered by projectStore.test.ts; here we exercise the BRIDGE methods on
@@ -46,12 +46,12 @@ function findSessionFiles(dir: string): string[] {
   return found;
 }
 
-describe('platform bridge session persistence (#61, §8.6, PF19)', () => {
+describe('platform bridge session persistence', () => {
   it('is a no-op with no claimed project — writeSession/markCleanExit write nothing', () => {
     const home = freshProjectsHome();
     const bridge = createPlatformBridge({ projectsHome: () => home });
 
-    // Projectless window (PF27): no claimProject, so no home to persist to.
+    // Projectless window: no claimProject, so no home to persist to.
     bridge.writeSession({ files: ['/x/a.md'], activeIndex: 0 });
     bridge.markCleanExit();
 
@@ -114,12 +114,12 @@ describe('platform bridge session persistence (#61, §8.6, PF19)', () => {
   );
 });
 
-// The restore DECISION (#61 slice B, §8.6, PF20/D2). getRestoreSession is the pure
+// The restore DECISION. getRestoreSession is the pure
 // dirty-vs-clean gate: it returns the persisted paths+active only when a claimed
 // project's session is a dirty shutdown (cleanExit:false) with a non-empty open-set,
 // and null in every other branch. Loading the paths from disk is main's job (not
 // here). Each branch is exercised hermetically against a fresh temp projects-home.
-describe('platform bridge session restore decision (#61, §8.6, PF20)', () => {
+describe('platform bridge session restore decision', () => {
   it(
     'returns the session when dirty (cleanExit:false) with a non-empty open-set + a claimed project',
     async () => {
@@ -180,7 +180,7 @@ describe('platform bridge session restore decision (#61, §8.6, PF20)', () => {
     15_000,
   );
 
-  it('returns null when projectless (no claim) — projectless never restores (D2)', () => {
+  it('returns null when projectless (no claim) — projectless never restores', () => {
     const home = freshProjectsHome();
     const bridge = createPlatformBridge({ projectsHome: () => home });
 
@@ -191,10 +191,10 @@ describe('platform bridge session restore decision (#61, §8.6, PF20)', () => {
   });
 });
 
-// Project identity getter (PF24). projectName surfaces the claimed project's
+// Project identity getter. projectName surfaces the claimed project's
 // name for the title bar; null before a claim (and in projectless mode) and the
 // name afterwards.
-describe('platform bridge project identity (PF24)', () => {
+describe('platform bridge project identity', () => {
   it('projectName is null before any claim (projectless)', () => {
     const home = freshProjectsHome();
     const bridge = createPlatformBridge({ projectsHome: () => home });

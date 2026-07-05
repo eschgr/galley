@@ -1,5 +1,5 @@
 /**
- * Pure insertion-index math for drag-to-reorder tabs (issue #20).
+ * Pure insertion-index math for drag-to-reorder tabs.
  *
  * Given a STABLE SNAPSHOT of each tab's resting midpoint (the x of its centre,
  * in original left-to-right order, captured once at drag start) and the cursor's

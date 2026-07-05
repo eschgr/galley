@@ -1,4 +1,4 @@
-// Pure, testable logic backing two main-process behaviours (PF21/PF20, §8.6):
+// Pure, testable logic backing two main-process behaviours:
 //   1. `decideCrashReload` — whether a `render-process-gone` event should trigger
 //      a recovery reload, capped so a deterministic mount-time crash can't loop or
 //      hang the window blank.
@@ -56,7 +56,7 @@ export function decideCrashReload(opts: {
 }
 
 /**
- * Materialize a restore decision into loaded tabs (§8.6, PF20/D2).
+ * Materialize a restore decision into loaded tabs.
  *
  * Loads each persisted path via the injected `readFile` (which returns `null` for
  * a path that no longer reads — deleted/moved since the crash). Skipped paths that

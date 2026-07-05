@@ -1,5 +1,5 @@
 /**
- * Per-project ownership + liveness (PRD §7 layout, §8.1 liveness).
+ * Per-project ownership + liveness.
  *
  * This is the half of the channel machinery that answers "is a window already
  * serving this project, and who is it?" — distinct from `channel.ts`, which owns
@@ -16,8 +16,8 @@
  * `SingletonLock` (host+pid identity, break-if-stale), adapted to a plain JSON
  * file so it works in a file-only sandbox.
  *
- * Liveness is an OS-maintained signal, so it survives a modal-blocked main thread
- * (§8.1, #56): an owner is live iff `process.kill(pid,0)` succeeds AND the pid's
+ * Liveness is an OS-maintained signal, so it survives a modal-blocked main thread:
+ * an owner is live iff `process.kill(pid,0)` succeeds AND the pid's
  * current OS start-time matches the value recorded at claim. Both are answered by
  * the OS with no owner-code participation, so they stay truthful while the owner
  * is stuck in a native modal — the failure mode of the retired `.ping`→`.pong`
@@ -35,7 +35,7 @@ import { PROTOCOL_VERSION } from './protocol';
 /** The liveness record inside a project's `runtime/` dir. */
 export const OWNER_FILE = 'owner.json';
 
-/** The live-instance record for a project (PRD §8.1). */
+/** The live-instance record for a project. */
 export interface ProjectOwner {
   /** OS pid of the instance that owns the project right now. */
   readonly pid: number;
@@ -46,11 +46,11 @@ export interface ProjectOwner {
    * path-independent absolute value — UTC epoch-ms as a decimal string (see
    * `queryProcessStartTime`). This is the reuse guard: liveness requires the pid's
    * *current* OS start-time to still equal this, so a recycled pid (same number,
-   * later start-time) reads as dead (§8.1, #56). Because it is canonical epoch-ms,
+   * later start-time) reads as dead. Because it is canonical epoch-ms,
    * a claim recorded via one query path (e.g. `wmic`) still equals a later re-query
    * via another (e.g. CIM) for the same instant. Absent on records written before
    * this field existed, and treated as unqueryable at check time when a live query
-   * returns null — both cases DEFER to the live pid rather than take over (#56).
+   * returns null — both cases DEFER to the live pid rather than take over.
    */
   readonly startTime?: string;
   /**
@@ -109,12 +109,12 @@ export function isProcessAlive(pid: number): boolean {
  * unqueryable). This is the ONLY per-OS code in the liveness path: it shells out via
  * `node:child_process` (kept electron-free so the seam survives a future Tauri/Rust
  * port). Recorded once at claim and re-queried on every liveness check; a mismatch
- * means the pid was recycled (§8.1, #56).
+ * means the pid was recycled.
  *
  * Every source is normalized to the SAME absolute scale (UTC epoch-ms) so two
- * queries of the same live pid agree even when they take DIFFERENT paths — the
- * bug behind #56, where a `wmic` claim and a later CIM re-query of the same
- * process produced unequal source-tagged strings and triggered a false take-over.
+ * queries of the same live pid agree even when they take DIFFERENT paths —
+ * otherwise a `wmic` claim and a later CIM re-query of the same
+ * process produce unequal source-tagged strings and trigger a false take-over.
  * A process start is one instant; every path reports that one instant; flooring
  * to ms makes them agree.
  *
@@ -125,7 +125,7 @@ export function isProcessAlive(pid: number): boolean {
  *   stable across calls for a live process. (Verified on a Mac later; correct here.)
  *
  * Any spawn failure / timeout / empty result ⇒ null (process gone or command
- * unavailable), which liveness treats as "defer, don't take over" (#56).
+ * unavailable), which liveness treats as "defer, don't take over".
  */
 export function queryProcessStartTime(pid: number): string | null {
   if (!Number.isInteger(pid) || pid <= 0) return null;
@@ -141,7 +141,7 @@ export function queryProcessStartTime(pid: number): string | null {
  * Bound on each start-time shell-out (ms). `queryProcessStartTime` is `await`ed in
  * the launcher's `app.on('ready')`, so a hung `wmic`/`powershell` would block launch
  * forever without this. On timeout `execFileSync` throws → the query returns null
- * (unqueryable), which the liveness logic treats as "defer, don't take over" (#56).
+ * (unqueryable), which the liveness logic treats as "defer, don't take over".
  */
 const START_TIME_QUERY_TIMEOUT_MS = 2500;
 
@@ -158,7 +158,7 @@ function runCapture(cmd: string, args: readonly string[]): string {
 /**
  * Windows: wmic CreationDate, with a PowerShell CIM fallback if wmic is absent.
  * Both paths canonicalize to UTC epoch-ms, so a claim recorded via one path and a
- * later re-query via the other compare equal for the same live pid (#56).
+ * later re-query via the other compare equal for the same live pid.
  */
 function queryWindowsStartTime(pid: number): string | null {
   try {
@@ -183,7 +183,7 @@ const FILETIME_EPOCH_OFFSET_TICKS = 116444736000000000n;
  * `YYYYMMDDHHMMSS.ffffff±ooo` (local wall-clock + a UTC offset in MINUTES), e.g.
  * `20260703124451.272290-420`. We read the local datetime, subtract the offset to
  * reach UTC, and floor to whole ms — so this agrees with the FileTimeUtc path for
- * the SAME process instant (#56).
+ * the SAME process instant.
  */
 export function parseWmicCreationDate(out: string): string | null {
   for (const line of out.split(/\r?\n/)) {
@@ -209,7 +209,7 @@ export function parseWmicCreationDate(out: string): string | null {
  * Parse a PowerShell `.ToFileTimeUtc()` value (int64 of 100-ns ticks since
  * 1601-01-01 UTC) to canonical UTC epoch-ms (decimal string). BigInt keeps full
  * precision through the epoch shift before flooring to ms, so this agrees with the
- * wmic path for the same instant (#56).
+ * wmic path for the same instant.
  */
 export function parseFileTimeUtc(out: string): string | null {
   const v = out.trim();
@@ -245,7 +245,7 @@ export function readProjectOwner(runtimeDir: string): ProjectOwner | null {
 /**
  * True iff a project has a LIVE owner: a record present, on this host, whose pid
  * `alive(pid)` AND whose current OS start-time still matches the one recorded at
- * claim (§8.1, #56). A dead pid OR a start-time mismatch (recycled pid) ⇒ not live.
+ * claim. A dead pid OR a start-time mismatch (recycled pid) ⇒ not live.
  *
  * Tolerant of a legacy record with no `startTime` (written before this field
  * existed): with nothing to compare against we cannot detect reuse, so we fall
@@ -275,13 +275,13 @@ export function isProjectLive(
  *  - owner.startTime missing (legacy record) — nothing to compare.
  *  - the live query returns null (query failed / timed out / process momentarily
  *    unqueryable) — a transient failure must NOT trigger a take-over of a pid that
- *    is provably alive, or #56's duplicate window returns.
+ *    is provably alive, or the duplicate window returns.
  * Only a concrete canonical mismatch ⇒ false ⇒ take over.
  */
 function ownerStartTimeMatches(owner: ProjectOwner, startTime: StartTimeFn): boolean {
   if (owner.startTime === undefined) return true; // legacy record — nothing to compare
   const live = startTime(owner.pid);
-  if (live === null) return true; // unqueryable now — defer to the live pid, never take over (#56)
+  if (live === null) return true; // unqueryable now — defer to the live pid, never take over
   return live === owner.startTime; // definite mismatch ⇒ recycled pid ⇒ take over
 }
 
@@ -329,7 +329,7 @@ export interface AcquireDeps {
  *                             one recorded at claim: match ⇒ real owner (defer);
  *                             mismatch (recycled) ⇒ take over. Both signals are
  *                             OS-answered, so they stay truthful even while the owner
- *                             is blocked in a native modal (§8.1, #56).
+ *                             is blocked in a native modal.
  * A stale record is overwritten via the atomic rename above (last-writer-wins,
  * benign for the turn-based launcher).
  */
@@ -388,7 +388,7 @@ export async function acquireProject(
 
 /**
  * Re-assert ownership after an external removal of `runtime/` or its `owner.json`
- * (PF8, §8.2 — the #60 defense-in-depth). A live owner whose discoverable
+ * (defense-in-depth). A live owner whose discoverable
  * artifacts were deleted out from under it (manual delete, disk cleaner, AV
  * quarantine) recreates them with the SAME identity, so a later launch's
  * `acquireProject` finds the live owner and hands off instead of silently
@@ -412,7 +412,7 @@ export function reassertOwner(runtimeDir: string, owner: ProjectOwner): void {
  * stops a slow-closing previous instance from deleting a newer instance's runtime
  * after a takeover.
  *
- * This is the #60 data-safety guarantee: durable data (`project.json`, and the
+ * This is the data-safety guarantee: durable data (`project.json`, and the
  * home dir itself) is NEVER touched here — only the disposable coordination state
  * is cleared, so releasing a project can never destroy its durable half.
  */
