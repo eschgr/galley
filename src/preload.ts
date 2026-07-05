@@ -4,7 +4,7 @@
 //
 // It exposes a single frozen object, `window.galley`, typed by GalleyApi. The
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { GalleyApi, OpenedFile } from './shared/api';
 import { parseProjectArg } from './main/projectArg';
 
@@ -42,6 +42,13 @@ const api: GalleyApi = {
     void ipcRenderer.invoke('file:closed', filePath);
   },
   getStartupFiles: () => ipcRenderer.invoke('file:getStartup'),
+  // Resolve a dropped File's absolute path. `webUtils.getPathForFile` is the
+  // supported replacement for the removed `File.path` and must run here in the
+  // preload; returns '' when the object is not a real filesystem file.
+  getDroppedPath: (file: File) => webUtils.getPathForFile(file) || '',
+  openFiles: (paths: string[]) => {
+    void ipcRenderer.invoke('file:openDropped', paths);
+  },
   onOpenFile: (callback: (file: OpenedFile) => void) => {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);
     ipcRenderer.on('file:opened', listener);

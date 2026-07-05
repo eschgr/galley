@@ -42,6 +42,7 @@ import { HelpDialog } from './components/HelpDialog';
 import type { LinkContext } from './components/Editor';
 import type { OpenedFile } from '../shared/api';
 import { cycleTabTarget, type CycleDirection } from './cycleTab';
+import { dropPaths } from './dropOpen';
 
 // Debounced auto-save: save 5s after the last keystroke. A test seam lets e2e tests shorten it.
 const AUTOSAVE_MS =
@@ -348,6 +349,32 @@ export function App() {
       for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Drag-and-drop file opening: dropping files anywhere on the window opens each
+  // as a tab (dedup/focus handled by openTab). Both dragover and drop must
+  // preventDefault, or Electron navigates the window to the dropped file and
+  // replaces the app. Paths are resolved in the preload (webUtils) since the
+  // renderer cannot read File.path; main opens them through the CLI/dialog path.
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      const paths = dropPaths(Array.from(files), (file) => window.galley?.getDroppedPath(file) ?? '');
+      if (paths.length > 0) window.galley?.openFiles(paths);
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
   }, []);
 
   // Restore resolutions. Yes → open each restored file (openTab dedups
