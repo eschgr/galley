@@ -305,6 +305,21 @@ ipcMain.handle('file:getStartup', async (event) => {
   );
 });
 
+// Files dropped onto the window (drag-and-drop open): the renderer resolved each
+// to an absolute path (webUtils in the preload) and hands them here. Open each
+// through the same path as a CLI arg or the file dialog — openPath reads,
+// watches, and pushes 'file:opened', so the renderer opens a focused tab per
+// file (or focuses the tab if it is already open). An unreadable drop surfaces a
+// dialog and is skipped, never fatal to the rest of the drop.
+ipcMain.handle('file:openDropped', async (event, paths: unknown) => {
+  if (!Array.isArray(paths)) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  for (const p of paths) {
+    if (typeof p === 'string' && p) await openPath(win, p);
+  }
+});
+
 // Read a file on demand (manual reload, and opening a file already known to the
 // renderer). Updates the baseline hash and (re)watches it. Errors surface as a
 // dialog and resolve to null.
