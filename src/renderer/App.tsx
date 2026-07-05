@@ -59,8 +59,11 @@ function basename(p: string): string {
 
 /** One open document. The buffer (`text`) is the source of truth; `saved`
  *  is the last loaded/saved baseline. `conflict`/`noticed`/`showModal`/`edited`
- *  carry the per-tab out-of-sync state. `docVersion` is bumped on a
- *  reload-from-disk so the tab's editor re-seeds (it never changes on an edit). */
+ *  carry the per-tab out-of-sync state. `orphaned` is set when the file was
+ *  moved/deleted on disk ("file gone"): the buffer is preserved, saving is guarded,
+ *  and a passive banner shows until dismissed (`orphanAck`) or relocated (Save As).
+ *  `docVersion` is bumped on a reload-from-disk so the tab's editor re-seeds (it
+ *  never changes on an edit). */
 export interface Tab {
   id: string;
   path: string;
@@ -71,6 +74,8 @@ export interface Tab {
   conflict: OpenedFile | null;
   noticed: boolean;
   showModal: boolean;
+  orphaned: boolean;
+  orphanAck: boolean;
   docVersion: number;
 }
 
@@ -144,19 +149,26 @@ export function App() {
   };
 
   // Save one tab's buffer (auto-save / force-save / write-path conflict guard). `force` overwrites disk ("keep mine").
-  const saveTab = async (id: string, opts?: { manual?: boolean; force?: boolean }) => {
+  // Resolves to whether it is now safe to CLOSE the tab off the back of this save:
+  // false only when the user backed out of a relocation (Save As cancelled) so the
+  // unsaved buffer must be kept, not closed. Non-close callers ignore the result.
+  const saveTab = async (id: string, opts?: { manual?: boolean; force?: boolean }): Promise<boolean> => {
     const t = tabById(id);
-    if (!t) return;
+    if (!t) return false;
+    // File gone: never re-create it at the old path — a save on an orphaned tab is
+    // routed to Save As so the user chooses where the relocated document lands. A
+    // cancelled Save As returns false so a close-then-save never discards the buffer.
+    if (t.orphaned) return saveAsTab(id);
     const force = opts?.force ?? false;
-    if (t.conflict && !force) return; // out of sync: only a keep-mine save writes
+    if (t.conflict && !force) return true; // out of sync: only a keep-mine save writes
     const content = t.text;
-    if (!force && content === t.saved) return; // nothing new
+    if (!force && content === t.saved) return true; // nothing new
     clearAutosave(id);
     try {
       const outcome = await window.galley.saveFile(t.path, content, force);
       if (outcome.conflict) {
         flagDiverged(id, outcome.disk); // write-path divergence
-        return;
+        return true;
       }
       const latest = tabById(id);
       updateTab(id, {
@@ -164,8 +176,10 @@ export function App() {
         dirty: latest ? latest.text !== content : false,
         ...(opts?.manual ? { edited: false } : {}),
       });
+      return true;
     } catch (err) {
       console.error('[Galley] save failed', err);
+      return true;
     }
   };
 
@@ -184,6 +198,8 @@ export function App() {
       conflict: null,
       noticed: false,
       showModal: false,
+      orphaned: false,
+      orphanAck: false,
       docVersion: (t?.docVersion ?? 0) + 1,
     });
   };
@@ -234,6 +250,8 @@ export function App() {
       conflict: null,
       noticed: false,
       showModal: false,
+      orphaned: false,
+      orphanAck: false,
       docVersion: 0,
     };
     if (file.line !== undefined) pendingReveals.current.set(id, file.line); // revealed once the new tab activates
@@ -287,7 +305,9 @@ export function App() {
     const isDirty = next !== t.saved;
     updateTab(id, { text: next, dirty: isDirty, edited: t.edited || isDirty });
     clearAutosave(id);
-    if (isDirty && !t.conflict) {
+    // An orphaned tab's buffer is preserved and editable, but auto-save is
+    // suspended — there is no valid path to write to (saving routes to Save As).
+    if (isDirty && !t.conflict && !t.orphaned) {
       autosaveTimers.current.set(id, setTimeout(() => void saveTab(id), AUTOSAVE_MS));
     }
   };
@@ -304,6 +324,47 @@ export function App() {
     const t = tabById(id);
     if (id && t?.conflict) reloadTab(id, t.conflict);
   };
+
+  // The file behind a tab was moved/deleted on disk ("file gone"): mark it
+  // orphaned so the buffer is preserved, saving is guarded, and a passive banner
+  // appears — never a modal, so a bulk reorg can't storm. Idempotent: a path
+  // already orphaned stays as-is, so repeated removal signals coalesce. Auto-save
+  // is cancelled — there is no valid path to write to.
+  const markOrphaned = (path: string) => {
+    const t = tabsRef.current.find((x) => x.path === path);
+    if (!t || t.orphaned) return;
+    clearAutosave(t.id);
+    updateTab(t.id, { orphaned: true, orphanAck: false });
+  };
+
+  // Save As… for a tab (relocate): the buffer is written to a user-chosen path via
+  // a native dialog. On success the tab adopts the new path, stops watching the old
+  // (gone) one, and clears its orphaned state; a cancel leaves the tab untouched.
+  // Resolves to true only when the relocation actually wrote, so a close chained
+  // off it is skipped when the user backs out (preserving the unsaved buffer).
+  const saveAsTab = async (id: string): Promise<boolean> => {
+    const t = tabById(id);
+    if (!t) return false;
+    const content = t.text;
+    const relocated = await window.galley?.saveFileAs(t.path, content);
+    if (!relocated) return false; // user cancelled or the write failed — stay orphaned
+    window.galley?.notifyClosed(t.path); // stop watching the old, vanished path
+    const latest = tabById(id);
+    updateTab(id, {
+      path: relocated.path,
+      saved: relocated.content,
+      dirty: latest ? latest.text !== relocated.content : false,
+      orphaned: false,
+      orphanAck: false,
+      edited: false,
+    });
+    return true;
+  };
+
+  // "Keep open" on the orphaned banner: dismiss the notice but keep the tab and its
+  // buffer in memory. The tab stays orphaned (saving is still guarded to Save As),
+  // it just stops nagging.
+  const dismissOrphanBanner = (id: string) => updateTab(id, { orphanAck: true });
 
   // Pull a command-line file and subscribe to opens / save / reload / change.
   useEffect(() => {
@@ -350,9 +411,17 @@ export function App() {
     const offExternal = window.galley?.onExternalChange((diskFile) => {
       const t = tabsRef.current.find((x) => x.path === diskFile.path);
       if (!t) return;
+      if (t.orphaned) {
+        // A vanished file reappeared at its old path. A clean orphaned tab re-adopts
+        // it (un-orphans via reloadTab); one with unsaved edits stays orphaned so the
+        // user relocates deliberately, rather than layering a conflict on the gone state.
+        if (!t.edited) reloadTab(t.id, diskFile);
+        return;
+      }
       if (!t.conflict && !t.edited) reloadTab(t.id, diskFile); // in sync → refresh
       else flagDiverged(t.id, diskFile); // edits in progress / already flagged → surface
     });
+    const offRemoved = window.galley?.onFileRemoved((path) => markOrphaned(path));
     // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs with wraparound.
     const cycle = (direction: CycleDirection) => {
       const target = cycleTabTarget(
@@ -373,6 +442,7 @@ export function App() {
       offNext?.();
       offPrev?.();
       offExternal?.();
+      offRemoved?.();
       offHelp?.();
       for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
     };
@@ -476,6 +546,8 @@ export function App() {
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
   const conflict = activeTab?.conflict ?? null;
   const showModal = activeTab?.showModal ?? false;
+  // The active tab's file was moved/deleted and the banner hasn't been dismissed.
+  const showOrphanBanner = (activeTab?.orphaned ?? false) && !(activeTab?.orphanAck ?? false);
 
   // The OS window title carries the active file name, then the project name, then
   // the app — the in-app title line was removed in favour of the single
@@ -515,8 +587,9 @@ export function App() {
           {showingSource ? 'Hide Source' : 'Show Source'}
         </button>
       </header>
-      {/* Out-of-sync notice sits just below the tab bar (passive flag). */}
-      {conflict && !showModal && (
+      {/* Out-of-sync notice sits just below the tab bar (passive flag). Suppressed
+          when the file is gone — the orphaned banner below takes precedence. */}
+      {conflict && !showModal && !showOrphanBanner && (
         <div className="sync-flag" role="status">
           <span className="sync-flag-dot" aria-hidden="true">●</span>
           <span className="sync-flag-text">
@@ -527,6 +600,25 @@ export function App() {
           </button>
           <button type="button" className="sync-flag-btn" onClick={resolveKeepMine}>
             Keep mine
+          </button>
+        </div>
+      )}
+      {/* File gone: a passive per-tab banner (never a modal), preserving the buffer
+          and offering the safe choices — relocate, keep in memory, or close. */}
+      {showOrphanBanner && activeTab && (
+        <div className="sync-flag orphan-flag" role="status">
+          <span className="sync-flag-dot" aria-hidden="true">●</span>
+          <span className="sync-flag-text">
+            <strong>{basename(activeTab.path)}</strong> was moved or deleted on disk
+          </span>
+          <button type="button" className="sync-flag-btn" onClick={() => void saveAsTab(activeTab.id)}>
+            Save As…
+          </button>
+          <button type="button" className="sync-flag-btn" onClick={() => dismissOrphanBanner(activeTab.id)}>
+            Keep open
+          </button>
+          <button type="button" className="sync-flag-btn" onClick={() => requestClose(activeTab.id)}>
+            Close
           </button>
         </div>
       )}
@@ -586,7 +678,12 @@ export function App() {
           onSave={() => {
             const id = closing.id;
             setClosing(null);
-            void saveTab(id, { manual: true }).then(() => closeTab(id));
+            // Close only once the save actually persisted — if this is an orphaned
+            // tab and the user cancels the Save As dialog, keep the tab (and its
+            // unsaved buffer) open rather than discarding it on close.
+            void saveTab(id, { manual: true }).then((saved) => {
+              if (saved) closeTab(id);
+            });
           }}
           onDiscard={() => {
             const id = closing.id;

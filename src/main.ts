@@ -7,7 +7,7 @@ import { defaultPdfPath } from './main/pdfName';
 import { writeAndOpenPdf } from './main/exportPdf';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
-import { createPlatformBridge, type SaveResult, type OpenRequest } from './main/platform';
+import { createPlatformBridge, type SaveResult, type FileSnapshot, type OpenRequest } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
@@ -77,14 +77,22 @@ function targetWindow(): BrowserWindow | null {
 const watchedPaths = new Set<string>();
 
 // Watch a file and forward genuine external changes to the renderer (watching
-// open files, with self-write detection so our own saves aren't flagged).
+// open files, with self-write detection so our own saves aren't flagged). A
+// removal — the file moved or deleted out from under us — is forwarded as
+// 'file:removed' so the renderer can mark the tab orphaned ("file gone").
 // Additive and idempotent — opening more files doesn't stop watching the others.
 function watchFile(win: BrowserWindow, absPath: string): void {
   if (watchedPaths.has(absPath)) return;
   watchedPaths.add(absPath);
-  platform.watch(absPath, (event) => {
-    if (!win.isDestroyed()) win.webContents.send('file:externalChange', event);
-  });
+  platform.watch(
+    absPath,
+    (event) => {
+      if (!win.isDestroyed()) win.webContents.send('file:externalChange', event);
+    },
+    (removedPath) => {
+      if (!win.isDestroyed()) win.webContents.send('file:removed', removedPath);
+    },
+  );
 }
 
 function unwatchPath(absPath: string): void {
@@ -287,6 +295,42 @@ ipcMain.handle('file:write', async (_event, args: unknown): Promise<SaveResult> 
     return { conflict: false, file };
   }
   return platform.saveChecked(absPath, content);
+});
+
+// Save As… (relocate): used when a tab's file was moved/deleted on disk (an
+// orphaned tab) so the buffer is never re-created at the old, now-wrong path.
+// Presents a native Save dialog defaulted beside the old path, writes on confirm,
+// watches the new path, and returns the new snapshot so the renderer adopts it.
+// Cancel (or IO error) returns null and changes nothing.
+ipcMain.handle('file:saveAs', async (event, args: unknown): Promise<FileSnapshot | null> => {
+  if (
+    !args ||
+    typeof args !== 'object' ||
+    typeof (args as { path?: unknown }).path !== 'string' ||
+    typeof (args as { content?: unknown }).content !== 'string'
+  ) {
+    throw new Error('file:saveAs requires { path: string, content: string }');
+  }
+  const { path: oldPath, content } = args as { path: string; content: string };
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Save As',
+    defaultPath: oldPath,
+    filters: [
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (canceled || !filePath) return null;
+  try {
+    const snapshot = await platform.writeFile(filePath, content);
+    watchFile(win, filePath); // watch the new home; the old (gone) path is unwatched by the renderer
+    return snapshot;
+  } catch (err) {
+    dialog.showErrorBox('Could not save file', `${filePath}\n\n${String(err)}`);
+    return null;
+  }
 });
 
 // The renderer pulls the command-line files (if any) once on mount. Reads
