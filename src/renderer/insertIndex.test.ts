@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { insertIndexFromMidpoints } from './insertIndex';
 
-describe('insertIndexFromMidpoints (drag-reorder index stability, #20)', () => {
+describe('insertIndexFromMidpoints (drag-reorder index stability)', () => {
   // UNEQUAL-width tabs (the norm — Galley sizes tabs to filename length). With
   // equal widths the old live-rect scan was coincidentally stable; unequal
   // widths are what exposed the 2-cycle, so the snapshot here is non-uniform.

@@ -1,5 +1,5 @@
 /**
- * Channel transport — file-drop messaging into a running window (PRD §7, §8.1).
+ * Channel transport — file-drop messaging into a running window.
  *
  * The channel is the *messaging* half of the per-project machinery (the
  * `owner.json` liveness record lives in `project.ts`). Both operate on the
@@ -28,7 +28,7 @@
  * The channel is messages-only. Liveness is decided by `project.ts` from an
  * OS-maintained signal (`kill(pid,0)` + start-time), not by a channel handshake:
  * the old `.ping`→`.pong` ack was answered on the main-process event loop, so a
- * native modal blocked it and the owner was falsely seen as dead (#56). No owner
+ * native modal blocked it and the owner was falsely seen as dead. No owner
  * code participates in liveness now, so it stays truthful while the owner is
  * modal-blocked.
  */
@@ -84,7 +84,7 @@ export interface ListenOptions {
   /**
    * Invoked when this owner's discoverable artifacts are removed externally while
    * we're still live — either our `owner.json` is unlinked or the whole
-   * `runtimeDir` vanishes (PF8, §8.2 — the #60 defense-in-depth). The callback
+   * `runtimeDir` vanishes (defense-in-depth). The callback
    * must recreate them with the SAME identity (see `project.ts#reassertOwner`),
    * and re-materialize `project.json` if the home was nuked; the bridge holds the
    * owner record + paths to do so. Routine channel churn (`.msg` consumed,
@@ -111,7 +111,7 @@ const REASSERT_DEBOUNCE_MS = 60;
  * `owner.json` deleted — it lives IN `runtimeDir` at depth 0, so we see it) and
  * `unlinkDir` (`runtimeDir` itself removed) fire `opts.onReassert`, which
  * recreates the artifacts with the same identity so a later launch hands off
- * instead of duplicating (§8.2). When `runtimeDir` vanished, chokidar stops
+ * instead of duplicating. When `runtimeDir` vanished, chokidar stops
  * watching the gone root; after re-asserting we re-create the watcher so future
  * messages are still consumed.
  */

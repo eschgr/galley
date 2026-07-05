@@ -6,8 +6,7 @@
  * interface. The rest of the main process talks to the seam, never to Node's
  * `fs`/`crypto` directly.
  *
- * Why: this is the one layer that a future migration off Electron (the PRD
- * names Tauri/Rust as the target) would rewrite. Keeping it thin and
+ * Why: this is the one layer that a future migration off Electron (e.g. to a Tauri/Rust shell) would rewrite. Keeping it thin and
  * well-defined keeps that migration cheap; everything above it — React,
  * CodeMirror, markdown-it/KaTeX, scroll-sync, tabs — ports as-is.
  *
@@ -104,7 +103,7 @@ export interface PlatformBridge {
   /**
    * Claim the project for this process, taking over a stale/absent owner. When
    * a *live* instance already owns it (confirmed via an OS start-time match, so a
-   * recycled PID can't masquerade as one — §8.1), resolves `{ owned: false }` so
+   * recycled PID can't masquerade as one), resolves `{ owned: false }` so
    * the launch can hand its files off and exit instead of opening a duplicate
    * window. A successful claim is remembered so `closeChannel` releases it.
    */
@@ -120,24 +119,24 @@ export interface PlatformBridge {
   /** Stop consuming the channel and release the project (ownership-guarded). */
   closeChannel(): Promise<void>;
 
-  // --- Session persistence (PF19, §8.6) ----------------------------------
+  // --- Session persistence -----------------------------------------------
   /**
    * Persist the claimed project's open-tab set to `<home>/session.json` with
-   * `cleanExit:false` (§8.6) — the crash safety net, rewritten as tabs change.
+   * `cleanExit:false` — the crash safety net, rewritten as tabs change.
    * `files` are absolute paths in tab order; `activeIndex` is the active tab's
    * index (or -1). NO-OP when there is no claimed project: a projectless window
-   * (PF27) has no home, so it persists nothing.
+   * has no home, so it persists nothing.
    */
   writeSession(session: { files: string[]; activeIndex: number }): void;
   /**
    * Flag a clean shutdown: rewrite the claimed project's existing session with
-   * `cleanExit:true` (§8.6), so a later launch can tell this quit from a crash.
+   * `cleanExit:true`, so a later launch can tell this quit from a crash.
    * NO-OP when there is no claimed project OR no session on disk yet — a clean
    * quit before any session was written leaves nothing to (and needs no) marking.
    */
   markCleanExit(): void;
   /**
-   * The restore decision (§8.6, PF20/D2): the claimed project's session is
+   * The restore decision: the claimed project's session is
    * *restorable* iff its `session.json` exists, `cleanExit === false` (a prior
    * crash / unclean exit — a clean shutdown set it true), AND `files` is
    * non-empty. Returns the persisted paths + active index when restorable, else
@@ -146,10 +145,10 @@ export interface PlatformBridge {
    */
   getRestoreSession(): { files: string[]; activeIndex: number } | null;
 
-  // --- Project identity (PF24) -------------------------------------------
+  // --- Project identity ---------------------------------------------------
   /**
-   * The claimed project's name, or null in projectless mode (PF27). Fixed for
-   * the window's lifetime — surfaced in the OS title bar (PF24).
+   * The claimed project's name, or null in projectless mode. Fixed for
+   * the window's lifetime — surfaced in the OS title bar.
    */
   projectName(): string | null;
 }
@@ -169,7 +168,7 @@ export interface PlatformBridgeOptions {
 
 /**
  * The Node-backed bridge. File IO, CLI parsing, file watching, and the
- * per-project durable home + file-drop channel (§7, §8.1) are all implemented
+ * per-project durable home + file-drop channel are all implemented
  * here by composing ./fileIo, ./projectStore, ./project, and ./channel.
  */
 export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBridge {
@@ -187,7 +186,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
   let channelListener: ChannelListener | null = null;
   let claimedRuntimeDir: string | null = null;
   // The owner record + project name from our claim, retained so a re-assertion
-  // (PF8, §8.2) can rewrite `owner.json` with the SAME identity and re-materialize
+  // can rewrite `owner.json` with the SAME identity and re-materialize
   // `project.json` if the home was externally removed while we're live.
   let claimedOwner: ProjectOwner | null = null;
   let claimedProject: string | null = null;
@@ -264,21 +263,21 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       selfWrites.forget(absPath);
     },
 
-    // Per-project channel (§7, §8.1). The app self-arbitrates: materialize the
+    // Per-project channel. The app self-arbitrates: materialize the
     // durable home, then claim the project (taking over a stale owner) and either
     // become its window or — when a live owner exists — drop files into its
     // channel. See ./projectStore, ./project, and ./channel.
     async claimProject(project, opts) {
       const paths = pathsFor(project);
       // Materialize-or-reuse the durable record BEFORE claiming, so the home
-      // exists whether we become owner or hand off (PF3). Reuse preserves an
+      // exists whether we become owner or hand off. Reuse preserves an
       // existing createdAt — a claim never clobbers durable data.
       materializeProjectRecord(paths, project, opts ?? {});
       // Liveness uses the default OS start-time query (kill(0) + start-time match);
-      // no channel handshake — see project.ts#acquireProject / §8.1.
+      // no channel handshake — see project.ts#acquireProject.
       const result = await acquireProjectFs(project, paths.runtimeDir, opts ?? {}, {});
       if (result.owned) {
-        // Remember so closeChannel releases it and a re-assertion (§8.2) can
+        // Remember so closeChannel releases it and a re-assertion can
         // recreate the artifacts with this exact owner identity.
         claimedRuntimeDir = paths.runtimeDir;
         claimedOwner = result.owner;
@@ -297,7 +296,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       channelListener = listenOnChannelFs(paths.runtimeDir, channelId, onFile, {
         // On external removal of runtime/ or owner.json while we're live: recreate
         // the discoverable artifacts with the SAME identity so a later launch hands
-        // off (§8.2, PF8). Re-materialize project.json too, in case the whole home
+        // off. Re-materialize project.json too, in case the whole home
         // was nuked — its absence is the signal to recreate it (an existing record
         // is preserved untouched, never re-stamped).
         onReassert: () => {
@@ -315,8 +314,8 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
         channelListener = null;
       }
       if (claimedRuntimeDir) {
-        // Ownership-guarded, non-destructive (PF8): removes ONLY our runtime/ dir,
-        // never project.json or the home — the #60 data-safety fix.
+        // Ownership-guarded, non-destructive: removes ONLY our runtime/ dir,
+        // never project.json or the home — the data-safety guarantee.
         releaseProjectFs(claimedRuntimeDir);
         claimedRuntimeDir = null;
       }
@@ -325,7 +324,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       claimedAppVersion = undefined;
     },
 
-    // Session persistence (PF19, §8.6). Both derive the home from the retained
+    // Session persistence. Both derive the home from the retained
     // `claimedProject` and no-op in projectless mode — a window with no claimed
     // project has no home and writes no session.
     writeSession(session) {
@@ -346,7 +345,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       writeSessionFs(homeDir, { ...existing, cleanExit: true });
     },
 
-    // The restore decision (§8.6, PF20/D2). Pure and side-effect-free: reads the
+    // The restore decision. Pure and side-effect-free: reads the
     // claimed project's session and returns its paths only if it looks like a
     // dirty shutdown (cleanExit:false) with a non-empty open-set. A projectless
     // window has no claim and no home, so it returns null — projectless never
@@ -361,7 +360,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       return { files: [...session.files], activeIndex: session.activeIndex };
     },
 
-    // Project identity (PF24). Reads the retained `claimedProject`, null in
+    // Project identity. Reads the retained `claimedProject`, null in
     // projectless mode — a window with no claim has no name to show.
     projectName() {
       return claimedProject;

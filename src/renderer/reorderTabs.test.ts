@@ -21,7 +21,7 @@ function ids(tabs: Tab[]): string[] {
   return tabs.map((t) => t.id);
 }
 
-describe('reorderToIndex (drag-reorder, #20)', () => {
+describe('reorderToIndex (drag-reorder)', () => {
   // Insertion index is a position in the ORIGINAL array: 0..n.
   const base = () => [tab('a'), tab('b'), tab('c'), tab('d')];
 

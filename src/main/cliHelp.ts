@@ -1,11 +1,11 @@
 /**
- * `--help` / `-h` output (issue #38).
+ * `--help` / `-h` output.
  *
  * The help text itself lives in the sibling raw file `cliHelp.txt` (imported
  * with Vite's `?raw`, like welcome.md), so it reads as plain prose with no
  * string-escaping noise and is easy to find/edit. It is written for an LLM (e.g.
  * Claude) told only that "Galley exists" and to read its help before driving the
- * app — keep it in sync with the launcher contract in docs/PRD.md Appendix A.
+ * app — keep it in sync with the launcher contract.
  * The `--project <name>` contract here MUST match the CLI parsing in
  * src/main/platform/fileIo.ts and the self-arbitration flow in src/main.ts.
  */

@@ -1,5 +1,5 @@
 /**
- * Windows `galley` command shim (issue #42).
+ * Windows `galley` command shim.
  *
  * Squirrel installs the app to a versioned `app-x.y.z\` dir that changes on every
  * update, so there is no stable exe path to put on PATH. But Squirrel runs the

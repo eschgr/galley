@@ -83,7 +83,7 @@ export function App() {
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
   const [closing, setClosing] = useState<Tab | null>(null); // close-with-unsaved prompt
   const [showHelp, setShowHelp] = useState(false); // Help window
-  // The session offered for restore after a dirty shutdown (PF20, §8.6), or null.
+  // The session offered for restore after a dirty shutdown, or null.
   // Set once on mount when main reports a restorable session; cleared on the user's
   // Yes/No. Held so the Yes handler can reopen exactly what was loaded from disk.
   const [restore, setRestore] = useState<{ files: OpenedFile[]; activeIndex: number } | null>(null);
@@ -232,7 +232,7 @@ export function App() {
     setActive(next.id);
   };
 
-  // #20: drag-reorder the tab strip. Reorders the array only — activeId is an id,
+  // Drag-reorder the tab strip. Reorders the array only — activeId is an id,
   // not an index, so the active tab stays active and simply moves to its new slot.
   const reorder = (draggedId: string, insertIndex: number) => {
     commitTabs(reorderToIndex(tabsRef.current, draggedId, insertIndex));
@@ -291,7 +291,7 @@ export function App() {
         }
       })
       // After the CLI files are open, ask main whether a prior session should be
-      // restored (PF20, §8.6). Non-null only after a dirty shutdown in a claimed
+      // restored. Non-null only after a dirty shutdown in a claimed
       // project; then offer the restore prompt. Runs AFTER getStartupFiles so the
       // CLI-file behaviour is fully in place either way — restore only ever adds.
       .then(() => window.galley?.getRestore())
@@ -324,7 +324,7 @@ export function App() {
       if (!t.conflict && !t.edited) reloadTab(t.id, diskFile); // in sync → refresh
       else flagDiverged(t.id, diskFile); // edits in progress / already flagged → surface
     });
-    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs with wraparound (#19).
+    // Ctrl+Tab / Ctrl+Shift+Tab cycle tabs with wraparound.
     const cycle = (direction: CycleDirection) => {
       const target = cycleTabTarget(
         tabsRef.current.map((t) => t.id),
@@ -350,7 +350,7 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Restore resolutions (PF20, §8.6). Yes → open each restored file (openTab dedups
+  // Restore resolutions. Yes → open each restored file (openTab dedups
   // by path: a file already open from the CLI is focused/kept, never duplicated),
   // then focus the restored active tab. No → start fresh (keep the CLI files /
   // welcome). Either way the dialog is dismissed.
@@ -393,7 +393,7 @@ export function App() {
   }, [activeId]);
 
   // Report the open-tab set to main so it can persist the session as a crash
-  // safety net (PF19, §8.6). Fires on open/close/switch/reorder — anything that
+  // safety net. Fires on open/close/switch/reorder — anything that
   // changes the open paths in order or which one is active. The welcome sandbox
   // has no path and is excluded; an empty tab set reports `files: []`. Main
   // debounces the write and no-ops in projectless mode. Mirrors setActiveDocPath.
@@ -417,7 +417,7 @@ export function App() {
   const showModal = activeTab?.showModal ?? false;
 
   // The OS window title carries the active file name, then the project name, then
-  // the app (PF24) — the in-app title line was removed in favour of the single
+  // the app — the in-app title line was removed in favour of the single
   // toolbar row. The project name is a per-window constant, so it need not be an
   // effect dependency: file (project) Galley, dropping any null parts.
   const activePath = activeTab?.path;

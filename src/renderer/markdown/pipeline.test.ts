@@ -60,7 +60,7 @@ describe('link rendering policy (validateLink)', () => {
   });
 });
 
-describe('image sources (#25 — remote web images)', () => {
+describe('image sources (remote web images)', () => {
   it('renders a remote https image as an <img> with its src', () => {
     const html = renderMarkdown('![a cat](https://example.com/cat.png)');
     expect(html).toContain('<img');
@@ -157,7 +157,7 @@ describe('fenced-code highlighting', () => {
   });
 });
 
-describe('security: raw HTML is not passed through (§3/§7, html:false)', () => {
+describe('security: raw HTML is not passed through (html:false)', () => {
   it('escapes raw HTML in the source', () => {
     const html = renderMarkdown('<div onclick="x">hi</div>');
     expect(html).toContain('&lt;div');

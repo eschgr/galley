@@ -1,5 +1,5 @@
 /**
- * Startup-file loading (open a file via CLI argument; #37 multiple files).
+ * Startup-file loading (open a file via CLI argument; multiple files).
  *
  * Resolves the command-line file paths into snapshots, in command-line order:
  * each path is read and — on success — watched; an unreadable path is reported

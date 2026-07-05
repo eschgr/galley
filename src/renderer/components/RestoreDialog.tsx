@@ -1,5 +1,5 @@
 /**
- * Crash-recovery restore prompt (PRD §8.6, PF20/PF21, D2). Shown once on mount
+ * Crash-recovery restore prompt. Shown once on mount
  * after a DIRTY shutdown, when the claimed project has a restorable session. The
  * title marks it as an error so it reads as a recovery, not normal operation; the
  * short question is the body. Two choices only — restore from the last save, or
@@ -7,7 +7,7 @@
  *
  * An in-app modal (mirroring ConflictDialog / CloseTabDialog), NOT a native OS
  * message box: a native box does not display its `title` on macOS, which would
- * drop the error signal on that platform (§8.6).
+ * drop the error signal on that platform.
  */
 interface RestoreDialogProps {
   /** Reopen the persisted session (loaded from the last save on disk). */

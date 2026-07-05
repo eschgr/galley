@@ -1,5 +1,5 @@
 /**
- * Pure tab-reorder helper for drag-and-drop (issue #20). Moves the tab with
+ * Pure tab-reorder helper for drag-and-drop. Moves the tab with
  * `draggedId` so that it lands at insertion index `insertIndex` (0..n) in the
  * resulting array, shifting the others to make room.
  *

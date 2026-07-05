@@ -34,7 +34,7 @@ describe('buildCliHelp', () => {
   });
 
   // The help is the LLM-facing launcher contract — these guard against the text
-  // drifting out of sync with docs/PRD.md Appendix A and the --project flow.
+  // drifting out of sync with the launcher contract and the --project flow.
   it('covers the --project launcher contract', () => {
     expect(help).toContain('--project <name>'); // the single invocation
     expect(help).toContain('project'); // window keyed on the project
