@@ -41,6 +41,17 @@ import {
 
 export type { ClaimResult } from './project';
 
+/**
+ * A file to open plus an optional 1-based line to reveal on open (open at a
+ * specific line — CLI `path:line`, or the channel envelope's `line`). No line
+ * means open at the top. Threaded from the two inbound routes (CLI-startup and
+ * channel delivery) through to the renderer, which reveals the line once.
+ */
+export interface OpenRequest {
+  readonly path: string;
+  readonly line?: number;
+}
+
 /** A file's content plus the baseline hash captured at read/write time (saving & conflict handling). */
 export interface FileSnapshot {
   readonly path: string;
@@ -66,11 +77,13 @@ export type SaveResult =
 export interface PlatformBridge {
   // --- CLI (open a file via CLI argument) ---------------------------------
   /**
-   * Absolute file paths passed on the command line at launch (open a file via CLI argument), in order;
-   * empty if none. `galley a.md b.md` opens both. `packaged` distinguishes
-   * `galley.exe …` from a dev `electron . …`.
+   * Files passed on the command line at launch (open a file via CLI argument), in
+   * order; empty if none. `galley a.md b.md` opens both. Each is an absolute path
+   * plus an optional 1-based reveal line parsed from a `path:line` suffix (open at
+   * a specific line). `packaged` distinguishes `galley.exe …` from a dev
+   * `electron . …`.
    */
-  parseCliFileArgs(argv: readonly string[], packaged: boolean): string[];
+  parseCliFileArgs(argv: readonly string[], packaged: boolean): OpenRequest[];
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
 
@@ -108,14 +121,19 @@ export interface PlatformBridge {
    * window. A successful claim is remembered so `closeChannel` releases it.
    */
   claimProject(project: string, opts?: { appVersion?: string }): Promise<ClaimResult>;
-  /** Drop one file into the channel addressed to owner `targetId` (its `owner.id`). */
-  sendToChannel(project: string, targetId: string, absPath: string): void;
+  /** Drop one file into the channel addressed to owner `targetId` (its `owner.id`),
+   *  optionally carrying a 1-based reveal line (open at a specific line). */
+  sendToChannel(project: string, targetId: string, absPath: string, line?: number): void;
   /**
    * Start consuming the channel addressed to `channelId` (this window's own
-   * `owner.id`); each delivered absolute path is handed to `onFile`. Reconciles
-   * messages queued before this window mounted.
+   * `owner.id`); each delivered absolute path — with its optional reveal line — is
+   * handed to `onFile`. Reconciles messages queued before this window mounted.
    */
-  listenOnChannel(project: string, channelId: string, onFile: (absPath: string) => void): void;
+  listenOnChannel(
+    project: string,
+    channelId: string,
+    onFile: (absPath: string, line?: number) => void,
+  ): void;
   /** Stop consuming the channel and release the project (ownership-guarded). */
   closeChannel(): Promise<void>;
 
@@ -287,8 +305,8 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       return result;
     },
 
-    sendToChannel(project, targetId, absPath) {
-      sendToChannelFs(pathsFor(project).runtimeDir, targetId, absPath);
+    sendToChannel(project, targetId, absPath, line) {
+      sendToChannelFs(pathsFor(project).runtimeDir, targetId, absPath, line);
     },
 
     listenOnChannel(project, channelId, onFile) {

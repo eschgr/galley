@@ -16,6 +16,14 @@ export interface OpenedFile {
   readonly hash: string;
 }
 
+/**
+ * A file delivered to be opened, plus an optional one-shot 1-based line to reveal
+ * (open at a specific line — CLI `path:line`, or the channel envelope's `line`).
+ * The reveal target is transient: it rides in on the open only, is never stored on
+ * the tab, and is not part of the persisted snapshot. No line opens at the top.
+ */
+export type OpenTarget = OpenedFile & { readonly line?: number };
+
 /** Outcome of a save (write-path conflict guard): it wrote, or disk had diverged (no write). */
 export type SaveOutcome =
   | { readonly conflict: false; readonly file: OpenedFile }
@@ -84,9 +92,9 @@ export interface GalleyApi {
   /** Tell the main process a tab closed so it stops watching that file (close a tab). */
   notifyClosed(filePath: string): void;
   /** Pull the files passed on the command line at launch (open a file via CLI argument), once. Returned in
-   *  command-line order; empty if none. The renderer opens each as a tab and
-   *  focuses the first. */
-  getStartupFiles(): Promise<OpenedFile[]>;
+   *  command-line order; empty if none. Each may carry an optional reveal line
+   *  (open at a specific line). The renderer opens each as a tab and focuses the first. */
+  getStartupFiles(): Promise<OpenTarget[]>;
   /**
    * Resolve the absolute path of a file dropped onto the window. Electron removed
    * `File.path` from the renderer under contextIsolation, so path resolution must
@@ -101,11 +109,12 @@ export interface GalleyApi {
    */
   openFiles(paths: string[]): void;
   /**
-   * Subscribe to "a file was opened" (via CLI at launch, or File → Open).
-   * The renderer opens it in a tab, or focuses the tab if already open (multiple documents in tabs).
-   * Returns an unsubscribe function.
+   * Subscribe to "a file was opened" (via CLI at launch, File → Open, drag-and-drop,
+   * or a channel delivery). The renderer opens it in a tab, or focuses the tab if
+   * already open (multiple documents in tabs), revealing the target line if one is
+   * carried. Returns an unsubscribe function.
    */
-  onOpenFile(callback: (file: OpenedFile) => void): () => void;
+  onOpenFile(callback: (file: OpenTarget) => void): () => void;
   /** Subscribe to the File → Save menu/accelerator (force-save). Returns unsubscribe. */
   onMenuSave(callback: () => void): () => void;
   /** Subscribe to View → Reload File (Ctrl/Cmd+R) — reload the active tab in

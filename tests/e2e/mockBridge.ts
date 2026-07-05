@@ -12,7 +12,9 @@ import type { GalleyApi } from '../../src/shared/api';
 // clean-server e2e run. Consolidating here, typed with `satisfies GalleyApi`, turns
 // any such gap into a COMPILE error (`npx tsc --noEmit`) instead.
 
-export type MockFile = { path: string; content: string; hash: string };
+// `line` is the optional one-shot reveal target (open at a specific line) carried
+// on the open payload (OpenTarget); most specs omit it.
+export type MockFile = { path: string; content: string; hash: string; line?: number };
 
 // The test harness exposed on `window.__mock`: the callback slots the bridge's
 // on*() subscriptions fill in, plus the call-log / queued-response state the specs

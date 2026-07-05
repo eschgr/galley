@@ -5,7 +5,7 @@
 // It exposes a single frozen object, `window.galley`, typed by GalleyApi. The
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { GalleyApi, OpenedFile } from './shared/api';
+import type { GalleyApi, OpenedFile, OpenTarget } from './shared/api';
 import { parseProjectArg } from './main/projectArg';
 
 // The claimed project name is a PER-WINDOW static — unlike the app-global
@@ -49,8 +49,8 @@ const api: GalleyApi = {
   openFiles: (paths: string[]) => {
     void ipcRenderer.invoke('file:openDropped', paths);
   },
-  onOpenFile: (callback: (file: OpenedFile) => void) => {
-    const listener = (_event: unknown, file: OpenedFile) => callback(file);
+  onOpenFile: (callback: (file: OpenTarget) => void) => {
+    const listener = (_event: unknown, file: OpenTarget) => callback(file);
     ipcRenderer.on('file:opened', listener);
     return () => ipcRenderer.removeListener('file:opened', listener);
   },

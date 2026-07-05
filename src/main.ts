@@ -7,7 +7,7 @@ import { defaultPdfPath } from './main/pdfName';
 import { writeAndOpenPdf } from './main/exportPdf';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
-import { createPlatformBridge, type SaveResult } from './main/platform';
+import { createPlatformBridge, type SaveResult, type OpenRequest } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
@@ -64,8 +64,9 @@ const platform = createPlatformBridge({
 
 // Files passed on the command line are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
-// renderer has registered its listener. `galley a.md b.md` opens both.
-let startupFilePaths: string[] = [];
+// renderer has registered its listener. `galley a.md b.md` opens both; each may
+// carry an optional reveal line (open at a specific line).
+let startupFilePaths: OpenRequest[] = [];
 
 function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
@@ -91,12 +92,13 @@ function unwatchPath(absPath: string): void {
 }
 
 // Read a file, hand it to the renderer to open (from a CLI arg or the file
-// dialog), and watch it. Errors
-// surface as a dialog rather than crashing the open.
-async function openPath(win: BrowserWindow, absPath: string): Promise<void> {
+// dialog), and watch it. An optional 1-based `line` rides along as a one-shot
+// reveal target (open at a specific line); the renderer scrolls to it and clamps.
+// Errors surface as a dialog rather than crashing the open.
+async function openPath(win: BrowserWindow, absPath: string, line?: number): Promise<void> {
   try {
     const snapshot = await platform.readFile(absPath);
-    win.webContents.send('file:opened', snapshot);
+    win.webContents.send('file:opened', line === undefined ? snapshot : { ...snapshot, line });
     watchFile(win, absPath);
   } catch (err) {
     dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
@@ -401,7 +403,7 @@ ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
   win.setBounds(bounds);
 });
 
-const createWindow = (project: string | null = null, files: string[] = [], channelId: string | null = null) => {
+const createWindow = (project: string | null = null, files: OpenRequest[] = [], channelId: string | null = null) => {
   const mainWindow = new BrowserWindow({
     // Portrait-ish by default — most documents read better tall than wide.
     // Resizable, so widening for side-by-side editing is one drag away.
@@ -495,8 +497,8 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
   // a duplicate launch hands its files here rather than opening another window.
   // Paths arriving before the renderer mounts are queued and flushed on load —
   // `channelQueue` (PendingQueue) owns that queue-then-flush ordering.
-  const channelQueue = new PendingQueue<string>();
-  const openInWindow = (f: string) => void openPath(mainWindow, f);
+  const channelQueue = new PendingQueue<OpenRequest>();
+  const openInWindow = (req: OpenRequest) => void openPath(mainWindow, req.path, req.line);
   mainWindow.webContents.on('did-finish-load', () => {
     channelQueue.flush(openInWindow);
   });
@@ -543,12 +545,12 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     console.warn('[galley] renderer unresponsive');
   });
   if (project && channelId) {
-    platform.listenOnChannel(project, channelId, (absPath) => {
+    platform.listenOnChannel(project, channelId, (absPath, line) => {
       if (mainWindow.isDestroyed()) return;
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus(); // the delivered file's tab is focused
       // Open now if the renderer has mounted, else queue for the flush on load.
-      channelQueue.deliver(path.resolve(absPath), openInWindow);
+      channelQueue.deliver({ path: path.resolve(absPath), line }, openInWindow);
     });
   }
 
@@ -598,7 +600,7 @@ app.on('ready', async () => {
       const action = decideStartupAction(claim, files);
       if (action.kind === 'handoff') {
         // Address each file to the live owner's channel, then exit (no 2nd window).
-        for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f);
+        for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f.path, f.line);
         app.quit();
         return;
       }
