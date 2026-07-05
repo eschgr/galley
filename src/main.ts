@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
+import { writeAndOpenPdf } from './main/exportPdf';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
 import { createPlatformBridge, type SaveResult, type OpenRequest } from './main/platform';
@@ -245,12 +246,21 @@ async function requestExportPdf(): Promise<void> {
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (canceled || !filePath) return;
+  let data: Buffer;
   try {
-    const data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
-    await fs.writeFile(filePath, data);
+    data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
   } catch (err) {
     dialog.showErrorBox('Could not export PDF', `${filePath}\n\n${String(err)}`);
+    return;
   }
+  // Write the PDF, then hand it to the OS default viewer so the result is
+  // visible without hunting for the file. A viewer that fails to launch is
+  // reported but non-fatal — the PDF is already on disk.
+  await writeAndOpenPdf(filePath, data, {
+    writeFile: (p, d) => fs.writeFile(p, d),
+    openPath: (p) => shell.openPath(p),
+    showError: (title, message) => dialog.showErrorBox(title, message),
+  });
 }
 
 // Save path (auto-save, force-save, and the write-path conflict guard): the
@@ -295,6 +305,21 @@ ipcMain.handle('file:getStartup', async (event) => {
     },
     (absPath, err) => dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`),
   );
+});
+
+// Files dropped onto the window (drag-and-drop open): the renderer resolved each
+// to an absolute path (webUtils in the preload) and hands them here. Open each
+// through the same path as a CLI arg or the file dialog — openPath reads,
+// watches, and pushes 'file:opened', so the renderer opens a focused tab per
+// file (or focuses the tab if it is already open). An unreadable drop surfaces a
+// dialog and is skipped, never fatal to the rest of the drop.
+ipcMain.handle('file:openDropped', async (event, paths: unknown) => {
+  if (!Array.isArray(paths)) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  for (const p of paths) {
+    if (typeof p === 'string' && p) await openPath(win, p);
+  }
 });
 
 // Read a file on demand (manual reload, and opening a file already known to the

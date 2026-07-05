@@ -18,13 +18,13 @@ Requirements here are numbered **R#**, local to this sub-PRD.
 
 ## 3. Concept
 
-Opening is **one file per action**. There is no folder browsing, no multi-file open, and no drag-and-drop — Galley opens a file, it is not a file manager. A file arrives from a CLI argument, from the in-app file-open dialog, or not at all (the app can start to an empty "No files open" state).
+Galley opens the files it is handed — it is not a file manager, so there is no folder browsing or directory tree. A file arrives from a CLI argument, from the in-app file-open dialog, by being **dropped onto the window**, or not at all (the app can start to an empty "No files open" state). The file-open dialog opens one file per action; a drop opens each file it carries.
 
 The instance model is **per-project self-arbitration**. On launch with `--project <name>`, the app claims the project and either becomes its window or drops the file into the live owner's file-drop channel and exits. Identity is a **stable name**, not a PID; the caller's entire contract is a single command. Arbitration is *per project*, so each project still gets its own window, and a launch with **no `--project`** opens an independent, projectless window.
 
 ## 4. Goals
 
-- Open a file via a CLI argument or the in-app file dialog.
+- Open a file via a CLI argument, the in-app file dialog, or by dropping it onto the window.
 - Start with no file specified (an empty state).
 - One window per project, decided by the app through per-project self-arbitration.
 - A single-command caller contract that works from a sandbox — the caller never probes, coordinates, or speaks a transport.
@@ -40,8 +40,8 @@ The instance model is **per-project self-arbitration**. On launch with `--projec
 ### Opening files
 
 - **R1.** Open a file via **CLI argument**: `galley <file>`.
-- **R2.** Open a file via an **in-app file-open dialog** (reachable from the native menu bar).
-- **R3.** One file per open action. No multi-file open, no folder view, no drag-and-drop.
+- **R2.** Open a file via an **in-app file-open dialog** (reachable from the native menu bar), one file per action.
+- **R3. Drag-and-drop open.** Open files by dropping them onto the window. Each dropped file opens through the same read/watch/open path as a CLI argument or the dialog — a new focused tab per file, or focus if it is already open (R8, R9); duplicates within one drop collapse to a single tab. Dropped paths are resolved in the preload (`webUtils.getPathForFile`), since the renderer cannot read `File.path` under contextIsolation. An unreadable drop (e.g. a folder) surfaces an error dialog and is skipped, never fatal to the rest of the drop. *(No folder tree / file browser — see Non-goals.)*
 - **R4.** The app can start with **no file specified**, opening to an empty "No files open" state.
 - **R4a. Open at a specific line.** A file may be opened positioned at a target line, so a caller that already knows the point of interest sends the reader straight there instead of the top. The canonical CLI form is the familiar editor suffix `galley <file>:<line>` (an optional trailing `:<col>` is accepted and ignored — line-only reveal this version). Parsing splits only a **trailing** `:<digits>` off the path, so a Windows drive letter is never mistaken for a line (`C:\notes.md:120` → the file `C:\notes.md` at line 120; `C:\notes.md` → no line). The line is 1-based and clamped to the file's bounds; the reveal itself (scroll into view with context, brief highlight) is the View sub-PRD's concern ([`PRD-View.md`](PRD-View.md)). Delivery over the channel carries the line as an optional envelope field (R5a). Focusing an already-open file (R9) scrolls that tab to the requested line.
 

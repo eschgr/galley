@@ -96,10 +96,23 @@ export interface GalleyApi {
    *  (open at a specific line). The renderer opens each as a tab and focuses the first. */
   getStartupFiles(): Promise<OpenTarget[]>;
   /**
-   * Subscribe to "a file was opened" (via CLI at launch, File → Open, or a channel
-   * delivery). The renderer opens it in a tab, or focuses the tab if already open
-   * (multiple documents in tabs), revealing the target line if one is carried.
-   * Returns an unsubscribe function.
+   * Resolve the absolute path of a file dropped onto the window. Electron removed
+   * `File.path` from the renderer under contextIsolation, so path resolution must
+   * run in the preload via `webUtils.getPathForFile`; returns '' if it cannot be
+   * resolved. Used only by the drag-and-drop open handler.
+   */
+  getDroppedPath(file: File): string;
+  /**
+   * Open files dropped onto the window (drag-and-drop open). Each absolute path is
+   * opened through the same read/watch/open path as a CLI argument or the file
+   * dialog — a new focused tab per file, or focus if already open. Fire-and-forget.
+   */
+  openFiles(paths: string[]): void;
+  /**
+   * Subscribe to "a file was opened" (via CLI at launch, File → Open, drag-and-drop,
+   * or a channel delivery). The renderer opens it in a tab, or focuses the tab if
+   * already open (multiple documents in tabs), revealing the target line if one is
+   * carried. Returns an unsubscribe function.
    */
   onOpenFile(callback: (file: OpenTarget) => void): () => void;
   /** Subscribe to the File → Save menu/accelerator (force-save). Returns unsubscribe. */
