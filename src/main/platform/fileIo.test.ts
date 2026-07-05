@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArgs, parseCliProjectArg, readFile, resolveLocalLink, splitLineSuffix, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, splitLineSuffix, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -124,6 +124,48 @@ describe('parseCliFileArgs', () => {
   it('returns an empty array when no file argument is present', () => {
     expect(parseCliFileArgs(['galley.exe'], true)).toEqual([]);
     expect(parseCliFileArgs(['galley.exe', '--devtools'], true)).toEqual([]);
+  });
+});
+
+describe('parseCliOperation (manage the tab set — open / --close / --set)', () => {
+  it('defaults to the open verb for positional files', () => {
+    expect(parseCliOperation(['galley.exe', 'a.md', 'b.md'], true)).toEqual({
+      kind: 'open',
+      files: [{ path: path.resolve('a.md') }, { path: path.resolve('b.md') }],
+    });
+  });
+
+  it('parses --close with one or more files', () => {
+    expect(parseCliOperation(['galley.exe', '--close', 'stale.md'], true)).toEqual({
+      kind: 'close',
+      files: [{ path: path.resolve('stale.md') }],
+    });
+    expect(parseCliOperation(['galley.exe', '--close', 'a.md', 'b.md'], true)).toEqual({
+      kind: 'close',
+      files: [{ path: path.resolve('a.md') }, { path: path.resolve('b.md') }],
+    });
+  });
+
+  it('parses --set with the target file list', () => {
+    expect(parseCliOperation(['galley.exe', '--set', 'a.md', 'b.md', 'c.md'], true)).toEqual({
+      kind: 'set',
+      files: [{ path: path.resolve('a.md') }, { path: path.resolve('b.md') }, { path: path.resolve('c.md') }],
+    });
+  });
+
+  it('still skips the --project value alongside a verb', () => {
+    expect(parseCliOperation(['galley.exe', '--project', 'proj', '--close', 'a.md'], true)).toEqual({
+      kind: 'close',
+      files: [{ path: path.resolve('a.md') }],
+    });
+  });
+
+  it('--set with no files is a valid empty set (close everything)', () => {
+    expect(parseCliOperation(['galley.exe', '--set'], true)).toEqual({ kind: 'set', files: [] });
+  });
+
+  it('parseCliFileArgs is the open-verb files (back-compat)', () => {
+    expect(parseCliFileArgs(['galley.exe', 'a.md'], true)).toEqual([{ path: path.resolve('a.md') }]);
   });
 });
 

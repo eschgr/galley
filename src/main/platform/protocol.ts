@@ -25,7 +25,9 @@
 
 // This build's channel protocol version. Bump MAJOR only on a breaking change;
 // bump MINOR when adding an optional field or message type (older ends ignore it).
-// minor 1 added the optional `line` reveal target to the `open` envelope.
+// minor 1 added BOTH the optional `line` reveal target on the `open` envelope
+// and the `close`/`set` message types (manage the tab set). Compatibility is by
+// MAJOR, so a single minor bump covering both additive changes is correct.
 export const PROTOCOL = { major: 1, minor: 1 } as const;
 
 /** Wire form, e.g. "1.0". */

@@ -16,6 +16,7 @@
  * liveness) and ./channel (file-drop messaging).
  */
 import * as fileIo from './fileIo';
+import type { LauncherOp } from './fileIo';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
 import { SelfWriteTracker } from './selfWriteTracker';
 import {
@@ -27,6 +28,8 @@ import {
 } from './project';
 import {
   sendToChannel as sendToChannelFs,
+  sendCloseToChannel as sendCloseToChannelFs,
+  sendSetToChannel as sendSetToChannelFs,
   listenOnChannel as listenOnChannelFs,
   type ChannelListener,
 } from './channel';
@@ -40,6 +43,7 @@ import {
 } from './projectStore';
 
 export type { ClaimResult } from './project';
+export type { LauncherOp } from './fileIo';
 
 /**
  * A file to open plus an optional 1-based line to reveal on open (open at a
@@ -84,6 +88,10 @@ export interface PlatformBridge {
    * `electron . …`.
    */
   parseCliFileArgs(argv: readonly string[], packaged: boolean): OpenRequest[];
+  /** The launcher verb + resolved file requests — `open` (positional files),
+   *  `close` (`--close`), or `set` (`--set`) — so a caller can manage the tab set,
+   *  not just add to it. Each file carries its path + optional reveal line. */
+  parseCliOperation(argv: readonly string[], packaged: boolean): LauncherOp;
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
 
@@ -136,15 +144,21 @@ export interface PlatformBridge {
   /** Drop one file into the channel addressed to owner `targetId` (its `owner.id`),
    *  optionally carrying a 1-based reveal line (open at a specific line). */
   sendToChannel(project: string, targetId: string, absPath: string, line?: number): void;
+  /** Drop a "close this tab" message addressed to owner `targetId` (`--close`). */
+  sendCloseToChannel(project: string, targetId: string, absPath: string): void;
+  /** Drop a "make the open set exactly these" message to owner `targetId` (`--set`). */
+  sendSetToChannel(project: string, targetId: string, paths: readonly string[]): void;
   /**
    * Start consuming the channel addressed to `channelId` (this window's own
    * `owner.id`); each delivered absolute path — with its optional reveal line — is
-   * handed to `onFile`. Reconciles messages queued before this window mounted.
+   * handed to `onFile`. `handlers` receives the tab-management verbs
+   * (`--close`/`--set`). Reconciles messages queued before this window mounted.
    */
   listenOnChannel(
     project: string,
     channelId: string,
     onFile: (absPath: string, line?: number) => void,
+    handlers?: { onClose?: (absPath: string) => void; onSet?: (paths: string[]) => void },
   ): void;
   /** Stop consuming the channel and release the project (ownership-guarded). */
   closeChannel(): Promise<void>;
@@ -241,6 +255,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
 
   return {
     parseCliFileArgs: fileIo.parseCliFileArgs,
+    parseCliOperation: fileIo.parseCliOperation,
     resolveLocalLink: fileIo.resolveLocalLink,
     parseCliProjectArg: fileIo.parseCliProjectArg,
 
@@ -340,9 +355,19 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       sendToChannelFs(pathsFor(project).runtimeDir, targetId, absPath, line);
     },
 
-    listenOnChannel(project, channelId, onFile) {
+    sendCloseToChannel(project, targetId, absPath) {
+      sendCloseToChannelFs(pathsFor(project).runtimeDir, targetId, absPath);
+    },
+
+    sendSetToChannel(project, targetId, paths) {
+      sendSetToChannelFs(pathsFor(project).runtimeDir, targetId, paths);
+    },
+
+    listenOnChannel(project, channelId, onFile, handlers) {
       const paths = pathsFor(project);
       channelListener = listenOnChannelFs(paths.runtimeDir, channelId, onFile, {
+        onClose: handlers?.onClose,
+        onSet: handlers?.onSet,
         // On external removal of runtime/ or owner.json while we're live: recreate
         // the discoverable artifacts with the SAME identity so a later launch hands
         // off. Re-materialize project.json too, in case the whole home

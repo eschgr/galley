@@ -113,6 +113,17 @@ async function openPath(win: BrowserWindow, absPath: string, line?: number): Pro
   }
 }
 
+// --set (manage the tab set): make the window's open set exactly `paths` — open
+// any missing (openPath reads + pushes 'file:opened', focusing an already-open
+// tab) and tell the renderer to close every tab NOT in the set via 'file:retain'
+// (which prompts per dirty tab). Opening and retaining are independent (retain
+// only closes non-members), so their order does not matter.
+function applySet(win: BrowserWindow, paths: string[]): void {
+  if (win.isDestroyed()) return;
+  for (const p of paths) void openPath(win, p);
+  win.webContents.send('file:retain', paths);
+}
+
 // File → Open…: native dialog, then open the chosen file.
 async function openFileViaDialog(): Promise<void> {
   const win = targetWindow();
@@ -541,10 +552,10 @@ const createWindow = (project: string | null = null, files: OpenRequest[] = [], 
   // a duplicate launch hands its files here rather than opening another window.
   // Paths arriving before the renderer mounts are queued and flushed on load —
   // `channelQueue` (PendingQueue) owns that queue-then-flush ordering.
-  const channelQueue = new PendingQueue<OpenRequest>();
-  const openInWindow = (req: OpenRequest) => void openPath(mainWindow, req.path, req.line);
+  const channelQueue = new PendingQueue<() => void>();
+  const runAction = (fn: () => void) => fn();
   mainWindow.webContents.on('did-finish-load', () => {
-    channelQueue.flush(openInWindow);
+    channelQueue.flush(runAction);
   });
 
   // Renderer-crash recovery: if the renderer process dies while main
@@ -589,13 +600,33 @@ const createWindow = (project: string | null = null, files: OpenRequest[] = [], 
     console.warn('[galley] renderer unresponsive');
   });
   if (project && channelId) {
-    platform.listenOnChannel(project, channelId, (absPath, line) => {
+    // A channel delivery targets THIS window; raise it, then run the action now if
+    // the renderer has mounted, else queue it for the flush on load. Every verb
+    // (open / --close / --set) shares one queue so their order is preserved.
+    const raiseAndDeliver = (action: () => void) => {
       if (mainWindow.isDestroyed()) return;
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus(); // the delivered file's tab is focused
-      // Open now if the renderer has mounted, else queue for the flush on load.
-      channelQueue.deliver({ path: path.resolve(absPath), line }, openInWindow);
-    });
+      channelQueue.deliver(action, runAction);
+    };
+    platform.listenOnChannel(
+      project,
+      channelId,
+      // An `open` carries the file plus its optional reveal line; forward both.
+      (absPath, line) => raiseAndDeliver(() => void openPath(mainWindow, path.resolve(absPath), line)),
+      {
+        onClose: (absPath) =>
+          raiseAndDeliver(() => {
+            if (!mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('file:close', path.resolve(absPath));
+            }
+          }),
+        onSet: (paths) => {
+          const resolved = paths.map((p) => path.resolve(p));
+          raiseAndDeliver(() => applySet(mainWindow, resolved));
+        },
+      },
+    );
   }
 
   // and load the index.html of the app.
@@ -637,14 +668,26 @@ app.on('ready', async () => {
   // its channel and exit rather than open a duplicate; otherwise become its window.
   // A plain launch (no --project) just opens a window with no channel.
   const project = platform.parseCliProjectArg(process.argv, app.isPackaged);
-  const files = platform.parseCliFileArgs(process.argv, app.isPackaged);
+  const op = platform.parseCliOperation(process.argv, app.isPackaged);
+  // When we BECOME the window there is nothing yet to close, so `--close` opens an
+  // empty project window; `open`/`--set` open their files (a fresh window has no
+  // extra tabs to remove, so `--set` is just "open these").
+  const initialFiles = op.kind === 'close' ? [] : op.files;
   if (project) {
     try {
       const claim = await platform.claimProject(project, { appVersion: app.getVersion() });
-      const action = decideStartupAction(claim, files);
+      const action = decideStartupAction(claim, op.files);
       if (action.kind === 'handoff') {
-        // Address each file to the live owner's channel, then exit (no 2nd window).
-        for (const f of action.files) platform.sendToChannel(project, claim.owner.id, f.path, f.line);
+        // Route the verb to the live owner's channel, then exit (no 2nd window).
+        // `--close`/`--set` carry only paths (their reveal line is irrelevant);
+        // `open` forwards each file's path plus its optional reveal line.
+        if (op.kind === 'close') {
+          for (const f of op.files) platform.sendCloseToChannel(project, claim.owner.id, f.path);
+        } else if (op.kind === 'set') {
+          platform.sendSetToChannel(project, claim.owner.id, op.files.map((f) => f.path));
+        } else {
+          for (const f of op.files) platform.sendToChannel(project, claim.owner.id, f.path, f.line);
+        }
         app.quit();
         return;
       }
@@ -660,7 +703,7 @@ app.on('ready', async () => {
         app.exit(1);
         return;
       }
-      createWindow(project, files, claim.owner.id); // we own it — listen on our own channel
+      createWindow(project, initialFiles, claim.owner.id); // we own it — listen on our own channel
     } catch (err) {
       // An unsafe/invalid --project value (e.g. "..", "a/b", an embedded control
       // char) is rejected by the derivation's safe-name guard, which throws here.
@@ -674,7 +717,7 @@ app.on('ready', async () => {
     }
     return;
   }
-  createWindow(project, files);
+  createWindow(project, initialFiles);
 });
 
 // Empty-state / welcome screen: closing the last tab keeps the app open.

@@ -145,6 +145,19 @@ export interface GalleyApi {
    */
   onExternalChange(callback: (file: OpenedFile) => void): () => void;
   /**
+   * Subscribe to a caller-driven "close this tab" (`--close`, delivered over the
+   * channel). Payload is the absolute path; the renderer closes that tab, prompting
+   * if it has unsaved edits. A path that isn't open is a no-op. Returns unsubscribe.
+   */
+  onCloseFile(callback: (path: string) => void): () => void;
+  /**
+   * Subscribe to a caller-driven "make the open set exactly these" (`--set`). The
+   * members are delivered as ordinary opens; this payload is the target path list,
+   * and the renderer closes every tab NOT in it (prompting per dirty tab). Returns
+   * unsubscribe.
+   */
+  onRetainFiles(callback: (paths: string[]) => void): () => void;
+  /**
    * Subscribe to "an open file was removed on disk" — moved or deleted out from
    * under a tab ("file gone"). Payload is the absolute path that vanished; the
    * renderer marks that tab orphaned. Returns an unsubscribe function.

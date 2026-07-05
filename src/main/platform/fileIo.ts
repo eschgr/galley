@@ -43,18 +43,44 @@ export function splitLineSuffix(arg: string): { path: string; line?: number } {
  * launch (`electron . …`). Returns an empty array when no file was given.
  */
 export function parseCliFileArgs(argv: readonly string[], packaged: boolean): OpenRequest[] {
+  return parseCliOperation(argv, packaged).files;
+}
+
+/** A launcher invocation's verb and its resolved file requests. `open` is the
+ *  default (positional files); `close` (`--close`) and `set` (`--set`) let a
+ *  caller manage the tab set, not just add to it. Each file carries an absolute
+ *  path and an optional 1-based reveal line (from a `path:line` suffix). */
+export interface LauncherOp {
+  readonly kind: 'open' | 'close' | 'set';
+  readonly files: OpenRequest[];
+}
+
+/**
+ * Parse a launcher invocation into its verb + resolved file requests (manage the
+ * tab set, not just open). `--close <file…>` closes those tabs; `--set <file…>`
+ * makes the open set exactly those; otherwise positional files open (the existing
+ * behavior). Every non-flag argument is resolved to an absolute path (with an
+ * optional 1-based reveal line parsed from a `path:line` suffix), in command-line
+ * order. Skips the executable (and, in dev, the app-path argv[1]) and the
+ * `--project <name>` value; other flags (`--devtools`, `--help`, `-h`) are ignored.
+ * `packaged` distinguishes a packaged launch (`galley.exe …`) from a dev launch.
+ */
+export function parseCliOperation(argv: readonly string[], packaged: boolean): LauncherOp {
   const rest = argv.slice(packaged ? 1 : 2);
+  let kind: LauncherOp['kind'] = 'open';
   const files: OpenRequest[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
       if (arg === '--project') i++; // skip its name value
-      continue;
+      else if (arg === '--close') kind = 'close';
+      else if (arg === '--set') kind = 'set';
+      continue; // other flags ignored
     }
     const { path: rawPath, line } = splitLineSuffix(arg);
     files.push(line === undefined ? { path: path.resolve(rawPath) } : { path: path.resolve(rawPath), line });
   }
-  return files;
+  return { kind, files };
 }
 
 /**

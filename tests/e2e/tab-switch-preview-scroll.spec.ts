@@ -127,8 +127,12 @@ async function installMockBridge(page: Page): Promise<void> {
       },
       onHelp: () => () => {},
       onExternalChange: () => () => {},
+      onCloseFile: () => () => {},
+      onRetainFiles: () => () => {},
       onFileRemoved: () => () => {},
       saveFileAs: async () => null,
+      getDroppedPath: () => '',
+      openFiles: () => {},
     };
   });
 }

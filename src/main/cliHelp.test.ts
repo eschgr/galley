@@ -47,6 +47,12 @@ describe('buildCliHelp', () => {
     expect(help.toLowerCase()).toContain('absolute');
   });
 
+  it('documents the tab-management verbs (--close / --set)', () => {
+    expect(help).toContain('--close');
+    expect(help).toContain('--set');
+    expect(help.toLowerCase()).toMatch(/exactly/); // --set makes the set exactly these
+  });
+
   it('keeps the contract simple — no probe/socket/wire-protocol details to get wrong', () => {
     // The app self-arbitrates now; the caller never speaks a transport. Guard the
     // old socket/probe vocabulary from creeping back into the contract.

@@ -26,12 +26,16 @@ type Harness = {
   removedCb: ((path: string) => void) | null;
   reloadCb: (() => void) | null;
   closeTabCb: (() => void) | null;
+  closeFileCb: ((path: string) => void) | null;
+  retainCb: ((paths: string[]) => void) | null;
   helpCb: (() => void) | null;
   nextTabCb: (() => void) | null;
   prevTabCb: (() => void) | null;
   saveCalls: { path: string; content: string; force: boolean }[];
   saveAsCalls: { path: string; content: string }[];
   closed: string[];
+  // Paths handed to openFiles() by the drag-and-drop open path.
+  dropped: string[];
   openExternalCalls: string[];
   openLocalCalls: { href: string; from: string }[];
   // When set, the next non-force save returns this as a write-path conflict.
@@ -68,8 +72,9 @@ export async function installMockBridge(
     const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: Harness = {
       openCb: null, saveCb: null, extCb: null, removedCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
+      closeFileCb: null, retainCb: null,
       nextTabCb: null, prevTabCb: null,
-      saveCalls: [], saveAsCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
+      saveCalls: [], saveAsCalls: [], closed: [], dropped: [], openExternalCalls: [], openLocalCalls: [],
       nextSaveConflict: null, nextSaveAs: null, nextRead: null,
       restore: restoreArg,
     };
@@ -114,6 +119,12 @@ export async function installMockBridge(
         return harness.nextSaveAs;
       },
       notifyClosed: (path: string) => harness.closed.push(path),
+      // Drag-and-drop open: the renderer resolves each dropped File to a path via
+      // getDroppedPath (webUtils in the real preload) then hands them to openFiles.
+      // A missing method would crash <App>'s drop effect on mount, so the mock must
+      // provide both. The specs that exercise dropping arm/read these via the page.
+      getDroppedPath: (file: File) => (file as unknown as { path?: string }).path ?? '',
+      openFiles: (paths: string[]) => harness.dropped.push(...paths),
       onOpenFile: (cb: (f: MockFile) => void) => {
         harness.openCb = cb;
         return () => (harness.openCb = null);
@@ -148,6 +159,14 @@ export async function installMockBridge(
       onExternalChange: (cb: (f: MockFile) => void) => {
         harness.extCb = cb;
         return () => (harness.extCb = null);
+      },
+      onCloseFile: (cb: (path: string) => void) => {
+        harness.closeFileCb = cb;
+        return () => (harness.closeFileCb = null);
+      },
+      onRetainFiles: (cb: (paths: string[]) => void) => {
+        harness.retainCb = cb;
+        return () => (harness.retainCb = null);
       },
       onFileRemoved: (cb: (path: string) => void) => {
         harness.removedCb = cb;
@@ -190,12 +209,29 @@ export async function fireExternalChange(page: Page, file: MockFile): Promise<vo
   await fire(page, 'extCb', file);
 }
 
+/** Fire a caller `--close <path>` (the channel close verb) for the given path. */
+export async function fireCloseFile(page: Page, path: string): Promise<void> {
+  await page.evaluate(
+    (p) => (window as unknown as { __mock: { closeFileCb: (x: string) => void } }).__mock.closeFileCb(p),
+    path,
+  );
+}
+
 /** Fire a file-removed event (moved/deleted on disk) for the given path — the tab
  *  goes orphaned ("file gone"). */
 export async function fireRemoved(page: Page, path: string): Promise<void> {
   await page.evaluate(
     (p) => (window as unknown as { __mock: { removedCb: (x: string) => void } }).__mock.removedCb(p),
     path,
+  );
+}
+
+/** Fire a caller `--set` retain list (the channel set verb): close every tab NOT
+ *  in `paths`. (The members are opened separately via openFile.) */
+export async function fireRetain(page: Page, paths: string[]): Promise<void> {
+  await page.evaluate(
+    (ps) => (window as unknown as { __mock: { retainCb: (x: string[]) => void } }).__mock.retainCb(ps),
+    paths,
   );
 }
 

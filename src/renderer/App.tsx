@@ -87,7 +87,7 @@ export function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [welcomeText, setWelcomeText] = useState(welcome);
   const [linkCtx, setLinkCtx] = useState<LinkContext | null>(null);
-  const [closing, setClosing] = useState<Tab | null>(null); // close-with-unsaved prompt
+  const [closing, setClosingState] = useState<Tab | null>(null); // close-with-unsaved prompt
   const [showHelp, setShowHelp] = useState(false); // Help window
   // The session offered for restore after a dirty shutdown, or null.
   // Set once on mount when main reports a restorable session; cleared on the user's
@@ -113,6 +113,18 @@ export function App() {
   const pendingReveals = useRef<Map<string, number>>(new Map());
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const idSeq = useRef(0);
+  // The close-with-unsaved prompt, mirrored to a ref so the close queue can read
+  // "is a prompt already up?" synchronously between renders.
+  const closingRef = useRef<Tab | null>(null);
+  const setClosing = (t: Tab | null) => {
+    closingRef.current = t;
+    setClosingState(t);
+  };
+  // Tabs waiting to be closed, processed one at a time so a caller-driven batch
+  // (`--close` of several, or a `--set` that removes several) prompts per dirty tab
+  // instead of stacking modals. Clean tabs close immediately; a dirty one raises the
+  // prompt and the queue resumes once the user resolves it.
+  const closeQueue = useRef<string[]>([]);
 
   const commitTabs = (next: Tab[]) => {
     tabsRef.current = next;
@@ -284,11 +296,44 @@ export function App() {
     commitTabs(reorderToIndex(tabsRef.current, draggedId, insertIndex));
   };
 
-  // Closing a tab with unsaved edits prompts first.
-  const requestClose = (id: string) => {
-    const t = tabById(id);
-    if (t?.dirty) setClosing(t);
-    else closeTab(id);
+  // Process the close queue: close clean tabs immediately; on the first dirty tab,
+  // raise the save-before-closing prompt and stop — the resolve handlers call this
+  // again to resume. A no-op while a prompt is already up.
+  const pumpCloseQueue = () => {
+    if (closingRef.current) return;
+    for (let id = closeQueue.current.shift(); id !== undefined; id = closeQueue.current.shift()) {
+      const t = tabById(id);
+      if (!t) continue; // already gone
+      if (t.dirty) {
+        setClosing(t); // prompt; the queue resumes when the user resolves it
+        return;
+      }
+      closeTab(id);
+    }
+  };
+
+  // Enqueue tabs to close (a caller-driven batch, or a single manual close) and
+  // start processing. Dirty tabs prompt one at a time so a batch can't storm modals.
+  const enqueueCloses = (ids: string[]) => {
+    closeQueue.current.push(...ids);
+    pumpCloseQueue();
+  };
+
+  // Closing a tab (manual × / Ctrl+W, or a caller `--close`) prompts if dirty.
+  const requestClose = (id: string) => enqueueCloses([id]);
+
+  // A caller `--close <file>`: close the tab for this path if open (no-op otherwise).
+  const closeByPath = (path: string) => {
+    const t = tabsRef.current.find((x) => x.path === path);
+    if (t) enqueueCloses([t.id]);
+  };
+
+  // A caller `--set <files>`: the members are opened via the ordinary open path;
+  // here we close every OPEN tab that is not one of the target paths (prompting per
+  // dirty tab), so the open set becomes exactly the requested files.
+  const retainOnly = (paths: string[]) => {
+    const keep = new Set(paths);
+    enqueueCloses(tabsRef.current.filter((t) => !keep.has(t.path)).map((t) => t.id));
   };
 
   // An edit in a tab's editor (or the welcome sandbox) — mirror it into state. The
@@ -408,6 +453,8 @@ export function App() {
       const id = activeIdRef.current;
       if (id) requestClose(id); // close the active tab (prompts if dirty)
     });
+    const offCloseFile = window.galley?.onCloseFile((path) => closeByPath(path)); // caller --close
+    const offRetain = window.galley?.onRetainFiles((paths) => retainOnly(paths)); // caller --set
     const offExternal = window.galley?.onExternalChange((diskFile) => {
       const t = tabsRef.current.find((x) => x.path === diskFile.path);
       if (!t) return;
@@ -442,6 +489,8 @@ export function App() {
       offNext?.();
       offPrev?.();
       offExternal?.();
+      offCloseFile?.();
+      offRetain?.();
       offRemoved?.();
       offHelp?.();
       for (const timer of autosaveTimers.current.values()) clearTimeout(timer);
@@ -680,17 +729,25 @@ export function App() {
             setClosing(null);
             // Close only once the save actually persisted — if this is an orphaned
             // tab and the user cancels the Save As dialog, keep the tab (and its
-            // unsaved buffer) open rather than discarding it on close.
+            // unsaved buffer) open rather than discarding it on close. Either way,
+            // continue any remaining caller-driven closes in the batch.
             void saveTab(id, { manual: true }).then((saved) => {
               if (saved) closeTab(id);
+              pumpCloseQueue(); // continue any remaining caller-driven closes
             });
           }}
           onDiscard={() => {
             const id = closing.id;
             setClosing(null);
             closeTab(id);
+            pumpCloseQueue();
           }}
-          onCancel={() => setClosing(null)}
+          onCancel={() => {
+            // Keep this tab; still process the rest of the batch (a --set/--close of
+            // several shouldn't abort because one dirty tab was kept).
+            setClosing(null);
+            pumpCloseQueue();
+          }}
         />
       )}
       {linkCtx && (

@@ -86,6 +86,22 @@ export function sendToChannel(
   atomicWrite(messageBase(runtimeDir, targetId), MSG_EXT, envelope);
 }
 
+/** Drop a "close this tab" message addressed to owner `targetId` — the owner
+ *  closes the tab for `absPath` (manage the tab set). Additive message type. */
+export function sendCloseToChannel(runtimeDir: string, targetId: string, absPath: string): void {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  const envelope = JSON.stringify({ v: PROTOCOL_VERSION, type: 'close', path: absPath });
+  atomicWrite(messageBase(runtimeDir, targetId), MSG_EXT, envelope);
+}
+
+/** Drop a "make the open set exactly these" message addressed to owner `targetId`
+ *  — the owner opens any missing and closes the rest (manage the tab set). */
+export function sendSetToChannel(runtimeDir: string, targetId: string, paths: readonly string[]): void {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  const envelope = JSON.stringify({ v: PROTOCOL_VERSION, type: 'set', paths });
+  atomicWrite(messageBase(runtimeDir, targetId), MSG_EXT, envelope);
+}
+
 /** Handle returned by `listenOnChannel`; close it to stop watching. */
 export interface ChannelListener {
   close(): Promise<void>;
@@ -104,6 +120,12 @@ export interface ListenOptions {
    * of `runtimeDir` itself.
    */
   onReassert?: () => void;
+  /** A `close` message arrived (`--close`): close the tab for this path (manage
+   *  the tab set). Unset ⇒ the verb is skipped (older builds simply lack it). */
+  onClose?: (absPath: string) => void;
+  /** A `set` message arrived (`--set`): make the open set exactly these paths —
+   *  open any missing, close the rest. Unset ⇒ the verb is skipped. */
+  onSet?: (paths: string[]) => void;
 }
 
 /** How long to wait after a `runtimeDir` removal before re-checking + re-healing the watch. */
@@ -153,7 +175,7 @@ export function listenOnChannel(
         if (name.endsWith(MSG_EXT)) console.warn(`[galley] channel: orphaned message for a defunct owner, ignoring: ${name}`);
         continue;
       }
-      if (name.endsWith(MSG_EXT)) consumeMessage(path.join(dir, name), onFile);
+      if (name.endsWith(MSG_EXT)) consumeMessage(path.join(dir, name), onFile, opts);
     }
   };
 
@@ -185,7 +207,7 @@ export function listenOnChannel(
     w.on('add', (p) => {
       const name = path.basename(p);
       if (!name.startsWith(mine)) return; // addressed to a different owner — not ours to touch (also skips owner.json)
-      if (name.endsWith(MSG_EXT)) consumeMessage(p, onFile);
+      if (name.endsWith(MSG_EXT)) consumeMessage(p, onFile, opts);
     });
     // Only `owner.json`'s removal is a discoverability loss; routine channel files
     // (`.msg` consumed, reaped `.tmp` orphans) unlink constantly and must be
@@ -236,7 +258,11 @@ export function listenOnChannel(
 }
 
 /** Read, delete, and dispatch one message envelope. */
-function consumeMessage(filePath: string, onFile: (absPath: string, line?: number) => void): void {
+function consumeMessage(
+  filePath: string,
+  onFile: (absPath: string, line?: number) => void,
+  opts: ListenOptions,
+): void {
   let raw: string;
   try {
     raw = fs.readFileSync(filePath, 'utf8');
@@ -249,7 +275,7 @@ function consumeMessage(filePath: string, onFile: (absPath: string, line?: numbe
     /* already gone */
   }
 
-  let msg: { v?: unknown; type?: unknown; path?: unknown; line?: unknown };
+  let msg: { v?: unknown; type?: unknown; path?: unknown; paths?: unknown; line?: unknown };
   try {
     msg = JSON.parse(raw);
   } catch {
@@ -276,6 +302,17 @@ function consumeMessage(filePath: string, onFile: (absPath: string, line?: numbe
             ? msg.line
             : undefined;
         onFile(msg.path, line);
+      }
+      return;
+    case 'close':
+      // Manage the tab set: close the named tab. A build without the handler
+      // (older minor) simply lacks the capability and skips it.
+      if (typeof msg.path === 'string' && msg.path) opts.onClose?.(msg.path);
+      return;
+    case 'set':
+      // Manage the tab set: make the open set exactly these paths.
+      if (Array.isArray(msg.paths)) {
+        opts.onSet?.(msg.paths.filter((p): p is string => typeof p === 'string' && p.length > 0));
       }
       return;
     default:

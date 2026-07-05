@@ -61,6 +61,10 @@ The app **self-arbitrates per project**. On launch it claims the project named b
   - Multiple projects ⇒ multiple independent windows, with no global contention. A launch with **no `--project`** opens an independent, projectless window.
 - **R8. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
 - **R9. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
+- **R10. Caller manages the tab set (close / replace), not just opens.** The caller contract extends beyond open/focus so a caller can keep the window in step with what it wants shown:
+  - **`--close <file…>`** closes the tab(s) for the named path(s) in the project's window. A path that isn't open is a no-op.
+  - **`--set <file…>`** makes the open set **exactly** the named files: opens any missing, keeps/focuses those already open, and closes the rest.
+  - Both route to the owner window over the channel as new message types (additive, forward-compatible — an older owner ignores an unknown verb). **Closing a tab with unsaved edits still prompts** (Save / Discard / Cancel, per the tab-close behavior), so a caller-driven close never silently discards user work. *(Motivating case: a doc set opened as tabs where two were later merged into one — the caller can now close the stale tabs instead of asking the user to.)*
 
 > Implementation note (accepted risk): when a file is delivered to a running instance, **that instance raises/focuses its own window**. An OS generally will not let a *different* process force another process's window to the foreground (Windows especially), so the raise must originate from the receiving instance itself; Windows may still be unreliable here, mitigated with standard tactics (`show()` + `focus()`, brief always-on-top toggle).
 
