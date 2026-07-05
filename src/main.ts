@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
+import { writeAndOpenPdf } from './main/exportPdf';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
 import { createPlatformBridge, type SaveResult } from './main/platform';
@@ -243,12 +244,21 @@ async function requestExportPdf(): Promise<void> {
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (canceled || !filePath) return;
+  let data: Buffer;
   try {
-    const data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
-    await fs.writeFile(filePath, data);
+    data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
   } catch (err) {
     dialog.showErrorBox('Could not export PDF', `${filePath}\n\n${String(err)}`);
+    return;
   }
+  // Write the PDF, then hand it to the OS default viewer so the result is
+  // visible without hunting for the file. A viewer that fails to launch is
+  // reported but non-fatal — the PDF is already on disk.
+  await writeAndOpenPdf(filePath, data, {
+    writeFile: (p, d) => fs.writeFile(p, d),
+    openPath: (p) => shell.openPath(p),
+    showError: (title, message) => dialog.showErrorBox(title, message),
+  });
 }
 
 // Save path (auto-save, force-save, and the write-path conflict guard): the
