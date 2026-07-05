@@ -99,9 +99,12 @@ export function App() {
   // A `#fragment` from a clicked file link, applied to the target tab's preview
   // once it renders/activates.
   const pendingFragment = useRef<string | null>(null);
-  // A 1-based line to reveal (open at a specific line), applied to the target tab's
-  // preview once it renders/activates — mirrors pendingFragment. Null = no reveal.
-  const pendingReveal = useRef<number | null>(null);
+  // 1-based reveal lines (open at a specific line), keyed BY TAB id, applied to a
+  // tab's preview once it is the visible tab. Per-tab (not a single ref) so several
+  // channel opens arriving in one render batch never cross-wire — each file only
+  // ever reveals its own line on its own tab, and an unfocused tab's reveal simply
+  // waits until it is switched to (a hidden pane can't be scrolled).
+  const pendingReveals = useRef<Map<string, number>>(new Map());
   const autosaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const idSeq = useRef(0);
 
@@ -192,20 +195,29 @@ export function App() {
     setActive(id);
   };
 
+  // Apply (and consume) a tab's pending open-at-line reveal, if it has one and its
+  // view is mounted. Per-tab, so a reveal is always applied to the file it was
+  // meant for — never a line from a different open that raced into the same batch.
+  const applyReveal = (id: string) => {
+    const line = pendingReveals.current.get(id);
+    if (line === undefined) return;
+    pendingReveals.current.delete(id);
+    viewRefs.current.get(id)?.revealLine(line);
+  };
+
   // Open a file in a tab: focus + refresh if already open, else add a tab. An
-  // optional reveal line (open at a specific line) is applied to the target tab's
-  // preview once it is the visible tab — immediately if it already is, otherwise by
+  // optional reveal line (open at a specific line) is recorded for THAT tab and
+  // applied once it is the visible tab — immediately if it already is, otherwise by
   // the [activeId] effect after the switch (which is also when a fresh tab first
-  // renders). Mirrors the pendingFragment path.
+  // renders).
   const openTab = (file: OpenTarget) => {
     const existing = tabsRef.current.find((t) => t.path === file.path);
     if (existing) {
       reloadTab(existing.id, file);
+      if (file.line !== undefined) pendingReveals.current.set(existing.id, file.line);
       if (file.line !== undefined && activeIdRef.current === existing.id) {
-        // Already the visible tab (no switch to trigger the effect) → reveal now.
-        viewRefs.current.get(existing.id)?.revealLine(file.line);
+        applyReveal(existing.id); // already the visible tab (no switch to trigger the effect)
       } else {
-        pendingReveal.current = file.line ?? null;
         switchTo(existing.id);
       }
       return;
@@ -223,7 +235,7 @@ export function App() {
       showModal: false,
       docVersion: 0,
     };
-    pendingReveal.current = file.line ?? null; // revealed once the new tab activates (below)
+    if (file.line !== undefined) pendingReveals.current.set(id, file.line); // revealed once the new tab activates
     commitTabs([...tabsRef.current, tab]);
     setActive(id);
   };
@@ -235,6 +247,7 @@ export function App() {
     window.galley?.notifyClosed(t.path); // closing a tab: stop watching its file
     clearAutosave(id);
     viewRefs.current.delete(id);
+    pendingReveals.current.delete(id); // drop any unapplied reveal for the closed tab
     const remaining = tabsRef.current.filter((x) => x.id !== id);
     commitTabs(remaining);
     if (activeIdRef.current !== id) return;
@@ -298,15 +311,11 @@ export function App() {
       .then((files) => {
         files.forEach((file) => openTab(file));
         // openTab leaves the LAST-opened tab active; when several files were passed
-        // on the command line, re-assert the FIRST (leftmost) as the focused tab —
-        // and reveal ITS line, not the last-opened one's (each openTab overwrote
-        // pendingReveal, so set it explicitly to the focused file here).
+        // on the command line, re-assert the FIRST (leftmost) as the focused tab. Its
+        // own reveal (recorded per-tab by its openTab call) applies on the switch.
         if (files.length > 1) {
           const first = tabsRef.current.find((t) => t.path === files[0].path);
-          if (first) {
-            pendingReveal.current = files[0].line ?? null;
-            switchTo(first.id);
-          }
+          if (first) switchTo(first.id);
         }
       })
       // After the CLI files are open, ask main whether a prior session should be
@@ -407,15 +416,14 @@ export function App() {
   useEffect(() => {
     const frag = pendingFragment.current;
     pendingFragment.current = null;
-    const line = pendingReveal.current;
-    pendingReveal.current = null;
-    const view = activeView();
-    if (!view) return;
     if (frag) {
-      if (!view.jumpToFragment(frag)) view.scrollPreviewTop();
-    } else if (line !== null) {
-      view.revealLine(line);
+      const view = activeView();
+      if (view && !view.jumpToFragment(frag)) view.scrollPreviewTop();
+      return;
     }
+    // Apply the now-active tab's own pending reveal (if any). Keyed per-tab, so the
+    // line applied is always the one addressed to THIS file.
+    if (activeId) applyReveal(activeId);
   }, [activeId]);
 
   // Report the open-tab set to main so it can persist the session as a crash
