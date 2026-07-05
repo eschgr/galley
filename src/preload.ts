@@ -38,6 +38,8 @@ const api: GalleyApi = {
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
+  saveFileAs: (currentPath: string, content: string) =>
+    ipcRenderer.invoke('file:saveAs', { path: currentPath, content }),
   notifyClosed: (filePath: string) => {
     void ipcRenderer.invoke('file:closed', filePath);
   },
@@ -81,6 +83,11 @@ const api: GalleyApi = {
     const listener = (_event: unknown, file: OpenedFile) => callback(file);
     ipcRenderer.on('file:externalChange', listener);
     return () => ipcRenderer.removeListener('file:externalChange', listener);
+  },
+  onFileRemoved: (callback: (path: string) => void) => {
+    const listener = (_event: unknown, path: string) => callback(path);
+    ipcRenderer.on('file:removed', listener);
+    return () => ipcRenderer.removeListener('file:removed', listener);
   },
 };
 

@@ -13,6 +13,8 @@ function tab(id: string): Tab {
     conflict: null,
     noticed: false,
     showModal: false,
+    orphaned: false,
+    orphanAck: false,
     docVersion: 0,
   };
 }

@@ -24,6 +24,8 @@ Both the **write path** (save) and the **read path** (load/reload) check the cur
 
 When the disk and buffer do diverge, the app announces it **loudly once** (a modal), then quietly (a status-bar flag), suspends that tab's auto-save until resolved, and offers exactly two opposite choices: **Load from disk** (take theirs) or **Keep mine** (overwrite disk). There is no sticky "whose-version-wins" latch and no third "decide later" option.
 
+A related case is the file **disappearing** — moved or deleted on disk while a tab holds it open. That is not a content conflict but an absence, so it gets its own passive, non-destructive treatment (the buffer is preserved, the tab is marked orphaned, and the user relocates via Save As) rather than the loud conflict modal — see the "file gone" requirements below.
+
 ## 4. Goals
 
 - Auto-save without nagging, with an explicit force-save retained as a reassuring user action.
@@ -62,3 +64,11 @@ When the disk and buffer do diverge, the app announces it **loudly once** (a mod
   - Rationale: concurrent writes are a non-goal as a *primary* flow (main PRD §4). Earlier drafts offered a third "keep editing / decide later" button, but in use it was indistinguishable from "keep mine" — both just keep the user's buffer — so it was removed. One loud notice, two opposite choices, then a quiet reminder.
 - **R9. Watcher debounce.** Debounce the watcher so a rapid sequence of external writes does not cause flicker or repeated prompts.
 - **R10. No view locks.** The app does **not** hold a write/exclusive lock on files merely opened for viewing/editing, keeping the window in which two applications contend for the file as small as possible.
+
+### File moved or deleted on disk ("file gone")
+
+The guards above cover *diverged content* — the file still exists but its bytes changed. A separate case is the file **vanishing**: moved or deleted out from under an open tab (typically during a project reorganization). Left unhandled the tab shows stale content with no signal, and a later save could silently re-create the file at the old, now-wrong path. The response mirrors the conflict philosophy — **never lose the buffer, tell the user, offer safe choices** — but stays **passive** (no modal), because a bulk reorg removes many files at once and a modal per file would be a storm.
+
+- **R11. Detect removal.** The watcher detects an open file being removed — chokidar's `unlink`, plus the read-failure path (a change fires but the file no longer reads) — and forwards a **removal event** to the renderer, alongside the existing external-change event. A move/rename surfaces as removal at the old path (the new location generally can't be followed); it is treated as "gone", and the user relocates. *(Following a same-directory rename by pairing unlink+add is a possible later refinement, not the baseline.)*
+- **R12. Orphaned tab — preserve the buffer, passive banner.** A tab whose file was removed is marked **orphaned** and shows a **passive per-tab banner** ("This file was moved or deleted on disk"), never a modal. The **buffer is preserved in full** — unsaved edits are never discarded — and the tab stays open. The banner offers exactly the safe choices: **Save As…** (relocate the document to a new path), **Keep open** (dismiss the banner; keep the buffer in memory), and **Close** (close the tab, prompting to save first if it has unsaved edits). Auto-save is suspended for an orphaned tab (there is no valid path to write). *(The passive-only treatment is the deliberate divergence from R8's loud-once modal: bulk removals must not storm.)*
+- **R13. Guard save on an orphaned tab.** A normal save (auto-save or `Ctrl/Cmd+S`) on an orphaned tab must **not** silently re-create the file at the old path. It is routed to **Save As…** instead, so the user chooses where the relocated document lands. A successful Save As adopts the new path, re-watches it, clears the orphaned state, and the tab resumes ordinary saving. **Bulk resilience:** many rapid removals coalesce into per-tab flags (R12), never a burst of dialogs.

@@ -233,6 +233,17 @@
   background: #f3f4f6;
 }
 
+/* File gone (moved/deleted on disk): a more urgent red tone than the amber
+   out-of-sync flag, but still a passive banner, never a modal. */
+.orphan-flag {
+  color: #b32424;
+  background: #ffebe9;
+  border-bottom-color: #ff818266;
+}
+.orphan-flag .sync-flag-dot {
+  color: #cf222e;
+}
+
 /* Out-of-sync notice (R34/R35) */
 .modal-overlay {
   position: fixed;

@@ -21,17 +21,21 @@ type Harness = {
   openCb: ((f: MockFile) => void) | null;
   saveCb: (() => void) | null;
   extCb: ((f: MockFile) => void) | null;
+  removedCb: ((path: string) => void) | null;
   reloadCb: (() => void) | null;
   closeTabCb: (() => void) | null;
   helpCb: (() => void) | null;
   nextTabCb: (() => void) | null;
   prevTabCb: (() => void) | null;
   saveCalls: { path: string; content: string; force: boolean }[];
+  saveAsCalls: { path: string; content: string }[];
   closed: string[];
   openExternalCalls: string[];
   openLocalCalls: { href: string; from: string }[];
   // When set, the next non-force save returns this as a write-path conflict.
   nextSaveConflict: MockFile | null;
+  // What saveFileAs() (relocate) returns next; null = the user cancelled the dialog.
+  nextSaveAs: MockFile | null;
   // What readFile() (reload) returns next.
   nextRead: MockFile | null;
   // What getRestore() returns on mount (#61 slice B). Null = no restore (default);
@@ -61,10 +65,10 @@ export async function installMockBridge(
   await page.addInitScript(({ startupArg, restoreArg, projectNameArg }) => {
     const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: Harness = {
-      openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
+      openCb: null, saveCb: null, extCb: null, removedCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
       nextTabCb: null, prevTabCb: null,
-      saveCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
-      nextSaveConflict: null, nextRead: null,
+      saveCalls: [], saveAsCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
+      nextSaveConflict: null, nextSaveAs: null, nextRead: null,
       restore: restoreArg,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
@@ -101,6 +105,12 @@ export async function installMockBridge(
         return { conflict: false, file: { path, content, hash: 'mock-hash' } };
       },
       readFile: async () => harness.nextRead,
+      // Save As… (relocate an orphaned tab). Records the call; returns the armed
+      // relocated snapshot, or null to simulate the user cancelling the dialog.
+      saveFileAs: async (path: string, content: string) => {
+        harness.saveAsCalls.push({ path, content });
+        return harness.nextSaveAs;
+      },
       notifyClosed: (path: string) => harness.closed.push(path),
       onOpenFile: (cb: (f: MockFile) => void) => {
         harness.openCb = cb;
@@ -137,6 +147,10 @@ export async function installMockBridge(
         harness.extCb = cb;
         return () => (harness.extCb = null);
       },
+      onFileRemoved: (cb: (path: string) => void) => {
+        harness.removedCb = cb;
+        return () => (harness.removedCb = null);
+      },
       // `satisfies` makes a missing/renamed bridge method a COMPILE error here,
       // instead of a runtime "X is not a function" crash that only surfaces in a
       // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
@@ -172,6 +186,24 @@ export async function fire(page: Page, cb: 'openCb' | 'extCb', file: MockFile): 
 /** Fire an external on-disk change (the watcher payload) for the open file (R32/R33). */
 export async function fireExternalChange(page: Page, file: MockFile): Promise<void> {
   await fire(page, 'extCb', file);
+}
+
+/** Fire a file-removed event (moved/deleted on disk) for the given path — the tab
+ *  goes orphaned ("file gone"). */
+export async function fireRemoved(page: Page, path: string): Promise<void> {
+  await page.evaluate(
+    (p) => (window as unknown as { __mock: { removedCb: (x: string) => void } }).__mock.removedCb(p),
+    path,
+  );
+}
+
+/** Arm what the next Save As… returns: a relocated snapshot, or null to simulate
+ *  the user cancelling the dialog. */
+export async function setNextSaveAs(page: Page, file: MockFile | null): Promise<void> {
+  await page.evaluate(
+    (f) => ((window as unknown as { __mock: { nextSaveAs: MockFile | null } }).__mock.nextSaveAs = f),
+    file,
+  );
 }
 
 /** Fire the File → Save menu/accelerator (R30). */

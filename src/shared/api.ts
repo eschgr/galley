@@ -81,6 +81,13 @@ export interface GalleyApi {
   /** Read a file on demand — used to reload a tab in place (manual reload). Resolves to
    *  null if it can't be read. (Re)watches the file. */
   readFile(filePath: string): Promise<OpenedFile | null>;
+  /**
+   * Save As… (relocate) — for an orphaned tab whose file was moved/deleted ("file
+   * gone"). Presents a native Save dialog defaulted beside `currentPath`, writes
+   * `content` to the chosen path, watches it, and resolves to the new snapshot the
+   * tab adopts. Resolves to null if the user cancels or the write fails.
+   */
+  saveFileAs(currentPath: string, content: string): Promise<OpenedFile | null>;
   /** Tell the main process a tab closed so it stops watching that file (close a tab). */
   notifyClosed(filePath: string): void;
   /** Pull the files passed on the command line at launch (open a file via CLI argument), once. Returned in
@@ -115,6 +122,12 @@ export interface GalleyApi {
    * snapshot. Returns an unsubscribe function.
    */
   onExternalChange(callback: (file: OpenedFile) => void): () => void;
+  /**
+   * Subscribe to "an open file was removed on disk" — moved or deleted out from
+   * under a tab ("file gone"). Payload is the absolute path that vanished; the
+   * renderer marks that tab orphaned. Returns an unsubscribe function.
+   */
+  onFileRemoved(callback: (path: string) => void): () => void;
 }
 
 declare global {
