@@ -11,19 +11,17 @@
 
 A **project** in Galley is a **named, durable context** for working across a set of markdown files — a stable home for the grouping, workspace state, and cross-file coordination that live *across* files rather than inside any one of them. It is deliberately **not** a folder of files: its content files may live anywhere on disk, may be scattered, and may be shared with other projects.
 
-Today "project" is an ephemeral, main-process-only window-grouping key: `--project <name>` maps to a scratch directory under the OS temp dir that is torn down on close, holds only the liveness record and the file-drop channel, and the renderer has no awareness of it.
+A project is a **first-class, persistent concept**: it has a stable, app-managed on-disk home, persistent session state, and a robust ownership/liveness model — one live window per project. The launcher contract the LLM relies on stays a single command, and a launch with no project name runs **projectless** (an independent, ephemeral window).
 
-This document promotes "project" into a **first-class, persistent concept** with a stable on-disk home, persistent session state, and a robust ownership/liveness model — while keeping the launcher contract the LLM already relies on unchanged, and preserving today's **projectless** behavior when no project is named.
-
-It addresses **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** (make the project concept genuinely useful) and folds in the ownership/liveness robustness of **[#60](https://github.com/eschgr/mdtool/issues/60)** and **[#56](https://github.com/eschgr/mdtool/issues/56)** and the session-restore gap of **[#61](https://github.com/eschgr/mdtool/issues/61)**. Capabilities explored during design but deferred as out of scope for v1 — because they do not fit the simple project concept — are listed in section 4, each tracked as its own issue.
+This realizes **GitHub Issue [#62](https://github.com/eschgr/mdtool/issues/62)** (make the project concept genuinely useful), incorporating the ownership/liveness robustness of **[#60](https://github.com/eschgr/mdtool/issues/60)** and **[#56](https://github.com/eschgr/mdtool/issues/56)** and session restore ([#61](https://github.com/eschgr/mdtool/issues/61)). Deliberate by-design exclusions are in section 4; capabilities deferred rather than rejected are tracked as their own issues.
 
 ---
 
 ## 2. Relationship to the main PRD
 
-- **Supersedes** main PRD **section 5.3 (R11–R15, instance model & file delivery)**: the ephemeral `<tmpdir>/galley-<name>/` scratch dir is replaced by a **durable, app-managed project home** with a runtime/durable split (sections 7 and 8). The *caller contract* — a single `galley --project <name> <file>` command, and a plain `galley <file>` for a projectless window; the app self-arbitrates — is preserved verbatim.
+- **Supersedes** the **instance model & file delivery** in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery): the ephemeral `<tmpdir>/galley-<name>/` scratch dir is replaced by a **durable, app-managed project home** with a runtime/durable split (sections 7 and 8). The *caller contract* — a single `galley --project <name> <file>` command, and a plain `galley <file>` for a projectless window; the app self-arbitrates — is preserved verbatim.
 - **Extends** main PRD **section 7 (architecture / portability seam)** with a `ProjectStore` seam member (section 9).
-- **Resolves** the main PRD **section 12 open item "Session restore"** (section 6, group C).
+- **Specifies session persistence & restore** (section 6, group C).
 - **Leaves unchanged** everything about rendering, editing, saving, conflict handling, tabs, and print/export — a project is context *around* files, not a change to how a file is viewed or edited.
 
 Requirements here are numbered **PF#** (project feature). The numbering is stable across drafts; gaps mark features that were considered and cut (see section 4).
@@ -40,18 +38,12 @@ Requirements here are numbered **PF#** (project feature). The numbering is stabl
 
 ## 4. Non-goals (this version)
 
-Each was considered during design and deliberately cut; each is a candidate future topic.
+These are deliberate, by-design exclusions. Capabilities that are simply deferred rather than rejected are tracked as their own GitHub issues, not listed here.
 
-- **Project instructions / `claude.md`.** Does not fit the LLM's filesystem-anchored context model, and the document files already serve as the LLM-to-human bridge. A future **"managed session"** mode — where the LLM is told a session is Galley-managed and reads Galley's help to organize accordingly — could reintroduce structured project context, but only when a concrete feature needs it; it imposes per-session structure and agreement the base concept should not require. **Tracked in [#69](https://github.com/eschgr/mdtool/issues/69).** *(Was PF10, PF13.)*
-- **Cross-project information / a project registry.** Projects are independent and do not know about each other. No shared index, no cross-project settings, no project switcher. *(A future app-level global-settings concept is reasonable but separate from the project concept — **[#70](https://github.com/eschgr/mdtool/issues/70)**.)* *(Was PF4.)*
-- **Templating.** Its own future topic that works differently from what a project would model. **Tracked in [#67](https://github.com/eschgr/mdtool/issues/67).** *(Was PF12, PF15.)*
 - **Per-project settings surface.** No user-editable project settings; the only candidate (a reading-vs-split default) is not worth a surface. `project.json` holds identity and metadata only. *(Was PF14, PF16, PF17, PF18.)*
 - **A curated / tracked member-file list.** Membership is **ephemeral**: a file is associated with a project only while open in that project's session. *(Was PF22.)*
-- **New-file creation.** Deferred, bound up with templating. **Tracked in [#68](https://github.com/eschgr/mdtool/issues/68).** *(Was PF23; also the main PRD section 12 item.)*
 - **A default project name.** If no `--project` is given, Galley runs **projectless** (PF27), not under an inferred name (e.g. from the current directory). Inferring identity the caller did not ask for is out of scope.
-- **Human-driven project creation UI** (a "New Project" dialog with setup questions). The project is created implicitly when files are opened for review (section 8.5); a guided human-initiated flow is a future nicety. **Tracked in [#71](https://github.com/eschgr/mdtool/issues/71).**
 - **A "Reveal Home" (or any project-directory) menu affordance.** The durable home is app-managed and not a place the user is expected to visit; when directory access is genuinely needed, the user asks the LLM to open the path or browses to it directly. A dedicated menu item is not worth the surface. *(Was PF26.)*
-- **A directory / folder tree view or file browser** in the renderer (consistent with the main PRD section 3).
 - **In-tree project homes.** Rejected on principle (section 8.4): a project's context spans directories, so there is no coherent tree to colocate in.
 
 ---

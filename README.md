@@ -29,8 +29,8 @@ See [`docs/PRD.md`](docs/PRD.md) for the full requirements, architecture, build/
 
 This repository currently contains the **specification only**. Implementation has not started. The next steps, per the PRD, are:
 
-1. A **rendering spike** (PRD §5.1a / R5) — validate GFM + math + code highlighting against real LLM output before building UI.
-2. The **instance/channel model** (PRD §5.3) — the per-project listener and file-delivery mechanism.
+1. A **rendering spike** ([`docs/PRD-View.md`](docs/PRD-View.md) / R5) — validate GFM + math + code highlighting against real LLM output before building UI.
+2. The **instance/channel model** ([`docs/PRD-Opening-and-Instances.md`](docs/PRD-Opening-and-Instances.md)) — the per-project listener and file-delivery mechanism.
 3. The editor + preview, then formatting shortcuts and the link dialog.
 
 ## License

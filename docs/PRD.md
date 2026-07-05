@@ -1,8 +1,8 @@
 # PRD: Galley — Local Markdown Viewer & Editor
 
-**Status:** Draft v11
+**Status:** Draft v12
 **Owner:** (you)
-**Last updated:** 2026-07-03
+**Last updated:** 2026-07-04
 
 ---
 
@@ -14,251 +14,54 @@ This version targets a **working prototype**: built on Electron for fastest path
 
 ---
 
-## 2. Goals
+## 2. Target workflow
+
+Galley is one stage in an **LLM-driven authoring loop**, not a standalone markdown viewer — a framing that shapes the rest of this document:
+
+1. Claude generates a markdown file on disk.
+2. Claude routes the file to the project's viewer: it sends the file to the existing window for that project if one is running, or launches a new window bound to the project's channel if not (see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and Appendix A).
+3. The file opens as a new tab in that project's window (or focuses the tab if the file is already open).
+4. The user reads the rendered preview and directly corrects issues in the source.
+5. Edits auto-save back to disk (with a manual force-save available).
+6. If the file changes externally while open, the app refreshes or, if there are unsaved local edits, prompts before discarding them (see [`PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md)).
+
+The app may also be launched **with no file**; it opens to an empty state from which files can be opened via the menu/dialog. A user may still open files manually through the file dialog regardless of how the window was launched.
+
+---
+
+## 3. Goals
 
 - View markdown files rendered as they would be expected from Claude's output.
 - Auto-refresh open files when they change on disk.
 - Directly edit files with live preview, syntax highlighting, and undo/redo.
 - Run as a single, fully self-contained, cross-platform application.
 - Manage multiple open documents in a tabbed interface.
-- Be easy for Claude (or any CLI caller) to drive: a simple command opens a file in the right project window (see §5.3 and Appendix A).
+- Be easy for Claude (or any CLI caller) to drive: a simple command opens a file in the right project window (see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md) and Appendix A).
 
-## 3. Non-goals (this version)
+## 4. Non-goals (this version)
 
-- New-file creation from within the app *(planned for a future version)*.
-- Drag-and-drop file opening.
-- Directory / folder tree view.
-- Opening multiple files in a single command.
-- Concurrent LLM-edit conflict handling as a primary flow *(the conflict handling exists, but the expected use is manual correction, not simultaneous LLM writes)*.
-- **Session restore** — reopening the set of files/tabs that were open in a previous run. On a fresh start the app opens with no files. *(Planned as a possible future enhancement.)*
-- **Bulk tab operations** — "close all" / "close others". A fresh launch already starts empty, so closing the window (or individual tabs) is the way to clear state.
-- **Diff view** for conflicts — showing a rendered line-diff of disk vs. buffer. v1 uses a labeled choice instead. *(Possible future enhancement.)*
-- **Text color / font color** — not part of standard markdown (no CommonMark/GFM syntax); Claude does not emit it, and supporting it would require enabling raw-HTML passthrough.
-- **Word / character count.**
-- **"Reveal in Finder/Explorer".**
-- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout.
-- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype.)*
-- **Dynamically swapping the editor/preview pane order in-app** — the layout is fixed (**rendered view on the left, source editor on the right**); a runtime control to flip which side each pane is on is out of scope. It is a possible future nice-to-have, bound up with the i18n/RTL and accessibility work above. *(See §12.)*
-- **Page numbers / running headers / footers** in printed and exported PDFs — fixed defaults only this version *(future).*
-- **In-app page-size / margin chooser** — Export uses fixed Letter / 0.75in defaults; Print defers paper choices to the OS print dialog *(future).*
+These are the **product-level** exclusions — the things Galley is deliberately not. Feature-level "out of scope" notes live in the relevant sub-PRD (§6), and candidate future enhancements are tracked as GitHub issues rather than listed here.
+
+- **Concurrent LLM-edit conflict handling as a primary flow.** Galley is for turn-based work — the LLM writes, the user reviews and corrects, the loop continues — not simultaneous collaborative editing. The conflict handling exists as a safety net, but simultaneous LLM writes are not the expected flow.
+- **Internationalization / localization** — the UI is English-only this version; no translated strings, locale formatting, or right-to-left (RTL) layout. *(Tracked as [#91](https://github.com/eschgr/mdtool/issues/91).)*
+- **Accessibility** — no dedicated screen-reader, keyboard-only-navigation, or high-contrast work beyond what the framework provides by default. *(Not a statement that accessibility doesn't matter — just out of scope for this prototype; tracked as [#92](https://github.com/eschgr/mdtool/issues/92).)*
+
+## 5. Non-functional requirements
+
+- **NFR1. Cross-platform:** runs on Windows and macOS.
+- **NFR2. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser.
 
 ---
 
-## 4. Target workflow
+## 6. Features
 
-1. Claude generates a markdown file on disk.
-2. Claude routes the file to the project's viewer: it sends the file to the existing window for that project if one is running, or launches a new window bound to the project's channel if not (see §5.3 and Appendix A).
-3. The file opens as a new tab in that project's window (or focuses the tab if the file is already open).
-4. The user reads the rendered preview and directly corrects issues in the source.
-5. Edits auto-save back to disk (with a manual force-save available).
-6. If the file changes externally while open, the app refreshes or, if there are unsaved local edits, prompts before discarding them (see §5.6).
+Each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`); this section indexes them. The main PRD is the **hub** — the product overview and user journeys (§1–§4), the non-functional requirements (§5), and the cross-cutting concerns below (technical stack, build & distribution, licensing, dependencies). The detailed **functional requirements** live in the sub-PRDs.
 
-The app may also be launched **with no file**; it opens to an empty state from which files can be opened via the menu/dialog. A user may still open files manually through the file dialog regardless of how the window was launched.
-
----
-
-## Features
-
-As Galley grows, each substantial feature area is specified in its own **sub-PRD** under `docs/` (`PRD-<Feature>.md`). This keeps the main PRD a lean hub — the high-level, current-state source of truth and basic user journeys above — while the detailed feature designs live in their sub-PRDs. Where a section below has been superseded by a sub-PRD, it links out.
-
-- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Promotes the **project** concept (today an ephemeral window-grouping key) into a first-class, persistent feature: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness rework (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes §5.3 (R11–R15).
-
-*(This section is intentionally unnumbered for now; section numbering is normalized in the planned PRD refactor that separates high-level overview from feature-level detail — tracked in [#66](https://github.com/eschgr/mdtool/issues/66).)*
-
----
-
-## 5. Functional requirements
-
-### 5.1 Markdown rendering
-
-- **R1.** Render a markdown flavor matching Claude's typical output: **GitHub Flavored Markdown (GFM)** — ATX headings, bold/italic, nested ordered/unordered lists, fenced code blocks with language info strings, tables, blockquotes, links, images, horizontal rules, and task lists (`- [ ]` / `- [x]`). *(GFM is assembled from markdown-it plugins/presets, not a single switch — see §5.1a and §11.)*
-- **R2.** Render **LaTeX math**: at minimum inline `$...$` and block `$$...$$`. The delimiter set and rendering engine must be validated against real Claude output (see §5.1a), since Claude also emits `\(...\)` / `\[...\]` and literal `$` can appear in prose.
-- **R3.** Apply **syntax highlighting inside fenced code blocks** based on the language info string.
-- **R4.** Clicking a link **in the preview** opens it in the **system default browser**, never inside the app's own window. *(Also a safety requirement — prevents the renderer from navigating away or spawning an in-app browser window.)* **Exceptions:** (a) **in-page anchor links** (`#heading`) scroll the preview to that heading instead of leaving the app — headings are given GitHub-style id slugs so the LLM's cross-reference links work; (b) **local-file links** (relative/absolute paths or `file://`) open the target as a tab, resolved against the current document's folder, so cross-document links between an LLM's files navigate in-app — and a `#fragment` on such a link (`other.md#section`) scrolls the opened tab to that heading. **Autolinking** is limited to text carrying an explicit scheme (`https://…`, `mailto:…`); bare `name.ext` text (e.g. `architecture.md`) is left as plain text rather than autolinked — many extensions are also TLDs, so fuzzy autolinking would wrongly make filenames in prose clickable. Use `[label](architecture.md)` for an explicit, clickable file link.
-
-### 5.1a Rendering de-risking spike (pre-build)
-
-- **R5.** Before building UI around the preview, run a **rendering spike**: render a corpus of representative real Claude output (math-heavy, table-heavy, code-heavy, task lists) through the candidate pipeline and confirm fidelity for GFM (R1), math delimiters (R2), and fenced-code highlighting (R3). This single spike de-risks the three rendering concerns together and decides the final plugin/engine choices before significant investment.
-- **R6. Math fallback ladder.** If the primary math path is insufficient, fall back in this order: (1) primary KaTeX-based plugin (e.g. `@vscode/markdown-it-katex`); (2) `markdown-it-texmath` for configurable delimiter sets; (3) MathJax engine (more permissive LaTeX, larger/slower, acceptable for a local tool). **Floor behavior:** a math-parse failure must degrade to showing the raw source for that span, never break the whole preview.
-  - **Resolution (spike run, decided).** The spike selected **rung 2: `markdown-it-texmath` with the KaTeX engine**, configured for both the dollar and bracket delimiter sets so all of `$…$`, `$$…$$`, `\(…\)`, and `\[…\]` render. Rung 1 (`@vscode/markdown-it-katex`) was insufficient — it renders dollar delimiters only and drops the `\(…\)` / `\[…\]` forms Claude also emits — and was dropped. texmath is structure-aware (skips code spans/fences) and its dollar guards keep literal `$` in prose (e.g. prices like "$5 and $10") from being parsed as math (R2). The floor is implemented via KaTeX `throwOnError:false` (renders a bad formula's raw source in an error color), plus a whole-document guard so one bad doc can't blank the preview.
-
-### 5.2 Opening files
-
-- **R7.** Open a file via **CLI argument**: `galley <file>`.
-- **R8.** Open a file via an **in-app file-open dialog** (reachable from the native menu bar).
-- **R9.** One file per open action. No multi-file open, no folder view, no drag-and-drop.
-- **R10.** The app can start with **no file specified**, opening to an empty "No files open" state (see R46).
-
-### 5.3 Instance model & file delivery
-
-> **The project model & mechanism live in [`docs/PRD-Projects.md`](PRD-Projects.md#5-concept--what-a-project-is).** This section covers the **caller-facing instance model** — one command, self-arbitration, become-or-hand-off, tab behavior. The project's durable home, ownership/liveness, lifecycle, and session restore are the sub-PRD's; the transport detail below stays here until the [#66](https://github.com/eschgr/mdtool/issues/66) refactor moves it out.
-
-The app **self-arbitrates per project**. On launch it claims the project named by `--project <name>` and either becomes that project's window or — if a live window already owns the project — hands its files to that window and exits. The caller never probes, coordinates, or speaks any transport; it just runs `galley --project <name> <file>` every time. Arbitration is *per project* (not a global single instance), so each project still gets its own window. The app owns the file-format/liveness logic so the caller's contract is a single command.
-
-- **R11. App self-arbitrates per project (file-drop channel).** On launch with `--project <name>`, the app **claims the project**: with no live owner it **becomes the window** and consumes the channel for delivered files; with a live owner it **drops its files into the channel** (for the existing window to open) and exits. It opens any file given on the command line at startup, and any file later delivered into its channel. *(The project's on-disk home, ownership, and liveness model are the Projects sub-PRD's concern.)*
-- **R12. Project keyed by a stable name (not PID).** The `--project <name>` value is the project identity — a stable, filesystem-safe token the caller supplies and reuses across launches. *(PID is only a liveness signal — "is the recorded owner still alive?" — never the identity. How a name maps to the project's home is the sub-PRD's concern.)*
-- **R13. App-owned lifecycle (single command).** For a given project the caller always runs the same command — `galley --project <name> <absolute_path>` — and the app decides send-vs-launch:
-  1. **Claim** the project.
-  2. **If a live owner already exists** → drop the path into its channel; the existing window opens it (or focuses the tab if the file is already open).
-  3. **If not** → become the window bound to that project and open the path.
-  - Multiple projects ⇒ multiple independent windows, with no global contention. A launch with **no `--project`** opens an independent, projectless window.
-- **R14. New file → new tab, focused.** A file delivered to an instance (at launch or over the channel) opens as a **new tab** that receives focus.
-- **R15. Already-open file → focus existing tab.** If a delivered file is already open in a tab, the app focuses that existing tab rather than opening a duplicate.
-
-> Implementation note (accepted risk): when a file is delivered to a running instance, **that instance raises/focuses its own window**. An OS generally will not let a *different* process force another process's window to the foreground (Windows especially), so the raise must originate from the receiving instance itself; Windows may still be unreliable here, mitigated with standard tactics (`show()` + `focus()`, brief always-on-top toggle).
-
-> Design note: an earlier **caller-owned** model (the caller probes a socket and decides connect-vs-launch) was **replaced** by this app-self-arbitrating model. The original worry about self-arbitration — losing multi-window project grouping — does not apply, because arbitration is *per project* (one `owner.json` per project), so each project still gets its own window. The switch was driven by two things: (a) a **sandboxed caller cannot `listen()`** on a socket (seatbelt returns EPERM) but can read/write files freely, so a file-drop transport works where a socket does not; and (b) pushing the file-format + liveness logic onto the caller was error-prone — owning it in the app collapses the caller contract to a single command. See Appendix A.
-
-> **File-drop transport & addressing (retained).** Behind the §7 seam (`platform/project.ts`, `channel.ts`, `protocol.ts`, each unit-tested): `owner.json` publishes the owner's `id = <pid>-<startedAt>`; every message/ping filename carries that id, so a message reaches exactly its intended target even if two owners transiently coexist, and a stale owner is inert. A message is a versioned JSON envelope `{ "v", "type": "open", "path" }` written `*.tmp` then atomically renamed `*.msg`; the protocol (`protocol.ts`, independent of the app version) is `MAJOR.MINOR`, and a sender refuses to write to a different-major owner. The owning window opens each delivered path as a focused tab (R14), or focuses the existing tab (R15).
->
-> **Current status vs. the rework.** Shipped today, the per-project directory is under the **OS temp dir** and liveness is a `.ping`→`.pong` consumer handshake answered on the main event loop, with release removing the whole directory. The move to a **durable app-managed home**, a **passive OS-maintained lock** (fixing the temp-cleanup duplicate [#60](https://github.com/eschgr/mdtool/issues/60) and the modal-block duplicate [#56](https://github.com/eschgr/mdtool/issues/56)), **non-destructive release**, and **session restore** ([#61](https://github.com/eschgr/mdtool/issues/61)) is designed in the Projects sub-PRD (§7–§10) and not yet built.
-
-### 5.4 Editing
-
-- **R16.** Edit the markdown **source** directly in-app.
-- **R17.** **Live preview**: the rendered view updates as the user types.
-- **R18.** **Scroll synchronization:** the preview tracks the editor's scroll position (and vice versa where natural) so the two panes stay aligned, particularly on long documents.
-- **R19.** **Syntax highlighting** in the editor — **colour only**. The source pane stays uniform monospace (no bold/italic/enlarged-heading rendering); colour conveys structure the way a code editor highlights syntax, keeping the editor clearly *source* rather than a second rendered view.
-- **R20.** **Undo / redo** support. Undo `Ctrl/Cmd+Z`; redo `Ctrl/Cmd+Y` **and** `Ctrl/Cmd+Shift+Z` (both bound).
-- **R21.** **Find and replace** within the current document, via the editor's search panel (opened with `Cmd/Ctrl+F`). The built-in feature set: incremental find with match highlighting, find next / previous, replace and replace-all, and toggles for **case-sensitive**, **whole-word**, and **regular-expression** matching. *(Provided by CodeMirror's search extension out of the box; a frequently used operation, especially in larger files. The toggle set is the component's default — captured here for completeness, not separately required.)*
-- **R22.** **Line numbers** — nice-to-have, optional. *(Typically free from the editor component.)*
-
-### 5.4a Formatting shortcuts
-
-Keyboard shortcuts that apply markdown formatting to the editor selection, so the user does not have to type or remember the syntax.
-
-- **R23.** Provide keyboard shortcuts for the following formatting actions:
-
-  | Action | Shortcut (macOS / Windows) | Markdown produced |
-  |---|---|---|
-  | Bold | `Cmd+B` / `Ctrl+B` | `**…**` |
-  | Italic | `Cmd+I` / `Ctrl+I` | `_…_` (underscores — distinct from `**bold**`, and no accidental intra-word italics) |
-  | Link | `Cmd+K` / `Ctrl+K` | `[…](…)` via dialog (see R27) |
-  | Inline code | `Cmd+E` / `Ctrl+E` | `` `…` `` |
-  | Strikethrough | `Cmd+Shift+X` / `Ctrl+Shift+X` | `~~…~~` |
-  | Heading | `Cmd+1`…`Cmd+6` / `Ctrl+1`…`Ctrl+6` | line prefixed `#`…`######` |
-  | Code block (fenced) | `Cmd+Shift+C` / `Ctrl+Shift+C` | wrap in ```` ``` ```` fences |
-  | Indent list item | `Tab` | increases list nesting |
-  | Outdent list item | `Shift+Tab` | decreases list nesting |
-
-- **R24. Toggle behavior.** Each wrapping shortcut (bold, italic, inline code, strikethrough, code block) **toggles**: if the selection is already wrapped in that marker, the shortcut removes it rather than adding another layer.
-  - **A bare cursor inside an existing span counts too.** With no selection but the cursor *within* a span of that type (e.g. `**Hello|world**` + bold), the shortcut removes the whole span instead of inserting a new empty pair. The span is found via the editor's Lezer syntax tree (the parser runs GFM, so strikethrough/tables/task-lists are recognized).
-  - **Headings normalize to the requested level** rather than stacking. Applying a heading sets the line to exactly that level no matter its current level, and applying the line's *current* level removes the heading. Examples: `## Hello` + `Ctrl+4` → `#### Hello` (switches level, does **not** become `######`); `## Hello` + `Ctrl+2` → `Hello` (same level removes).
-
-- **R25. Smart selection handling.** Each wrapping/prefixing shortcut behaves correctly with and without an active selection:
-  - **Selection present** → wrap (or prefix, for headings/lists) the selected text.
-  - **No selection** → insert the markers and place the cursor between them (e.g. `**|**`) so the user can type immediately.
-  - *(Link is the exception — it always uses the dialog in R27.)*
-
-- **R26. Indent / outdent.**
-  - On a **list line**, `Tab` / `Shift+Tab` nest / un-nest the whole item from **anywhere on the line** — not just at the start. Nesting aligns the item with its parent's **CommonMark content column** (3 spaces under `1. `, 2 under `- `, 4 under `10. `), so nested lists actually render as nested rather than flattening or merging; un-nesting drops back to the parent item's column. The list marker is left untouched (numbered items keep their marker; the renderer numbers them — see R26a). The cursor stays on the same character.
-  - On any **other line**, `Tab` inserts indentation at the cursor and `Shift+Tab` outdents the line. `Tab` never moves focus out of the editor.
-  - Indentation uses **spaces, not hard tab characters**, at the width set in R28.
-- **R26a. Lazy ordered-list numbering.** Galley never renumbers ordered lists; markers are left exactly as authored. The convention is **`1.` on every item**: because re-nesting or reordering never forces a renumber and the renderer shows the correct sequence, editing stays cheap.
-- **R26b. List continuation.** `Enter` on a non-empty list item starts a new item on the next line with the same indentation and marker — **ordered markers as `1.`** (per R26a), bullets unchanged. `Enter` on an **empty** item ends the list (clears the marker). Off a list line, `Enter` is an ordinary newline.
-
-- **R27. Link dialog.** `Cmd/Ctrl+K` opens a small dialog rather than inserting raw syntax, so the user never has to remember `[text](url)` ordering. Behavior:
-  - **Two labeled fields:** **Text** and **URL**. Focus starts in the **URL** field.
-  - **Creating a link:**
-    - If text is selected, prefill **Text** with the selection; on confirm, insert `[text](url)` replacing the selection.
-    - If nothing is selected, both fields start empty; on confirm, insert `[text](url)` at the cursor.
-  - **Editing an existing link:** if the cursor is anywhere within an existing markdown link (any part of its `[text](url)` syntax), the dialog opens **prefilled** with that link's current Text and URL, and confirming updates the existing link in place.
-  - **Remove-link button:** in edit mode, a **Remove link** action strips the link syntax and keeps the plain text (`[text](url)` → `text`).
-  - *Nice-to-have (future):* if the clipboard contains a URL when the dialog opens, prefill the **URL** field with it.
-
-- **R28. Indentation setting.** The editor indents with **spaces**, default width **2**. (Applies to R26 list nesting and general `Tab` indentation.)
-
-> Status (2026-06-20): R23–R28 implemented. The wrap/heading/fence rules live in the pure, unit-tested `src/renderer/components/editorCommands.ts`; the keymap is registered at **highest precedence** so it wins over CodeMirror defaults (no clash found on `Cmd/Ctrl+E` or `K`). The link dialog reads/writes through the editor handle, using the Lezer syntax tree to detect an existing link at the cursor. Clipboard-URL prefill (R27 nice-to-have) remains future.
-
-> Implementation note: CodeMirror 6 exposes keybindings via its keymap system, and wrap/toggle logic operates on selection ranges; existing markdown-command helpers cover much of R24–R25. The link dialog (R27) is a small renderer-side popover reading/writing the editor selection; detecting "cursor within a link" uses the markdown syntax tree (Lezer) CodeMirror already maintains.
-
-### 5.4c Document states
-
-The editor tracks **what it is showing as an explicit state**, not as a null-path heuristic. Two kinds exist today (a third, `untitled`, arrives with Save As):
-
-- **Welcome screen** — a built-in **sandbox** shown whenever no file is open. It introduces the app and lets the user play with the renderer. It is **never saved** (no auto-save, no watcher, no Save), the title bar reads **"Welcome!"**, and it makes no claim to be a file. Opening a file replaces it.
-- **File** — a document opened from disk, with a path, baseline hash, watcher, and the full save/auto-save/conflict behavior (R29–R36).
-- **Untitled** *(future, with Save As)* — an editable buffer with **no destination yet**. Unlike the welcome screen it holds the user's work: auto-save and watching can't run, but unsaved changes must be surfaced and the user offered a way to save (Save As). *Not implemented yet — do not treat the welcome screen as an unsaved buffer.*
-
-### 5.5 Saving
-
-- **R29.** **Auto-save**, debounced: save **5 seconds after the last keystroke**.
-- **R30.** **Force-save** via `Ctrl/Cmd+S`, which saves immediately and bypasses the debounce. *(Auto-save makes this usually a no-op; it is retained intentionally as an explicit, reassuring user action.)*
-- **R31.** Accepted tradeoff: an in-flight crash may lose up to ~5 seconds of un-debounced edits. This is acceptable for this tool.
-- **R31a. Manual reload (`Ctrl/Cmd+R`).** File → Reload File re-reads the open file from disk and loads it fresh, **keeping the current view layout** (split/preview mode, window size, etc.). It reloads only the *document*, never the app. *(Decided 2026-06-20: the webContents reload / force-reload menu roles are removed and renderer HMR is disabled, so code changes are picked up only by restarting the app — keeping "the file changed" and "the software changed" unambiguously distinct.)*
-
-### 5.6 Auto-refresh & conflict handling
-
-The governing principle: **both the write path (save) and the read path (load/reload) verify against the last-known on-disk state via a content hash before acting, and neither silently destroys data.** Each open file tracks the hash of its content as of the last successful load or save ("baseline").
-
-- **R32. Watch.** Watch each open file on disk for external changes. *(Main process.)*
-- **R33. Self-write detection.** The main process records the hash of content it writes. When the watcher fires, it compares on-disk content against that hash: a match means the app's own save → ignore; a mismatch means a genuine external change. Only genuine external changes are forwarded to the renderer. *(Main process; the renderer only ever hears about real external changes.)*
-> **Design frame (decided 2026-06-20).** Galley is for turn-based work, not concurrent collaborative editing (§3): the LLM writes the file and pauses, the user reads and tweaks it, the user tells the LLM, the LLM re-reads. Divergence (disk changing *while* the user holds unsaved edits) is the rare exception. The app does not lock files or editing; its job is to **announce the divergence loudly once** so the user can respond (typically out of band — tell the LLM to stop, or accept the new version), then get out of the way. No sticky "whose-version-wins" latch.
-
-- **R34. Write-path guard (a save lands while disk diverged).** Before auto-save (or force-save) writes, it checks whether the on-disk file still matches the tab's baseline hash. **If disk has diverged** from baseline, do **not** silently overwrite — raise the out-of-sync notice (R36) instead. *(v1 presents the choice as labeled buttons; a rendered diff is out of scope, see §3.)*
-- **R35. Read-path guard (an external change arrives while the user has work in progress).** When the watcher reports an external change:
-  - **If the buffer is in sync and the user has not edited** since it was loaded/last saved, reload silently and update the baseline.
-  - **Otherwise** (the user has edits in progress, or the file is already flagged out of sync), raise/update the out-of-sync notice (R36) rather than discarding the work. *(Gated on "has been edited since reconcile", not the momentary dirty flag: a debounced auto-save can briefly clear `dirty`, but an external change just after must still flag — otherwise auto-save would silently downgrade a conflict to an edit-discarding refresh. The flag resets on a deliberate save (Ctrl/Cmd+S) or a reload.)*
-- **R36. Out-of-sync notice — two choices, loud once.** When out of sync there are only ever two real choices, presented as two buttons: **Load from disk** (take theirs, discard my edits) or **Keep mine** (overwrite disk with my buffer). The first divergence of a run shows them in a **modal** ("Files are out of sync") so the user notices immediately, and **suspends that tab's auto-save** so nothing is silently overwritten while they decide.
-  - **Load from disk** — take the on-disk version and fully reconcile; the loud notice re-arms, so a genuinely new divergence later is loud again.
-  - **Keep mine** — force-overwrite disk with the buffer now. The buffer still holds authored content, so if the file diverges **again** (the external writer didn't stop) the notice **re-raises**, but — having already been shown loudly once this run — it recurs as a **passive status-bar flag** (Reload / Keep mine), not another modal. Auto-save stays suspended while flagged. *(Ctrl/Cmd+S while flagged = Keep mine.)*
-  - "Loud once per run": the modal appears only on the first divergence after a full reconcile (a load/reload/reopen). After that it's the passive flag, so a still-writing LLM can't turn the notice into a nag. The flag never silently loads disk over the user's version.
-  - Rationale: concurrent writes are a non-goal as a *primary* flow (§3). Earlier drafts offered a third "keep editing / decide later" button, but in use it was indistinguishable from "keep mine" — both just keep the user's buffer — so it was removed. One loud notice, two opposite choices, then a quiet reminder.
-- **R37. Watcher debounce.** Debounce the watcher so a rapid sequence of external writes does not cause flicker or repeated prompts.
-- **R38. No view locks.** The app does **not** hold a write/exclusive lock on files merely opened for viewing/editing, keeping the window in which two applications contend for the file as small as possible.
-
-### 5.7 Tabs
-
-- **R39.** Open multiple documents, each in its own tab; switch between them.
-- **R40.** **Per-tab dirty indicator** showing unsaved local changes.
-- **R41.** Close an individual tab — via the tab's **×** or **Ctrl/Cmd+W** (which closes the active tab, never the window). Closing a tab with unsaved local edits prompts to save first (Save / Discard / Cancel). *(With auto-save, most closes have nothing pending; the prompt covers the un-debounced window.)* Closing the **last** tab returns to the welcome/empty state (R46), it does not quit.
-- **R42.** Recently-opened list — **not required**.
-- **R43.** Tab reordering — **not required**; include only if provided for free by the UI framework.
-- **R44.** Bulk tab operations (close all / close others) — **out of scope** (see §3).
-
-> Status (2026-06-20): R39–R41 implemented. One CodeMirror instance is shared across tabs; each tab stashes/restores its full editor state (undo/scroll/selection) on switch, and carries its own buffer, baseline, dirty, and out-of-sync state. Opening a file already open focuses its tab rather than duplicating. Closing a tab unwatches its file; closing a *dirty* tab prompts (Save / Discard / Cancel). R42/R43 remain not-done by design.
-
-### 5.8 Layout & empty state
-
-- **R45. Split view & reading mode.** The live rendered view (left) and source editor (right) are shown side by side with synchronized scrolling (R18). A **Show Source / Hide Source** toggle in the title bar collapses the editor so the rendered view fills the window for distraction-free reading, and restores the side-by-side split for editing. *(Pane order is fixed; a dynamic in-app swap is out of scope — see §3.)*
-  - **Default to reading view.** Because the primary use is reviewing rendered output, the app opens with the source hidden (rendered view only); one click on **Show Source** reveals the editor to make corrections, and **Hide Source** returns to full-window reading. The editor stays mounted while hidden, so edits, undo history, and scroll position are preserved across toggles.
-  - **Window auto-resize.** Showing the source roughly **doubles the window width** to make room for the side-by-side editor, and hiding it restores the earlier (reading) width — so the reading view stays comfortably narrow and the editing view stays roomy. The reading width is remembered per window (respecting a manual resize), the target is clamped to the display work area and nudged to stay on-screen, and the height is unchanged. No resize happens when the window is maximized or full screen.
-- **R46. Empty state.** When no files are open — whether at a fresh launch with no file argument (R10) or after the last tab is closed — the app remains open and displays the **welcome screen** (the §5.4c sandbox), which serves as the "no files open" state; the tab strip is hidden. Closing the last tab does **not** quit the app. *(Implemented 2026-06-20.)*
-
-### 5.9 Application menu & commands
-
-- **R47. Native menu bar.** Common operations are exposed through the **OS-native application menu** (not a custom command palette). At minimum:
-  - **File:** Open (R8), Save / force-save (R30), Reload File (R31a, `Ctrl/Cmd+R`), Export to PDF (R52, `Ctrl/Cmd+Shift+P`), Print (R53, `Ctrl/Cmd+P`), Close Tab (R41, `Ctrl/Cmd+W`), Exit (quit the application).
-  - **Edit:** Undo/redo (R20), Find & Replace (R21), and the formatting actions (R23) where appropriate.
-  - **Help:** open the Help window (R48), and **Toggle Developer Tools**. *(DevTools do not open on a normal launch; they are opt-in via this menu item or a `--devtools` launch flag.)*
-  - *(No **View** or **Window** menu: their only deliberate items — Reload File and window close — live in File; standard view items like zoom and full screen are omitted as unused clutter.)*
-- *(A searchable command palette is explicitly not built for this version; the native menu covers these operations. The Show/Hide Source view toggle (R45) lives in the title bar rather than the menu.)*
-
-### 5.10 Help
-
-- **R48. Help window.** A Help window/dialog showing:
-  - **Basic app info** — name, version, short description.
-  - **License info** — the app's license plus bundled third-party attribution notice (satisfies the §10 attribution obligation in-app).
-  - **Keyboard shortcuts** — a readable reference of all shortcuts (formatting shortcuts R23, save/force-save, find & replace, print & export-to-PDF R52/R53, menu operations), so the user has an in-app reminder.
-
-### 5.11 Print & Export to PDF
-
-Both features render **only the active tab's rendered preview** — never the toolbar, tab strip, source editor, split divider, out-of-sync banner, or any open dialog. They share one print stylesheet (`@media print`), since Electron renders both `webContents.print()` and `webContents.printToPDF()` with PRINT media. *(Numbering note: R49–R51 are the non-functional requirements in §6; these new functional requirements take R52/R53.)*
-
-- **R52. Export to PDF (`File → Export to PDF…`, `Ctrl/Cmd+Shift+P`).** Writes the active document's rendered preview to a PDF. Export **always** presents a native Save As dialog, pre-filled with a suggested filename and folder; the PDF is written only on explicit confirmation, and canceling writes nothing — the dialog is both a safety catch and a clear indication of where the file lands. The default is the source file's name with a `.pdf` extension (`notes.md` → `notes.pdf`) in **the source file's folder**; with no file open it is `Galley document.pdf` in the user's Documents folder. **Page size Letter, 0.75in margins, backgrounds preserved**; the full document paginates (never clipped to the viewport). Save/IO errors surface as an error dialog, not a crash. *(Priority feature.)*
-- **R53. Print (`File → Print…`, `Ctrl/Cmd+P`).** Opens the OS print dialog for the active document's rendered preview, with the same chrome-stripped, full-document, backgrounds-on rendering as R52. Paper, margins, and headers beyond the defaults are the OS dialog's concern.
-- **R52a / R53a. Shared print-rendering rules.** The print stylesheet must: (1) **release the fixed-height scroll chain** (`.app` / `.split-view` / `.pane` / `.preview-scroll` height + overflow) so the whole document flows across pages instead of clipping to the viewport; (2) **hide all non-preview chrome**; (3) **keep backgrounds** (`printBackground: true` plus `print-color-adjust: exact`); (4) apply sensible pagination — avoid breaking inside code blocks / tables, and wrap long code lines and wide tables so they do not run off the page.
-- **R52b. No new runtime dependencies** — printing and PDF export use Electron's built-in `webContents` APIs (supports the §6 self-contained goal).
-- **R52c. Wiring.** The menu handlers run in the main process and call `webContents.print()` / `printToPDF()` directly — printing is main-process work and needs no renderer round-trip. The one fact main lacks, the active document's path (for the save-dialog default), is supplied by a single one-way `setActiveDocPath` signal from the renderer (analogous to `setSourceVisible`). *(IPC follows data ownership: Save / Save-As bounce through the renderer because the buffer and post-write state are renderer-owned; Export reads the live page main already controls and mutates no document state, so it does not.)*
-- **Out of scope this version:** page numbers / running headers-footers, an in-app page-size or margin chooser, and opening the PDF after export (see §3 and §12).
-
----
-
-## 6. Non-functional requirements
-
-- **R49. Cross-platform:** runs on Windows and macOS.
-- **R50. Fully self-contained application:** ships and runs as one application requiring no separately-installed runtime or standalone browser. *(Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine; from the user's perspective it is a single self-contained app. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.)*
-- **R51. Prototype-appropriate footprint:** bundle size and memory are heavier than a native-webview approach (bundled engine), an accepted tradeoff for this version. See §9 for the migration path if footprint becomes a concern.
+- **Document view — [`docs/PRD-View.md`](PRD-View.md).** The two reflecting surfaces of a document: the **rendered preview** (GFM, LaTeX math, code highlighting, link handling, the pre-build rendering spike) and the **source editor** (live preview, scroll sync, editor highlighting, undo/redo, find & replace, formatting shortcuts, document states). **R1–R21.**
+- **Opening files & instance model — [`docs/PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md).** How files are opened (CLI, dialog, empty start) and the caller-facing, self-arbitrating instance model / file delivery. **R1–R9.** *(The Projects sub-PRD below makes the instance model a persistent feature.)*
+- **Saving & conflict handling — [`docs/PRD-Saving-and-Conflicts.md`](PRD-Saving-and-Conflicts.md).** Auto-save/force-save, manual reload, file watching, self-write detection, and the write-/read-path conflict guards. **R1–R10.**
+- **UI shell — [`docs/PRD-UI-Shell.md`](PRD-UI-Shell.md).** Tabs, split-view layout & empty state, the native application menu, the Help window, and Print / Export to PDF. **R1–R12.**
+- **Projects — [`docs/PRD-Projects.md`](PRD-Projects.md#1-summary).** Makes the **project** a first-class, persistent concept: a durable per-project home, session persistence with prompt-on-restore after a crash, and a robust ownership/liveness model (issues [#62](https://github.com/eschgr/mdtool/issues/62), [#60](https://github.com/eschgr/mdtool/issues/60), [#56](https://github.com/eschgr/mdtool/issues/56), [#61](https://github.com/eschgr/mdtool/issues/61)). Supersedes the instance model & file delivery in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery).
 
 ---
 
@@ -270,20 +73,22 @@ Single language end to end (TypeScript/JavaScript). No second-language backend.
 |---|---|---|
 | App shell | **Electron** | One language for UI + system code; bundles the rendering engine, JS runtime, and file IO into one toolchain. Heavier binary, fewer ecosystem seams. |
 | UI framework | **React** (recommended) | First-class CodeMirror and markdown-lib bindings. Svelte/plain TS are lighter alternatives. |
-| Editor | **CodeMirror 6** | Syntax highlighting (R19), undo/redo (R20), find/replace panel (R21), line numbers (R22), keymaps (R23). |
-| Markdown render | **markdown-it** + GFM plugins (`markdown-it-task-lists`) + **`markdown-it-texmath`** (math) + **`highlight.js`** (code) | Renders source → HTML for the preview pane (R1–R3). Runs in the renderer for zero-latency live preview. Plugin set decided by the R5 spike. |
-| Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor (R6). MathJax remains the documented heavier fallback if ever needed. |
-| File watching | **chokidar** (or Node `fs.watch`) | In the main process (R32, R37). |
-| File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process (R33–R35). |
-| Instance model | **App self-arbitrates per project** via a file-drop channel (`<tmpdir>/galley-<name>/` + `owner.json`) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>` (R11–R15). File transport works in a sandbox where socket `listen()` is denied. |
+| Editor | **CodeMirror 6** | Syntax highlighting, undo/redo, find/replace panel, line numbers, keymaps. |
+| Markdown render | **markdown-it** + GFM plugins (`markdown-it-task-lists`) + **`markdown-it-texmath`** (math) + **`highlight.js`** (code) | Renders source → HTML for the preview pane. Runs in the renderer for zero-latency live preview. Plugin set decided by the rendering spike. |
+| Math | **KaTeX** via **`markdown-it-texmath`** (dollar + bracket delimiters) | Chosen by the rendering spike over `@vscode/markdown-it-katex` (dollars-only). Covers `$…$`, `$$…$$`, `\(…\)`, `\[…\]`; `throwOnError:false` floor. MathJax remains the documented heavier fallback if ever needed. |
+| File watching | **chokidar** (or Node `fs.watch`) | In the main process. |
+| File IO + hashing | **Node `fs` + `crypto`** | Read/write, baseline hashing, self-write detection in the main process. |
+| Instance model | **App self-arbitrates per project** via a file-drop channel in the durable per-project home (`owner.json` + `*.msg` files) | App claims the project and becomes-or-hands-off; the caller just runs `galley --project <name> <file>`. File transport works in a sandbox where socket `listen()` is denied. See [`PRD-Projects.md`](PRD-Projects.md). |
 | Packaging | **Electron Forge** (or electron-builder) | Produces installers (see §8). |
+
+**Self-contained packaging (NFR2).** Electron internally runs a main process plus renderer process(es) and bundles its own rendering engine, JS runtime, and file IO; from the user's perspective it is a single self-contained app requiring no separately-installed runtime or browser. Print and Export to PDF add no dependencies — both use Electron's built-in `webContents` printing APIs.
 
 ### Architecture notes
 
 - **Main process** owns all OS-touching work: CLI arg parsing, the per-project file-drop channel (scratch dir + `owner.json` liveness + `*.msg` command files) for file delivery, file read/write, file watching, baseline hashing and self-write detection. It emits events to the renderer ("open this file in a tab", "this file changed externally").
 - **Renderer process** owns the entire UI: CodeMirror editor, markdown-it/KaTeX preview, scroll-sync, tabs, dirty indicators, split-view layout, link dialog, and conflict prompts. It calls the main process to load/save and listens for its events.
 - **Portability seam (important):** keep the main-process OS-touching code (file IO, watch, the project/channel transport, CLI) behind a thin, well-defined interface. This is the layer that would be rewritten in a future migration off Electron; isolating it keeps that migration cheap (see §9).
-- **Security:** enable `contextIsolation`, do not expose Node directly to the renderer, bridge via a minimal preload API, and route preview link-clicks to the system browser (R4) rather than allowing in-app navigation. (Standard Electron hardening; the renderer is a full rendering-engine page.)
+- **Security:** enable `contextIsolation`, do not expose Node directly to the renderer, bridge via a minimal preload API, and route preview link-clicks to the system browser rather than allowing in-app navigation. (Standard Electron hardening; the renderer is a full rendering-engine page.)
 
 ---
 
@@ -336,14 +141,14 @@ If footprint later becomes a real concern, the migration target is **Tauri** (OS
 - **Electron:** MIT license — free, including for commercial use, no fees or tiers.
 - **Tooling** (Electron Forge, CodeMirror 6, markdown-it, KaTeX/MathJax, chokidar): permissive (MIT/BSD/Apache-2.0 family). Confirm each at lock-in.
 - **Chromium** (bundled via Electron): predominantly BSD with some third-party components under other licenses; does **not** require open-sourcing your app. Major closed-source Electron apps (VS Code, Slack, Discord) demonstrate proprietary distribution is fine.
-- **Only obligation:** include the bundled license/attribution notice with the distributed app (also surfaced in-app via the Help window, R48). Forge/electron-builder generate this automatically.
+- **Only obligation:** include the bundled license/attribution notice with the distributed app (also surfaced in-app via the Help window). Forge/electron-builder generate this automatically.
 - **Total cost for personal use: $0** (signing certificates only enter if distributing to others; see §8).
 
 ---
 
 ## 11. Dependencies
 
-Install picture for the prototype (all permissive licenses; math/GFM choices resolved by the R5 spike — see R6):
+Install picture for the prototype (all permissive licenses; math/GFM choices resolved by the rendering spike):
 
 | Package | Purpose | Process |
 |---|---|---|
@@ -358,79 +163,13 @@ Install picture for the prototype (all permissive licenses; math/GFM choices res
 | `chokidar` | File watching (external-change detection) | main |
 | *(built-in)* Node `fs`, `crypto`, `path` | File IO, hashing, path handling | main |
 
-> Note: the GFM/math plugin set was finalized by the R5 spike (`markdown-it-texmath` + `katex`, `markdown-it-task-lists`, `highlight.js`). Exact CodeMirror sub-packages may still vary; the table lists the functional pieces rather than a locked version manifest.
-
----
-
-## 12. Open items / future
-
-- New-file creation (deferred; anticipated next addition).
-- Session restore — specified in the Projects sub-PRD ([§8.6 Session persistence & crash recovery](PRD-Projects.md#86-session-persistence--crash-recovery-pf19pf21), PF19–PF21: persist/restore open tabs, prompt-on-restore after a crash); design settled, implementation pending.
-- Diff view for conflict resolution (deferred enhancement).
-- Clipboard-URL prefill in the link dialog (R27 nice-to-have).
-- Possible future: directory view, drag-and-drop, recently-opened list, tab reordering, bulk tab operations.
-- Possible future: **smart list-item selection** — extending a selection (or `Home`) to the start of a list line stops at the item's *content*, skipping the marker (`-` / `1.`), as most modern editors do. New behavior, not a correctness fix; out of scope this version.
-- Possible future: a **dynamic in-app control to swap the editor/preview pane order** (the fixed default is rendered view left, source right) — nice-to-have, gated behind the internationalization/RTL and accessibility work that is out of scope this version (§3).
-- Possible future: internationalization/localization (incl. RTL) and a dedicated accessibility pass (§3).
-- Possible future: migrate shell to Tauri if footprint warrants (§9).
-- Print/export polish: page numbers / running headers-footers, an in-app page-size & margin chooser, and "open the PDF after export" (§5.11).
-- Keybinding-collision checks at implementation: `Cmd/Ctrl+E` (inline code) and `Cmd/Ctrl+K` (link) against editor defaults.
-
----
-
-## 13. Requirements traceability (decision log)
-
-| Decision | Resolution |
-|---|---|
-| Markdown flavor | GFM + LaTeX math; assembled from markdown-it plugins |
-| Code blocks | Syntax-highlighted fences |
-| Math rendering | **`markdown-it-texmath` + KaTeX** (dollar + bracket delimiters), chosen by the R5 spike over `@vscode/markdown-it-katex` (dollars-only); `throwOnError:false` floor; MathJax documented fallback (R5/R6) |
-| Preview link clicks | Open in system default browser, never in-app (R4) |
-| Rendering spike | **Done.** Validated GFM + math + highlighting on representative Claude output before building UI; settled the math engine (R5/R6) |
-| Save model | Auto-save, 5s debounce; force-save retained as reassurance |
-| Reload model | `Ctrl/Cmd+R` re-reads the open file from disk, keeps the view layout; reloads the document only, not the app (R31a). HMR off + reload roles removed so code changes need a restart |
-| Conflict — write path | Save checks disk vs. baseline; if diverged, raise the out-of-sync notice, no silent overwrite (R34) |
-| Conflict — read path | Reload silent if buffer in sync; else raise the out-of-sync notice (R35) |
-| Conflict — notice | Two choices (Load from disk / Keep mine); loud modal on the first divergence per run, then a passive status-bar flag; auto-save suspended until resolved (R36) |
-| Diff view | Out of scope (labeled choice only this version) |
-| File locks | No write/view locks held on open files (R38) |
-| Self-write detection | Content-hash baseline, in the Node main process (R33) |
-| Crash-loss tolerance | Up to ~5s, accepted |
-| Preview | Live, as-you-type, with scroll sync (R17/R18) |
-| Find & replace | In scope (R21); `Cmd/Ctrl+F` panel — find next/prev, replace/replace-all, case/whole-word/regex toggles (CodeMirror built-in) |
-| Editor features | Syntax highlighting, undo/redo, find/replace; line numbers optional |
-| Formatting shortcuts | Bold, italic, link, inline code, strikethrough, headings (1–6), fenced code block, list indent/outdent; toggle + smart selection |
-| Headings | Explicit `Ctrl/Cmd+1..6`; normalize to requested level (switch, not stack); same-level removes |
-| Link editing | `Cmd/Ctrl+K` dialog; prefills when cursor is within an existing link; Remove-link button; clipboard prefill is future |
-| Indentation | Spaces, default width 2; `Tab` list-indent only at start of a list line; never escapes editor |
-| Text color | Out of scope (not standard markdown) |
-| Open mechanisms | CLI arg + file dialog; single file per open; may start with no file (R10) |
-| Instance model | App self-arbitrates per project via a file-drop channel; caller always runs `galley --project <name> <file>` and the app becomes-or-hands-off (R11–R15). Being reworked into a persistent project home — see [`docs/PRD-Projects.md`](PRD-Projects.md#7-data-model--on-disk-layout) |
-| Project grouping | One scratch dir per project (`<tmpdir>/galley-<name>/`) ⇒ multiple independent windows; keyed by the `--project` name, not PID |
-| Window focus on delivery | Receiving instance raises its own window (OS forbids a different process raising another's window); Windows is a known rough edge |
-| Re-open already-open file | Focus existing tab |
-| Tabs | Per-tab dirty indicator; close-tab with save prompt; recently-opened (no); reorder (only if free); bulk close (out of scope) |
-| Empty state | "No files open"; closing last tab keeps app open (R46) |
-| Session restore | Specified in the Projects sub-PRD (`docs/PRD-Projects.md`, PF19–PF21); design settled, implementation pending |
-| Layout | Split view with scroll sync; **Show/Hide Source** toggle collapses to full-window reading view; opens in reading view by default (R45) |
-| Commands | OS-native menu bar (File/Edit/Help); no custom command palette |
-| Help window | App info, license + attribution, full keyboard-shortcut reference |
-| Stack | Electron, single language (TS/JS), React, CodeMirror 6, markdown-it + GFM (task-lists) + `markdown-it-texmath`/KaTeX + highlight.js → HTML preview; Node main process for IO/watch/channel-listener/CLI |
-| Portability | Isolate main-process OS code behind a thin interface; Tauri as later migration target if bloated |
-| Build output | `.dmg` (macOS), `.exe`/`.msi` (Windows) via Electron Forge/electron-builder; per-OS build, CI for both |
-| Licensing | MIT/permissive; bundle attribution notice (also in Help); $0 for personal use |
-| New-file creation | Out of scope (future) |
-| Print / Export to PDF | Active tab's rendered preview only; live-window `@media print` (chrome stripped, full document paginated, backgrounds on); built-in Electron `webContents` APIs, no new deps (R52/R53) |
-| PDF export flow | Always a pre-filled **Save As** dialog (confirm-to-write, never silent); default = source folder + name `.pdf`, else `Galley document.pdf` in Documents; Letter, 0.75in margins (R52) |
-| Print/export wiring | Main-direct menu handlers call `webContents.print`/`printToPDF`; one one-way `setActiveDocPath` mirror feeds the save-dialog default; no renderer round-trip (R52c) |
-| Print/export shortcuts | Print `Ctrl/Cmd+P`; Export to PDF `Ctrl/Cmd+Shift+P` |
-| Page numbers / headers-footers | Out of scope this version (future) |
+> Note: the GFM/math plugin set was finalized by the rendering spike (`markdown-it-texmath` + `katex`, `markdown-it-task-lists`, `highlight.js`). Exact CodeMirror sub-packages may still vary; the table lists the functional pieces rather than a locked version manifest.
 
 ---
 
 ## Appendix A — LLM usage guide (launcher contract)
 
-This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app **self-arbitrates per project** (§5.3), the caller's job is just to name the project and pass files. A prompt-ready version is in §A.4.
+This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app **self-arbitrates per project** (see [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md)), the caller's job is just to name the project and pass files. A prompt-ready version is in §A.4.
 
 ### A.1 Mental model
 
@@ -441,7 +180,7 @@ This appendix specifies how an LLM (e.g. Claude) drives `galley`. Since the app 
 ### A.2 The project name
 
 - Pass a **stable, filesystem-safe project name** with `--project <name>` — a short, readable name works well (the project's folder name is an easy choice, but any short name that identifies the project works). The only rule: use the **same name** for the same project, so its files share one window even across separate sessions.
-- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private scratch directory under the temp dir (`<tmpdir>/galley-<name>/`); you never touch that directory.
+- Allowed characters: letters, digits, `.` `_` `-`. The app maps the name to a private, app-managed directory; you never touch it.
 
 ### A.3 Operations
 
@@ -449,14 +188,14 @@ Every operation below uses the **same command** — `galley --project <name> <fi
 
 **Open a file.** If the file isn't open yet, it opens as a new focused tab — launching the project's window first if none is running.
 
-**Focus an open file.** If the file is already open, re-running brings its existing tab to the front instead of opening a duplicate (R15) — re-sending a file is how you focus it.
+**Focus an open file.** If the file is already open, re-running brings its existing tab to the front instead of opening a duplicate — re-sending a file is how you focus it.
 
 > Notes
 > - **Paths** may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory.
 > - **Several files at once:** `galley --project <name> a.md b.md`.
 > - Handing a file to an already-open window makes the command **exit immediately** — a fast exit means delivered, not failed.
 > - `galley --project <name>` **with no file** opens (or reuses) the project's window with nothing loaded.
-> - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in §5.3) — not an error condition.
+> - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery)) — not an error condition.
 > - Delivery is coordinated through ordinary files, not sockets, so it works from a sandboxed shell.
 
 ### A.4 Prompt-ready instructions
