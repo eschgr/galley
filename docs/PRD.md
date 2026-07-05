@@ -193,6 +193,7 @@ Every operation below uses the **same command** — `galley --project <name> <fi
 > Notes
 > - **Paths** may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory.
 > - **Several files at once:** `galley --project <name> a.md b.md`.
+> - **Open at a line:** append `:<line>` to a path — `galley --project <name> notes.md:120` opens (or focuses) `notes.md` and reveals line 120 with a brief highlight. The line is 1-based and clamped to the file. Only a trailing `:<digits>` is treated as the line, so a Windows drive letter is safe (`C:\notes.md:120`). An extra `:<col>` is accepted and ignored.
 > - Handing a file to an already-open window makes the command **exit immediately** — a fast exit means delivered, not failed.
 > - `galley --project <name>` **with no file** opens (or reuses) the project's window with nothing loaded.
 > - The window raises itself on delivery; on Windows this may occasionally be unreliable (R-note in [`PRD-Opening-and-Instances.md`](PRD-Opening-and-Instances.md#instance-model--file-delivery)) — not an error condition.
@@ -218,6 +219,8 @@ To show a file, run ONE command:
   - Paths may be relative (resolved against the current directory) or absolute;
     absolute is safer. Re-running for an open file just focuses its tab.
   - Open several at once: galley --project <name> a.md b.md
+  - Open at a specific line by appending :<line> to the path, e.g.
+    galley --project <name> notes.md:120 — reveals line 120.
   - Handing a file to an already-open window makes the command exit immediately
     — that fast exit means "delivered", not an error.
 

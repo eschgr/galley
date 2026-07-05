@@ -23,8 +23,10 @@
  * one and surface a stray incompatible message instead of failing silently).
  */
 
-/** This build's channel protocol version. Bump MAJOR only on a breaking change. */
-export const PROTOCOL = { major: 1, minor: 0 } as const;
+// This build's channel protocol version. Bump MAJOR only on a breaking change;
+// bump MINOR when adding an optional field or message type (older ends ignore it).
+// minor 1 added the optional `line` reveal target to the `open` envelope.
+export const PROTOCOL = { major: 1, minor: 1 } as const;
 
 /** Wire form, e.g. "1.0". */
 export const PROTOCOL_VERSION = `${PROTOCOL.major}.${PROTOCOL.minor}`;

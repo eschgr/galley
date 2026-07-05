@@ -8,7 +8,7 @@ import { readFile as fsReadFile, writeFile as fsWriteFile } from 'node:fs/promis
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { FileSnapshot } from './index';
+import type { FileSnapshot, OpenRequest } from './index';
 
 /** SHA-256 (hex) of UTF-8 content — the baseline used for conflict detection. */
 export function hashContent(content: string): string {
@@ -16,25 +16,43 @@ export function hashContent(content: string): string {
 }
 
 /**
- * Pick the file paths to open from a process argv (`galley <file> [file …]`).
+ * Split a trailing `:<line>[:<col>]` reveal suffix off a CLI file argument (the
+ * editor `path:line[:col]` convention — open at a specific line). Returns the bare
+ * path and, if present, the 1-based line; a column is accepted and ignored.
  *
- * Returns EVERY non-flag argument, each resolved to absolute, in command-line
+ * Only a colon **followed by digits at the very end** is treated as the
+ * separator, so a Windows drive letter stays intact: `C:\Users\me\notes.md:120`
+ * → `{ path: 'C:\Users\me\notes.md', line: 120 }`, while `C:\Users\me\notes.md`
+ * (no trailing digits) → `{ path: 'C:\Users\me\notes.md' }`. The leading match is
+ * lazy so the path grows only until such a suffix is found.
+ */
+export function splitLineSuffix(arg: string): { path: string; line?: number } {
+  const m = /^(.+?):(\d+)(?::\d+)?$/.exec(arg);
+  return m ? { path: m[1], line: Number(m[2]) } : { path: arg };
+}
+
+/**
+ * Pick the files to open from a process argv (`galley <file> [file …]`).
+ *
+ * Returns EVERY non-flag argument, each resolved to an absolute path (with an
+ * optional 1-based reveal line parsed from a `path:line` suffix), in command-line
  * order — so `galley a.md b.md c.md` opens all three. Skips the executable (and,
  * in dev, the app-path argv[1]) and known value-taking flags (`--project <name>`
  * also skips its value); other flags (`--devtools`, `--help`, `-h`) are simply
  * ignored. `packaged` distinguishes a packaged launch (`galley.exe …`) from a dev
  * launch (`electron . …`). Returns an empty array when no file was given.
  */
-export function parseCliFileArgs(argv: readonly string[], packaged: boolean): string[] {
+export function parseCliFileArgs(argv: readonly string[], packaged: boolean): OpenRequest[] {
   const rest = argv.slice(packaged ? 1 : 2);
-  const files: string[] = [];
+  const files: OpenRequest[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
       if (arg === '--project') i++; // skip its name value
       continue;
     }
-    files.push(path.resolve(arg));
+    const { path: rawPath, line } = splitLineSuffix(arg);
+    files.push(line === undefined ? { path: path.resolve(rawPath) } : { path: path.resolve(rawPath), line });
   }
   return files;
 }
