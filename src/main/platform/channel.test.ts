@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { sendToChannel, listenOnChannel, type ChannelListener } from './channel';
+import { sendToChannel, sendCloseToChannel, sendSetToChannel, listenOnChannel, type ChannelListener } from './channel';
 import { acquireProject, reassertOwner, readProjectOwner, OWNER_FILE, type ProjectOwner } from './project';
 import { PROTOCOL_VERSION, PROTOCOL } from './protocol';
 
@@ -150,6 +150,66 @@ describe('channel message format (versioned envelope)', () => {
     sendToChannel(dir, ID, 'C:\\real.md');
     expect(await waitFor(() => got.length === 1)).toBe(true);
     expect(got).toEqual(['C:\\real.md']);
+  });
+});
+
+describe('channel tab-management verbs (--close / --set)', () => {
+  // Listen with close/set handlers wired through the options object.
+  async function listenVerbs(
+    dir: string,
+    handlers: { onClose?: (p: string) => void; onSet?: (paths: string[]) => void },
+  ): Promise<void> {
+    const l = listenOnChannel(dir, ID, () => undefined, handlers);
+    open.push(l);
+    await sleep(120);
+  }
+
+  it('delivers a close message to the onClose handler', async () => {
+    const dir = freshRuntimeDir();
+    const closed: string[] = [];
+    await listenVerbs(dir, { onClose: (p) => closed.push(p) });
+
+    sendCloseToChannel(dir, ID, 'C:\\docs\\stale.md');
+
+    expect(await waitFor(() => closed.length === 1)).toBe(true);
+    expect(closed[0]).toBe('C:\\docs\\stale.md');
+  });
+
+  it('delivers a set message (the full path list) to the onSet handler', async () => {
+    const dir = freshRuntimeDir();
+    const sets: string[][] = [];
+    await listenVerbs(dir, { onSet: (paths) => sets.push(paths) });
+
+    sendSetToChannel(dir, ID, ['C:\\a.md', 'C:\\b.md']);
+
+    expect(await waitFor(() => sets.length === 1)).toBe(true);
+    expect(sets[0]).toEqual(['C:\\a.md', 'C:\\b.md']);
+  });
+
+  it('a set message with no handler (older owner) is skipped, not fatal', async () => {
+    const dir = freshRuntimeDir();
+    const opened: string[] = [];
+    // onFile still works even though onClose/onSet are absent (older-minor owner).
+    const l = listenOnChannel(dir, ID, (p) => opened.push(p));
+    open.push(l);
+    await sleep(120);
+
+    sendSetToChannel(dir, ID, ['C:\\x.md']); // unknown-capability verb → ignored
+    sendToChannel(dir, ID, 'C:\\real.md'); // a known open after it still delivers
+
+    expect(await waitFor(() => opened.length === 1)).toBe(true);
+    expect(opened).toEqual(['C:\\real.md']);
+  });
+
+  it('drops non-string entries from a set path list', async () => {
+    const dir = freshRuntimeDir();
+    const sets: string[][] = [];
+    await listenVerbs(dir, { onSet: (paths) => sets.push(paths) });
+
+    dropRaw(dir, ID, { v: PROTOCOL_VERSION, type: 'set', paths: ['C:\\a.md', 42, '', null, 'C:\\b.md'] });
+
+    expect(await waitFor(() => sets.length === 1)).toBe(true);
+    expect(sets[0]).toEqual(['C:\\a.md', 'C:\\b.md']);
   });
 });
 

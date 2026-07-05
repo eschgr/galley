@@ -185,12 +185,14 @@ This fits both workflows: on macOS, where content lives under a projects parent 
 
 ### 8.5 Project operations (PF11)
 
-The verbs a project supports and how each behaves. The LLM's entire interface is the first two rows via the launcher; the rest are human-facing or lifecycle-internal.
+The verbs a project supports and how each behaves. The LLM's entire interface is the launcher rows (attach/open, close a tab, set the open set); the rest are human-facing or lifecycle-internal. The caller can **manage** the tab set — add, remove, or re-sync it — not merely add to it.
 
 | Operation | Trigger | Behavior |
 |---|---|---|
 | **Attach / open project** | `galley --project <name> [files]` | Derive and materialize-or-reuse the home; test liveness (PF7). If becoming owner: restore the last session (PF20) and open any CLI files. If a live owner exists: hand off the files and exit. |
 | **Open a file into the project** | same command, with a file | Routed via the channel to the owner window as a new focused tab (or focus the tab if already open), per main PRD R14/R15. The opened file joins the ephemeral session. |
+| **Close a tab** | `galley --project <name> --close <file…>` | Routed via the channel to the owner window, which closes the tab(s) for the named path(s). A tab with unsaved edits still prompts (Save / Discard / Cancel) — a caller-driven close never silently discards user work. A path that isn't open is a no-op. |
+| **Set the open set** | `galley --project <name> --set <file…>` | Routed via the channel to the owner window, which makes the open set **exactly** the named files: opens any that aren't open (focusing/keeping those already open) and closes the rest, prompting per dirty tab as above. Lets a caller re-sync the window after files are renamed, merged, or dropped from the review — without asking the user to close stale tabs by hand. |
 | **Update session** | opening/closing/switching tabs | Persist the session record (PF19) as it changes. |
 | **Close window** | window close | Persist the final session; release runtime ownership non-destructively (PF8). Durable data is kept. |
 

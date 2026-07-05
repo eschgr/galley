@@ -190,6 +190,10 @@ Every operation below uses the **same command** — `galley --project <name> <fi
 
 **Focus an open file.** If the file is already open, re-running brings its existing tab to the front instead of opening a duplicate — re-sending a file is how you focus it.
 
+**Close a tab.** `galley --project <name> --close <file>` closes that file's tab in the project window (accepts several files). A tab with unsaved edits still prompts the user (Save / Discard / Cancel) before closing. Closing a path that isn't open does nothing.
+
+**Replace the open set.** `galley --project <name> --set <file...>` makes the window show **exactly** those files — opening any that aren't open and closing the rest (dirty tabs prompt). Use it to re-sync the window after files are renamed, merged, or dropped from the review.
+
 > Notes
 > - **Paths** may be relative (resolved against the current directory at launch) or absolute; **absolute is recommended** so delivery doesn't depend on the launcher's working directory.
 > - **Several files at once:** `galley --project <name> a.md b.md`.
@@ -218,6 +222,12 @@ To show a file, run ONE command:
   - Paths may be relative (resolved against the current directory) or absolute;
     absolute is safer. Re-running for an open file just focuses its tab.
   - Open several at once: galley --project <name> a.md b.md
+  - Close a tab you no longer need shown:
+        galley --project <name> --close old.md
+  - Make the window show EXACTLY a set of files (opens missing, closes the
+    rest): galley --project <name> --set a.md b.md c.md
+  - Closing a file with unsaved edits prompts the user first — it is never
+    discarded silently.
   - Handing a file to an already-open window makes the command exit immediately
     — that fast exit means "delivered", not an error.
 

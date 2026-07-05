@@ -23,6 +23,8 @@ type Harness = {
   extCb: ((f: MockFile) => void) | null;
   reloadCb: (() => void) | null;
   closeTabCb: (() => void) | null;
+  closeFileCb: ((path: string) => void) | null;
+  retainCb: ((paths: string[]) => void) | null;
   helpCb: (() => void) | null;
   nextTabCb: (() => void) | null;
   prevTabCb: (() => void) | null;
@@ -62,6 +64,7 @@ export async function installMockBridge(
     const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: Harness = {
       openCb: null, saveCb: null, extCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
+      closeFileCb: null, retainCb: null,
       nextTabCb: null, prevTabCb: null,
       saveCalls: [], closed: [], openExternalCalls: [], openLocalCalls: [],
       nextSaveConflict: null, nextRead: null,
@@ -137,6 +140,14 @@ export async function installMockBridge(
         harness.extCb = cb;
         return () => (harness.extCb = null);
       },
+      onCloseFile: (cb: (path: string) => void) => {
+        harness.closeFileCb = cb;
+        return () => (harness.closeFileCb = null);
+      },
+      onRetainFiles: (cb: (paths: string[]) => void) => {
+        harness.retainCb = cb;
+        return () => (harness.retainCb = null);
+      },
       // `satisfies` makes a missing/renamed bridge method a COMPILE error here,
       // instead of a runtime "X is not a function" crash that only surfaces in a
       // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
@@ -172,6 +183,23 @@ export async function fire(page: Page, cb: 'openCb' | 'extCb', file: MockFile): 
 /** Fire an external on-disk change (the watcher payload) for the open file (R32/R33). */
 export async function fireExternalChange(page: Page, file: MockFile): Promise<void> {
   await fire(page, 'extCb', file);
+}
+
+/** Fire a caller `--close <path>` (the channel close verb) for the given path. */
+export async function fireCloseFile(page: Page, path: string): Promise<void> {
+  await page.evaluate(
+    (p) => (window as unknown as { __mock: { closeFileCb: (x: string) => void } }).__mock.closeFileCb(p),
+    path,
+  );
+}
+
+/** Fire a caller `--set` retain list (the channel set verb): close every tab NOT
+ *  in `paths`. (The members are opened separately via openFile.) */
+export async function fireRetain(page: Page, paths: string[]): Promise<void> {
+  await page.evaluate(
+    (ps) => (window as unknown as { __mock: { retainCb: (x: string[]) => void } }).__mock.retainCb(ps),
+    paths,
+  );
 }
 
 /** Fire the File → Save menu/accelerator (R30). */

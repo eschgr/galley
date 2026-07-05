@@ -82,6 +82,16 @@ const api: GalleyApi = {
     ipcRenderer.on('file:externalChange', listener);
     return () => ipcRenderer.removeListener('file:externalChange', listener);
   },
+  onCloseFile: (callback: (path: string) => void) => {
+    const listener = (_event: unknown, path: string) => callback(path);
+    ipcRenderer.on('file:close', listener);
+    return () => ipcRenderer.removeListener('file:close', listener);
+  },
+  onRetainFiles: (callback: (paths: string[]) => void) => {
+    const listener = (_event: unknown, paths: string[]) => callback(paths);
+    ipcRenderer.on('file:retain', listener);
+    return () => ipcRenderer.removeListener('file:retain', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('galley', api);

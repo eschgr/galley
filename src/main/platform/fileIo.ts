@@ -26,17 +26,41 @@ export function hashContent(content: string): string {
  * launch (`electron . …`). Returns an empty array when no file was given.
  */
 export function parseCliFileArgs(argv: readonly string[], packaged: boolean): string[] {
+  return parseCliOperation(argv, packaged).files;
+}
+
+/** A launcher invocation's verb and its resolved absolute file paths. `open` is
+ *  the default (positional files); `close` (`--close`) and `set` (`--set`) let a
+ *  caller manage the tab set, not just add to it. */
+export interface LauncherOp {
+  readonly kind: 'open' | 'close' | 'set';
+  readonly files: string[];
+}
+
+/**
+ * Parse a launcher invocation into its verb + resolved file paths (manage the tab
+ * set, not just open). `--close <file…>` closes those tabs; `--set <file…>` makes
+ * the open set exactly those; otherwise positional files open (the existing
+ * behavior). Every non-flag argument is resolved to absolute, in command-line
+ * order. Skips the executable (and, in dev, the app-path argv[1]) and the
+ * `--project <name>` value; other flags (`--devtools`, `--help`, `-h`) are ignored.
+ * `packaged` distinguishes a packaged launch (`galley.exe …`) from a dev launch.
+ */
+export function parseCliOperation(argv: readonly string[], packaged: boolean): LauncherOp {
   const rest = argv.slice(packaged ? 1 : 2);
+  let kind: LauncherOp['kind'] = 'open';
   const files: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
       if (arg === '--project') i++; // skip its name value
-      continue;
+      else if (arg === '--close') kind = 'close';
+      else if (arg === '--set') kind = 'set';
+      continue; // other flags ignored
     }
     files.push(path.resolve(arg));
   }
-  return files;
+  return { kind, files };
 }
 
 /**

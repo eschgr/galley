@@ -12,6 +12,11 @@ USAGE
   galley [file ...]                    Open one or more Markdown files, each in a tab.
   galley --project <name> [file ...]   Open files in project <name>'s window,
                                          reusing that window if it is already open.
+  galley --project <name> --close <file ...>
+                                       Close the tab(s) for those files in the window.
+  galley --project <name> --set <file ...>
+                                       Make the window show EXACTLY those files
+                                         (open the missing, close the rest).
   galley --devtools                    Open developer tools on launch.
   galley --help, -h                    Print this help and exit.
 
@@ -45,6 +50,14 @@ DRIVING GALLEY FROM AN LLM — the launcher contract
         galley --project <name> a.md b.md c.md
   - `galley --project <name>` with no file opens (or reuses) the project's window
     with nothing loaded, ready for later files.
+  - You can also MANAGE the tab set, not just add to it. To stop showing a file
+    (renamed, merged away, no longer relevant), close its tab:
+        galley --project <name> --close <absolute_file_path>
+    To make the window show EXACTLY a set of files — opening any missing and
+    closing the rest in one step:
+        galley --project <name> --set a.md b.md c.md
+    Closing a file with unsaved human edits prompts the user first; it is never
+    discarded silently.
 
   That is the whole contract. Galley itself decides whether to open a new window
   or route the file into the project's existing one — and it coordinates through
