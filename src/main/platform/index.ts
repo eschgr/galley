@@ -18,6 +18,7 @@
  */
 import * as fileIo from './fileIo';
 import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
+import { SelfWriteTracker } from './selfWriteTracker';
 import {
   acquireProject as acquireProjectFs,
   releaseProject as releaseProjectFs,
@@ -177,6 +178,9 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
   // detection and the write-path divergence guard: a watcher event
   // or a save whose disk hash matches `knownHash` is consistent with our view.
   const knownHash = new Map<string, string>();
+  // Recognizes the app's own saves so the watcher forwards only genuine external
+  // changes; see SelfWriteTracker.
+  const selfWrites = new SelfWriteTracker();
   const watchers = new Map<string, FSWatcher>();
   // The active channel watcher and the runtime dir we claimed, so closeChannel
   // can stop watching and release ownership of exactly what this process took.
@@ -209,12 +213,14 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
     async readFile(absPath) {
       const snapshot = await fileIo.readFile(absPath);
       knownHash.set(absPath, snapshot.hash);
+      selfWrites.note(absPath, snapshot.hash);
       return snapshot;
     },
 
     async writeFile(absPath, content) {
       const snapshot = await fileIo.writeFile(absPath, content);
       knownHash.set(absPath, snapshot.hash);
+      selfWrites.note(absPath, snapshot.hash);
       return snapshot;
     },
 
@@ -225,6 +231,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       }
       const file = await fileIo.writeFile(absPath, content);
       knownHash.set(absPath, file.hash);
+      selfWrites.note(absPath, file.hash);
       return { conflict: false, file };
     },
 
@@ -238,7 +245,9 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       const handle = async (): Promise<void> => {
         try {
           const snapshot = await fileIo.readFile(absPath);
-          if (snapshot.hash === knownHash.get(absPath)) return; // unchanged from our view (self-write detection)
+          // Ignore our own writes — the latest known hash, or a recent one a stale
+          // read may surface — and forward only genuine external changes.
+          if (snapshot.hash === knownHash.get(absPath) || selfWrites.has(absPath, snapshot.hash)) return;
           knownHash.set(absPath, snapshot.hash); // remember the new on-disk state
           onChange({ path: absPath, content: snapshot.content, hash: snapshot.hash });
         } catch {
@@ -252,6 +261,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
 
     unwatch(absPath) {
       closeWatcher(absPath);
+      selfWrites.forget(absPath);
     },
 
     // Per-project channel (§7, §8.1). The app self-arbitrates: materialize the
