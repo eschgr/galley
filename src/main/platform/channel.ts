@@ -68,9 +68,21 @@ function atomicWrite(base: string, ext: string, body: string): void {
  * version from `owner.json` and must not write to a different-major owner — see
  * `startup.decideStartupAction`); the receiver re-checks defensively.
  */
-export function sendToChannel(runtimeDir: string, targetId: string, absPath: string): void {
+export function sendToChannel(
+  runtimeDir: string,
+  targetId: string,
+  absPath: string,
+  line?: number,
+): void {
   fs.mkdirSync(runtimeDir, { recursive: true });
-  const envelope = JSON.stringify({ v: PROTOCOL_VERSION, type: 'open', path: absPath });
+  // `line` is an optional, additive field (a minor-version extension): only
+  // included when set, so an older-minor owner that ignores it still opens at top.
+  const envelope = JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: 'open',
+    path: absPath,
+    ...(line !== undefined ? { line } : {}),
+  });
   atomicWrite(messageBase(runtimeDir, targetId), MSG_EXT, envelope);
 }
 
@@ -140,7 +152,7 @@ const REASSERT_DEBOUNCE_MS = 60;
 export function listenOnChannel(
   runtimeDir: string,
   channelId: string,
-  onFile: (absPath: string) => void,
+  onFile: (absPath: string, line?: number) => void,
   opts: ListenOptions = {},
 ): ChannelListener {
   const dir = runtimeDir;
@@ -248,7 +260,7 @@ export function listenOnChannel(
 /** Read, delete, and dispatch one message envelope. */
 function consumeMessage(
   filePath: string,
-  onFile: (absPath: string) => void,
+  onFile: (absPath: string, line?: number) => void,
   opts: ListenOptions,
 ): void {
   let raw: string;
@@ -263,7 +275,7 @@ function consumeMessage(
     /* already gone */
   }
 
-  let msg: { v?: unknown; type?: unknown; path?: unknown; paths?: unknown };
+  let msg: { v?: unknown; type?: unknown; path?: unknown; paths?: unknown; line?: unknown };
   try {
     msg = JSON.parse(raw);
   } catch {
@@ -282,7 +294,15 @@ function consumeMessage(
 
   switch (msg.type) {
     case 'open':
-      if (typeof msg.path === 'string' && msg.path) onFile(msg.path);
+      if (typeof msg.path === 'string' && msg.path) {
+        // An optional, additive reveal target: a positive integer or nothing.
+        // A malformed/absent `line` simply opens at the top (back-compat).
+        const line =
+          typeof msg.line === 'number' && Number.isInteger(msg.line) && msg.line >= 1
+            ? msg.line
+            : undefined;
+        onFile(msg.path, line);
+      }
       return;
     case 'close':
       // Manage the tab set: close the named tab. A build without the handler

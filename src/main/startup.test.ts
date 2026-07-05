@@ -23,18 +23,21 @@ const liveIncompatible: ClaimResult = {
 
 describe('decideStartupAction', () => {
   it('owns the window when we won the claim', () => {
-    expect(decideStartupAction(owned, ['/a.md', '/b.md'])).toEqual({ kind: 'own' });
+    expect(decideStartupAction(owned, [{ path: '/a.md' }, { path: '/b.md' }])).toEqual({ kind: 'own' });
   });
 
-  it('hands files off to a compatible live owner', () => {
-    expect(decideStartupAction(liveCompatible, ['/a.md', '/b.md'])).toEqual({
+  it('hands files off to a compatible live owner, carrying any reveal line', () => {
+    expect(decideStartupAction(liveCompatible, [{ path: '/a.md', line: 12 }, { path: '/b.md' }])).toEqual({
       kind: 'handoff',
-      files: ['/a.md', '/b.md'],
+      files: [{ path: '/a.md', line: 12 }, { path: '/b.md' }],
     });
   });
 
   it('hands off to an owner with a newer minor (same major is compatible)', () => {
-    expect(decideStartupAction(liveNewerMinor, ['/a.md'])).toEqual({ kind: 'handoff', files: ['/a.md'] });
+    expect(decideStartupAction(liveNewerMinor, [{ path: '/a.md' }])).toEqual({
+      kind: 'handoff',
+      files: [{ path: '/a.md' }],
+    });
   });
 
   it('hands off even with no files (no duplicate window opens)', () => {
@@ -42,7 +45,7 @@ describe('decideStartupAction', () => {
   });
 
   it('refuses to hand off to an incompatible-major owner', () => {
-    expect(decideStartupAction(liveIncompatible, ['/a.md'])).toEqual({
+    expect(decideStartupAction(liveIncompatible, [{ path: '/a.md' }])).toEqual({
       kind: 'incompatible',
       ownerProtocol: `${PROTOCOL.major + 1}.0`,
     });

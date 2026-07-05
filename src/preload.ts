@@ -4,8 +4,8 @@
 //
 // It exposes a single frozen object, `window.galley`, typed by GalleyApi. The
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
-import { contextBridge, ipcRenderer } from 'electron';
-import type { GalleyApi, OpenedFile } from './shared/api';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { GalleyApi, OpenedFile, OpenTarget } from './shared/api';
 import { parseProjectArg } from './main/projectArg';
 
 // The claimed project name is a PER-WINDOW static — unlike the app-global
@@ -38,12 +38,21 @@ const api: GalleyApi = {
   saveFile: (filePath: string, content: string, force?: boolean) =>
     ipcRenderer.invoke('file:write', { path: filePath, content, force }),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
+  saveFileAs: (currentPath: string, content: string) =>
+    ipcRenderer.invoke('file:saveAs', { path: currentPath, content }),
   notifyClosed: (filePath: string) => {
     void ipcRenderer.invoke('file:closed', filePath);
   },
   getStartupFiles: () => ipcRenderer.invoke('file:getStartup'),
-  onOpenFile: (callback: (file: OpenedFile) => void) => {
-    const listener = (_event: unknown, file: OpenedFile) => callback(file);
+  // Resolve a dropped File's absolute path. `webUtils.getPathForFile` is the
+  // supported replacement for the removed `File.path` and must run here in the
+  // preload; returns '' when the object is not a real filesystem file.
+  getDroppedPath: (file: File) => webUtils.getPathForFile(file) || '',
+  openFiles: (paths: string[]) => {
+    void ipcRenderer.invoke('file:openDropped', paths);
+  },
+  onOpenFile: (callback: (file: OpenTarget) => void) => {
+    const listener = (_event: unknown, file: OpenTarget) => callback(file);
     ipcRenderer.on('file:opened', listener);
     return () => ipcRenderer.removeListener('file:opened', listener);
   },
@@ -91,6 +100,11 @@ const api: GalleyApi = {
     const listener = (_event: unknown, paths: string[]) => callback(paths);
     ipcRenderer.on('file:retain', listener);
     return () => ipcRenderer.removeListener('file:retain', listener);
+  },
+  onFileRemoved: (callback: (path: string) => void) => {
+    const listener = (_event: unknown, path: string) => callback(path);
+    ipcRenderer.on('file:removed', listener);
+    return () => ipcRenderer.removeListener('file:removed', listener);
   },
 };
 

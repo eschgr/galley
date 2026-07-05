@@ -126,3 +126,25 @@
   padding: 8px 12px;
   border-radius: 6px;
 }
+
+/* Open-at-line reveal: a brief highlight on the block scrolled into view so the
+   reader's eye lands on the target line. One-shot — the class is removed after the
+   animation, restoring normal rendering. */
+@keyframes galley-reveal-flash {
+  from {
+    background-color: var(--md-reveal, rgba(255, 212, 59, 0.55));
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.markdown-preview .reveal-flash {
+  animation: galley-reveal-flash 1.4s ease-out;
+  border-radius: 3px;
+  box-decoration-break: clone;
+}
+@media (prefers-reduced-motion: reduce) {
+  .markdown-preview .reveal-flash {
+    animation-duration: 0.01ms;
+  }
+}

@@ -18,6 +18,11 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 import { renderMarkdown } from '../markdown/pipeline';
 import { type Anchor, topLineFrom, scrollTopFor } from './scrollSync';
 import { classifyHref } from './linkRouting';
+import { pickRevealIndex } from '../revealLine';
+
+// How long the open-at-line highlight lingers before it is cleared (ms). Matches
+// the flash keyframe in preview.css.
+const REVEAL_FLASH_MS = 1400;
 
 export interface PreviewHandle {
   /** Top of the viewport as a 0-based fractional source line. */
@@ -37,6 +42,10 @@ export interface PreviewHandle {
   /** Jump to the heading whose slug is `id` (a file-link `#fragment` target).
    *  Returns false if no such heading exists. */
   scrollToAnchor(id: string): boolean;
+  /** Reveal a 0-based source line (open at a specific line): scroll the block
+   *  containing (or nearest before) it into view with context and briefly
+   *  highlight it. Returns false if the pane has no rendered blocks yet. */
+  revealLine(line0: number): boolean;
 }
 
 interface PreviewProps {
@@ -61,6 +70,27 @@ function buildAnchors(scroller: HTMLElement, content: HTMLElement): Anchor[] {
   });
   anchors.sort((a, b) => a.line - b.line || a.top - b.top);
   return anchors;
+}
+
+// Scroll the block at (or nearest before) a 0-based source line into view with
+// context, and flash it. DOM-based like the fragment jump: it queries the live
+// `data-source-line` blocks, so it works right after a file renders — no
+// dependence on the async anchor-map build.
+function revealLineInDom(scroller: HTMLElement | null, content: HTMLElement | null, line0: number): boolean {
+  if (!scroller || !content) return false;
+  const els = Array.from(content.querySelectorAll<HTMLElement>('[data-source-line]'));
+  const idx = pickRevealIndex(
+    els.map((el) => Number(el.getAttribute('data-source-line'))),
+    line0,
+  );
+  if (idx < 0) return false;
+  const target = els[idx];
+  target.scrollIntoView({ block: 'center' }); // context above and below, not pinned to an edge
+  target.classList.remove('reveal-flash');
+  void target.offsetWidth; // force reflow so the animation restarts on a repeat reveal
+  target.classList.add('reveal-flash');
+  window.setTimeout(() => target.classList.remove('reveal-flash'), REVEAL_FLASH_MS);
+  return true;
 }
 
 export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
@@ -122,6 +152,7 @@ export const Preview = forwardRef<PreviewHandle, PreviewProps>(function Preview(
     clientHeight: () => scrollRef.current?.clientHeight ?? 0,
     scrollTopForLine: (line) => scrollTopFor(anchorsRef.current, line),
     scrollToAnchor: (id) => jumpToAnchor(id, 'auto'), // a just-opened file lands at the target, no animation
+    revealLine: (line0) => revealLineInDom(scrollRef.current, contentRef.current, line0),
   }));
 
   // In-page anchor links (`#heading`) jump within the preview; every other link

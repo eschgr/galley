@@ -4,9 +4,10 @@ import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
 import { buildAppMenu } from './main/menu';
 import { defaultPdfPath } from './main/pdfName';
+import { writeAndOpenPdf } from './main/exportPdf';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
-import { createPlatformBridge, type SaveResult } from './main/platform';
+import { createPlatformBridge, type SaveResult, type FileSnapshot, type OpenRequest } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
@@ -63,8 +64,9 @@ const platform = createPlatformBridge({
 
 // Files passed on the command line are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
-// renderer has registered its listener. `galley a.md b.md` opens both.
-let startupFilePaths: string[] = [];
+// renderer has registered its listener. `galley a.md b.md` opens both; each may
+// carry an optional reveal line (open at a specific line).
+let startupFilePaths: OpenRequest[] = [];
 
 function targetWindow(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
@@ -75,14 +77,22 @@ function targetWindow(): BrowserWindow | null {
 const watchedPaths = new Set<string>();
 
 // Watch a file and forward genuine external changes to the renderer (watching
-// open files, with self-write detection so our own saves aren't flagged).
+// open files, with self-write detection so our own saves aren't flagged). A
+// removal — the file moved or deleted out from under us — is forwarded as
+// 'file:removed' so the renderer can mark the tab orphaned ("file gone").
 // Additive and idempotent — opening more files doesn't stop watching the others.
 function watchFile(win: BrowserWindow, absPath: string): void {
   if (watchedPaths.has(absPath)) return;
   watchedPaths.add(absPath);
-  platform.watch(absPath, (event) => {
-    if (!win.isDestroyed()) win.webContents.send('file:externalChange', event);
-  });
+  platform.watch(
+    absPath,
+    (event) => {
+      if (!win.isDestroyed()) win.webContents.send('file:externalChange', event);
+    },
+    (removedPath) => {
+      if (!win.isDestroyed()) win.webContents.send('file:removed', removedPath);
+    },
+  );
 }
 
 function unwatchPath(absPath: string): void {
@@ -90,12 +100,13 @@ function unwatchPath(absPath: string): void {
 }
 
 // Read a file, hand it to the renderer to open (from a CLI arg or the file
-// dialog), and watch it. Errors
-// surface as a dialog rather than crashing the open.
-async function openPath(win: BrowserWindow, absPath: string): Promise<void> {
+// dialog), and watch it. An optional 1-based `line` rides along as a one-shot
+// reveal target (open at a specific line); the renderer scrolls to it and clamps.
+// Errors surface as a dialog rather than crashing the open.
+async function openPath(win: BrowserWindow, absPath: string, line?: number): Promise<void> {
   try {
     const snapshot = await platform.readFile(absPath);
-    win.webContents.send('file:opened', snapshot);
+    win.webContents.send('file:opened', line === undefined ? snapshot : { ...snapshot, line });
     watchFile(win, absPath);
   } catch (err) {
     dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`);
@@ -254,12 +265,21 @@ async function requestExportPdf(): Promise<void> {
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (canceled || !filePath) return;
+  let data: Buffer;
   try {
-    const data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
-    await fs.writeFile(filePath, data);
+    data = await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
   } catch (err) {
     dialog.showErrorBox('Could not export PDF', `${filePath}\n\n${String(err)}`);
+    return;
   }
+  // Write the PDF, then hand it to the OS default viewer so the result is
+  // visible without hunting for the file. A viewer that fails to launch is
+  // reported but non-fatal — the PDF is already on disk.
+  await writeAndOpenPdf(filePath, data, {
+    writeFile: (p, d) => fs.writeFile(p, d),
+    openPath: (p) => shell.openPath(p),
+    showError: (title, message) => dialog.showErrorBox(title, message),
+  });
 }
 
 // Save path (auto-save, force-save, and the write-path conflict guard): the
@@ -288,6 +308,42 @@ ipcMain.handle('file:write', async (_event, args: unknown): Promise<SaveResult> 
   return platform.saveChecked(absPath, content);
 });
 
+// Save As… (relocate): used when a tab's file was moved/deleted on disk (an
+// orphaned tab) so the buffer is never re-created at the old, now-wrong path.
+// Presents a native Save dialog defaulted beside the old path, writes on confirm,
+// watches the new path, and returns the new snapshot so the renderer adopts it.
+// Cancel (or IO error) returns null and changes nothing.
+ipcMain.handle('file:saveAs', async (event, args: unknown): Promise<FileSnapshot | null> => {
+  if (
+    !args ||
+    typeof args !== 'object' ||
+    typeof (args as { path?: unknown }).path !== 'string' ||
+    typeof (args as { content?: unknown }).content !== 'string'
+  ) {
+    throw new Error('file:saveAs requires { path: string, content: string }');
+  }
+  const { path: oldPath, content } = args as { path: string; content: string };
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Save As',
+    defaultPath: oldPath,
+    filters: [
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (canceled || !filePath) return null;
+  try {
+    const snapshot = await platform.writeFile(filePath, content);
+    watchFile(win, filePath); // watch the new home; the old (gone) path is unwatched by the renderer
+    return snapshot;
+  } catch (err) {
+    dialog.showErrorBox('Could not save file', `${filePath}\n\n${String(err)}`);
+    return null;
+  }
+});
+
 // The renderer pulls the command-line files (if any) once on mount. Reads
 // each, watches it, and returns the snapshots in command-line order — the
 // renderer opens them as tabs and focuses the first. An unreadable path surfaces
@@ -304,6 +360,21 @@ ipcMain.handle('file:getStartup', async (event) => {
     },
     (absPath, err) => dialog.showErrorBox('Could not open file', `${absPath}\n\n${String(err)}`),
   );
+});
+
+// Files dropped onto the window (drag-and-drop open): the renderer resolved each
+// to an absolute path (webUtils in the preload) and hands them here. Open each
+// through the same path as a CLI arg or the file dialog — openPath reads,
+// watches, and pushes 'file:opened', so the renderer opens a focused tab per
+// file (or focuses the tab if it is already open). An unreadable drop surfaces a
+// dialog and is skipped, never fatal to the rest of the drop.
+ipcMain.handle('file:openDropped', async (event, paths: unknown) => {
+  if (!Array.isArray(paths)) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+  for (const p of paths) {
+    if (typeof p === 'string' && p) await openPath(win, p);
+  }
 });
 
 // Read a file on demand (manual reload, and opening a file already known to the
@@ -387,7 +458,7 @@ ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
   win.setBounds(bounds);
 });
 
-const createWindow = (project: string | null = null, files: string[] = [], channelId: string | null = null) => {
+const createWindow = (project: string | null = null, files: OpenRequest[] = [], channelId: string | null = null) => {
   const mainWindow = new BrowserWindow({
     // Portrait-ish by default — most documents read better tall than wide.
     // Resizable, so widening for side-by-side editing is one drag away.
@@ -541,7 +612,8 @@ const createWindow = (project: string | null = null, files: string[] = [], chann
     platform.listenOnChannel(
       project,
       channelId,
-      (absPath) => raiseAndDeliver(() => void openPath(mainWindow, path.resolve(absPath))),
+      // An `open` carries the file plus its optional reveal line; forward both.
+      (absPath, line) => raiseAndDeliver(() => void openPath(mainWindow, path.resolve(absPath), line)),
       {
         onClose: (absPath) =>
           raiseAndDeliver(() => {
@@ -607,12 +679,14 @@ app.on('ready', async () => {
       const action = decideStartupAction(claim, op.files);
       if (action.kind === 'handoff') {
         // Route the verb to the live owner's channel, then exit (no 2nd window).
+        // `--close`/`--set` carry only paths (their reveal line is irrelevant);
+        // `open` forwards each file's path plus its optional reveal line.
         if (op.kind === 'close') {
-          for (const f of op.files) platform.sendCloseToChannel(project, claim.owner.id, f);
+          for (const f of op.files) platform.sendCloseToChannel(project, claim.owner.id, f.path);
         } else if (op.kind === 'set') {
-          platform.sendSetToChannel(project, claim.owner.id, op.files);
+          platform.sendSetToChannel(project, claim.owner.id, op.files.map((f) => f.path));
         } else {
-          for (const f of op.files) platform.sendToChannel(project, claim.owner.id, f);
+          for (const f of op.files) platform.sendToChannel(project, claim.owner.id, f.path, f.line);
         }
         app.quit();
         return;

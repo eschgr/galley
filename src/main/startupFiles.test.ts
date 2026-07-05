@@ -10,16 +10,32 @@ describe('readStartupFiles (the file:getStartup path)', () => {
     const watch = vi.fn();
     const onError = vi.fn();
 
-    const out = await readStartupFiles(['/a.md', '/b.md', '/c.md'], read, watch, onError);
+    const out = await readStartupFiles(
+      [{ path: '/a.md' }, { path: '/b.md' }, { path: '/c.md' }],
+      read,
+      watch,
+      onError,
+    );
 
     expect(out.map((s) => s.path)).toEqual(['/a.md', '/b.md', '/c.md']);
     expect(out[0].content).toBe('content of /a.md');
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('carries a request’s reveal line onto its snapshot, and omits it otherwise', async () => {
+    const out = await readStartupFiles(
+      [{ path: '/a.md', line: 42 }, { path: '/b.md' }],
+      async (p) => snap(p),
+      vi.fn(),
+      vi.fn(),
+    );
+    expect(out[0].line).toBe(42);
+    expect(out[1].line).toBeUndefined();
+  });
+
   it('watches each successfully-read file (in order)', async () => {
     const watch = vi.fn();
-    await readStartupFiles(['/a.md', '/b.md'], async (p) => snap(p), watch, vi.fn());
+    await readStartupFiles([{ path: '/a.md' }, { path: '/b.md' }], async (p) => snap(p), watch, vi.fn());
     expect(watch.mock.calls.map((c) => c[0])).toEqual(['/a.md', '/b.md']);
   });
 
@@ -31,7 +47,12 @@ describe('readStartupFiles (the file:getStartup path)', () => {
     const watch = vi.fn();
     const onError = vi.fn();
 
-    const out = await readStartupFiles(['/a.md', '/bad.md', '/c.md'], read, watch, onError);
+    const out = await readStartupFiles(
+      [{ path: '/a.md' }, { path: '/bad.md' }, { path: '/c.md' }],
+      read,
+      watch,
+      onError,
+    );
 
     expect(out.map((s) => s.path)).toEqual(['/a.md', '/c.md']); // bad one dropped, order kept
     expect(watch.mock.calls.map((c) => c[0])).toEqual(['/a.md', '/c.md']); // unreadable not watched

@@ -213,6 +213,61 @@ describe('channel tab-management verbs (--close / --set)', () => {
   });
 });
 
+describe('channel open-at-line (optional envelope line field)', () => {
+  // A helper that captures both the path AND the line each delivery carries.
+  const listenPairs = async (dir: string, got: { path: string; line?: number }[]) => {
+    const l = listenOnChannel(dir, ID, (path, line) => got.push({ path, line }));
+    open.push(l);
+    await sleep(120);
+    return l;
+  };
+
+  it('round-trips an optional line from send to delivery', async () => {
+    const dir = freshRuntimeDir();
+    const got: { path: string; line?: number }[] = [];
+    await listenPairs(dir, got);
+
+    sendToChannel(dir, ID, 'C:\\docs\\a.md', 120);
+
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got[0]).toEqual({ path: 'C:\\docs\\a.md', line: 120 });
+  });
+
+  it('omits the line field entirely when none is given (back-compat: opens at top)', async () => {
+    const dir = freshRuntimeDir();
+    // Inspect the raw envelope the sender writes — no `line` key at all.
+    fs.mkdirSync(dir, { recursive: true });
+    sendToChannel(dir, ID, 'C:\\docs\\a.md');
+    const msg = fs.readdirSync(dir).find((n) => n.endsWith('.msg'))!;
+    const env = JSON.parse(fs.readFileSync(path.join(dir, msg), 'utf8'));
+    expect(env).not.toHaveProperty('line');
+  });
+
+  it('delivers undefined line for an envelope without one (old sender → new owner)', async () => {
+    const dir = freshRuntimeDir();
+    const got: { path: string; line?: number }[] = [];
+    await listenPairs(dir, got);
+
+    dropRaw(dir, ID, { v: PROTOCOL_VERSION, type: 'open', path: 'C:\\x.md' });
+
+    expect(await waitFor(() => got.length === 1)).toBe(true);
+    expect(got[0]).toEqual({ path: 'C:\\x.md', line: undefined });
+  });
+
+  it('ignores a malformed line (non-integer / < 1), opening at the top', async () => {
+    const dir = freshRuntimeDir();
+    const got: { path: string; line?: number }[] = [];
+    await listenPairs(dir, got);
+
+    dropRaw(dir, ID, { v: PROTOCOL_VERSION, type: 'open', path: 'C:\\a.md', line: 0 });
+    dropRaw(dir, ID, { v: PROTOCOL_VERSION, type: 'open', path: 'C:\\b.md', line: 'nope' });
+    dropRaw(dir, ID, { v: PROTOCOL_VERSION, type: 'open', path: 'C:\\c.md', line: 2.5 });
+
+    expect(await waitFor(() => got.length === 3)).toBe(true);
+    expect(got.every((g) => g.line === undefined)).toBe(true);
+  });
+});
+
 // Re-assertion on external removal (defense-in-depth). A live
 // owner whose runtime/ or owner.json is deleted out from under it must recreate the
 // discoverable artifacts with the SAME identity, so a later launch's acquireProject

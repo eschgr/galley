@@ -67,6 +67,10 @@ async function installMockBridge(page: Page): Promise<void> {
       onExternalChange: () => () => {},
       onCloseFile: () => () => {},
       onRetainFiles: () => () => {},
+      onFileRemoved: () => () => {},
+      saveFileAs: async () => null,
+      getDroppedPath: () => '',
+      openFiles: () => {},
     };
   });
 }

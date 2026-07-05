@@ -45,6 +45,17 @@ import {
 export type { ClaimResult } from './project';
 export type { LauncherOp } from './fileIo';
 
+/**
+ * A file to open plus an optional 1-based line to reveal on open (open at a
+ * specific line — CLI `path:line`, or the channel envelope's `line`). No line
+ * means open at the top. Threaded from the two inbound routes (CLI-startup and
+ * channel delivery) through to the renderer, which reveals the line once.
+ */
+export interface OpenRequest {
+  readonly path: string;
+  readonly line?: number;
+}
+
 /** A file's content plus the baseline hash captured at read/write time (saving & conflict handling). */
 export interface FileSnapshot {
   readonly path: string;
@@ -70,14 +81,16 @@ export type SaveResult =
 export interface PlatformBridge {
   // --- CLI (open a file via CLI argument) ---------------------------------
   /**
-   * Absolute file paths passed on the command line at launch (open a file via CLI argument), in order;
-   * empty if none. `galley a.md b.md` opens both. `packaged` distinguishes
-   * `galley.exe …` from a dev `electron . …`.
+   * Files passed on the command line at launch (open a file via CLI argument), in
+   * order; empty if none. `galley a.md b.md` opens both. Each is an absolute path
+   * plus an optional 1-based reveal line parsed from a `path:line` suffix (open at
+   * a specific line). `packaged` distinguishes `galley.exe …` from a dev
+   * `electron . …`.
    */
-  parseCliFileArgs(argv: readonly string[], packaged: boolean): string[];
-  /** The launcher verb + resolved file paths — `open` (positional files),
+  parseCliFileArgs(argv: readonly string[], packaged: boolean): OpenRequest[];
+  /** The launcher verb + resolved file requests — `open` (positional files),
    *  `close` (`--close`), or `set` (`--set`) — so a caller can manage the tab set,
-   *  not just add to it. */
+   *  not just add to it. Each file carries its path + optional reveal line. */
   parseCliOperation(argv: readonly string[], packaged: boolean): LauncherOp;
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
@@ -104,7 +117,19 @@ export interface PlatformBridge {
   saveChecked(absPath: string, content: string): Promise<SaveResult>;
 
   // --- File watching (watch open files; watcher debounce) ----------------
-  watch(absPath: string, onChange: (event: ExternalChangeEvent) => void): void;
+  /**
+   * Watch a file for external changes. `onChange` fires on a genuine external
+   * write (self-writes filtered out). `onRemove` fires when the file is removed
+   * out from under us — moved or deleted (chokidar `unlink`, plus a change that
+   * then fails to read as gone) — so the renderer can mark the tab orphaned rather
+   * than showing stale content ("file gone"). A removal fires at most once per
+   * run; a later re-creation of the same path resumes ordinary change events.
+   */
+  watch(
+    absPath: string,
+    onChange: (event: ExternalChangeEvent) => void,
+    onRemove?: (absPath: string) => void,
+  ): void;
   unwatch(absPath: string): void;
 
   // --- Per-project channel (the instance model & file delivery) ----------
@@ -116,22 +141,23 @@ export interface PlatformBridge {
    * window. A successful claim is remembered so `closeChannel` releases it.
    */
   claimProject(project: string, opts?: { appVersion?: string }): Promise<ClaimResult>;
-  /** Drop one file into the channel addressed to owner `targetId` (its `owner.id`). */
-  sendToChannel(project: string, targetId: string, absPath: string): void;
+  /** Drop one file into the channel addressed to owner `targetId` (its `owner.id`),
+   *  optionally carrying a 1-based reveal line (open at a specific line). */
+  sendToChannel(project: string, targetId: string, absPath: string, line?: number): void;
   /** Drop a "close this tab" message addressed to owner `targetId` (`--close`). */
   sendCloseToChannel(project: string, targetId: string, absPath: string): void;
   /** Drop a "make the open set exactly these" message to owner `targetId` (`--set`). */
   sendSetToChannel(project: string, targetId: string, paths: readonly string[]): void;
   /**
    * Start consuming the channel addressed to `channelId` (this window's own
-   * `owner.id`); each delivered absolute path is handed to `onFile`. `handlers`
-   * receives the tab-management verbs (`--close`/`--set`). Reconciles messages
-   * queued before this window mounted.
+   * `owner.id`); each delivered absolute path — with its optional reveal line — is
+   * handed to `onFile`. `handlers` receives the tab-management verbs
+   * (`--close`/`--set`). Reconciles messages queued before this window mounted.
    */
   listenOnChannel(
     project: string,
     channelId: string,
-    onFile: (absPath: string) => void,
+    onFile: (absPath: string, line?: number) => void,
     handlers?: { onClose?: (absPath: string) => void; onSet?: (paths: string[]) => void },
   ): void;
   /** Stop consuming the channel and release the project (ownership-guarded). */
@@ -199,6 +225,11 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
   // changes; see SelfWriteTracker.
   const selfWrites = new SelfWriteTracker();
   const watchers = new Map<string, FSWatcher>();
+  // Paths whose file has been reported removed to the caller and not yet seen
+  // back — so a removal fires onRemove only once per run (an unlink plus a failed
+  // read of the same vanished file must not double-report). Cleared when the path
+  // reads again (re-created) or is unwatched.
+  const removedPaths = new Set<string>();
   // The active channel watcher and the runtime dir we claimed, so closeChannel
   // can stop watching and release ownership of exactly what this process took.
   let channelListener: ChannelListener | null = null;
@@ -253,33 +284,47 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       return { conflict: false, file };
     },
 
-    watch(absPath, onChange) {
+    watch(absPath, onChange, onRemove) {
       closeWatcher(absPath); // one watcher per path
+      removedPaths.delete(absPath); // fresh watch: not (yet) reported gone
       const watcher = chokidarWatch(absPath, {
         ignoreInitial: true,
         // Coalesce rapid/partial external writes into one stable event (watcher debounce).
         awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 40 },
       });
+      // Report the file as gone exactly once per run. A move/delete can surface as
+      // a chokidar `unlink` and/or a `change` whose read then fails as missing;
+      // both funnel here, deduped by `removedPaths`.
+      const reportRemoved = (): void => {
+        if (removedPaths.has(absPath)) return;
+        removedPaths.add(absPath);
+        onRemove?.(absPath);
+      };
       const handle = async (): Promise<void> => {
         try {
           const snapshot = await fileIo.readFile(absPath);
+          removedPaths.delete(absPath); // it reads again — a re-created path resumes normal changes
           // Ignore our own writes — the latest known hash, or a recent one a stale
           // read may surface — and forward only genuine external changes.
           if (snapshot.hash === knownHash.get(absPath) || selfWrites.has(absPath, snapshot.hash)) return;
           knownHash.set(absPath, snapshot.hash); // remember the new on-disk state
           onChange({ path: absPath, content: snapshot.content, hash: snapshot.hash });
-        } catch {
-          // File vanished or was unreadable mid-change — ignore (delete handling TBD).
+        } catch (err) {
+          // A change fired but the file no longer reads: if it is gone, surface a
+          // removal ("file gone"); any other transient read error is ignored.
+          if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') reportRemoved();
         }
       };
       watcher.on('change', handle);
       watcher.on('add', handle); // some tools replace via rename → add
+      watcher.on('unlink', reportRemoved); // moved or deleted out from under us
       watchers.set(absPath, watcher);
     },
 
     unwatch(absPath) {
       closeWatcher(absPath);
       selfWrites.forget(absPath);
+      removedPaths.delete(absPath);
     },
 
     // Per-project channel. The app self-arbitrates: materialize the
@@ -306,8 +351,8 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
       return result;
     },
 
-    sendToChannel(project, targetId, absPath) {
-      sendToChannelFs(pathsFor(project).runtimeDir, targetId, absPath);
+    sendToChannel(project, targetId, absPath, line) {
+      sendToChannelFs(pathsFor(project).runtimeDir, targetId, absPath, line);
     },
 
     sendCloseToChannel(project, targetId, absPath) {
