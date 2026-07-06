@@ -9,6 +9,16 @@ watch the rendered view keep up as you type.
 Think of it as a plain-text editor that also shows you what the file *actually looks like* —
 the two side by side, always in sync.
 
+## Using Galley with an LLM
+
+Galley is made to pair with an assistant: the LLM writes a Markdown file and opens it here,
+you read the rendered view and correct it, and Galley auto-saves. Galley ships its own
+instructions for this — to teach an assistant how, give it this once:
+
+> Galley is a Markdown viewer and editor installed on my machine. Run `galley --help`, read
+> the output, and remember how Galley works. From then on, whenever you write or update a
+> Markdown file for me, open it in Galley so I can review the rendered result.
+
 ## The basics
 
 Galley opens a file in **reading view** — the rendered Markdown, full-window. Click
