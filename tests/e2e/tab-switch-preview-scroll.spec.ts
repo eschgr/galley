@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { deflateSync } from 'node:zlib';
+import { installMockBridge, openFile, fireNextTab } from './mockBridge';
 
 // PREVIEW scroll across a tab switch (#26 — per-tab kept-mounted views).
 //
@@ -19,8 +20,6 @@ import { deflateSync } from 'node:zlib';
 // The wrap-/image-heavy fixtures are kept (and B is warmed once) so the assertion
 // is meaningful: if a switch ever re-swapped or re-clamped the preview, these tall
 // async-laying-out images would expose it. The position must simply be preserved.
-
-type MockFile = { path: string; content: string; hash: string };
 
 // --- A tall base64 PNG with NO width/height attributes -----------------------
 // Intrinsic size 2000x6000 with max-width:100% in the preview => it scales to the
@@ -83,71 +82,6 @@ function reflowDoc(label: string, imgEvery: number, mathEvery: number, imgSeed: 
     }
   }
   return out.join('\n') + '\n';
-}
-
-// --- Mock main-process bridge ------------------------------------------------
-async function installMockBridge(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const harness: {
-      openCb: ((f: MockFile) => void) | null;
-      nextTabCb: (() => void) | null;
-      prevTabCb: (() => void) | null;
-    } = { openCb: null, nextTabCb: null, prevTabCb: null };
-    (window as unknown as { __mock: typeof harness }).__mock = harness;
-    (window as unknown as { galley: unknown }).galley = {
-      platform: 'win32',
-      version: '0.0.0-test',
-      openExternal: async () => {},
-      openLocalFile: () => {},
-      setSourceVisible: async () => {},
-      setActiveDocPath: () => {},
-      setSession: () => {},
-      getRestore: async () => null,
-      getStartupFiles: async () => [],
-      saveFile: async (path: string, content: string) => ({
-        conflict: false,
-        file: { path, content, hash: 'mock-hash' },
-      }),
-      readFile: async () => null,
-      notifyClosed: () => {},
-      onOpenFile: (cb: (f: MockFile) => void) => {
-        harness.openCb = cb;
-        return () => (harness.openCb = null);
-      },
-      onMenuSave: () => () => {},
-      onReloadFile: () => () => {},
-      onCloseTab: () => () => {},
-      onNextTab: (cb: () => void) => {
-        harness.nextTabCb = cb;
-        return () => (harness.nextTabCb = null);
-      },
-      onPrevTab: (cb: () => void) => {
-        harness.prevTabCb = cb;
-        return () => (harness.prevTabCb = null);
-      },
-      onHelp: () => () => {},
-      onExternalChange: () => () => {},
-      onCloseFile: () => () => {},
-      onRetainFiles: () => () => {},
-      onFileRemoved: () => () => {},
-      saveFileAs: async () => null,
-      getDroppedPath: () => '',
-      openFiles: () => {},
-    };
-  });
-}
-
-async function openFile(page: Page, file: MockFile): Promise<void> {
-  await page.evaluate(
-    (f) => (window as unknown as { __mock: { openCb: (x: MockFile) => void } }).__mock.openCb(f),
-    file,
-  );
-}
-
-async function fireNextTab(page: Page): Promise<void> {
-  await page.evaluate(() =>
-    (window as unknown as { __mock: { nextTabCb: () => void } }).__mock.nextTabCb(),
-  );
 }
 
 const tabByName = (page: Page, name: string) => page.locator('.tab', { hasText: name });
