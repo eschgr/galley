@@ -136,7 +136,12 @@ export function createRenderer(): MarkdownIt {
 
   md.set({ highlight: (str, lang) => highlightToHtml(str, lang, md) });
 
-  md.use(taskLists, { enabled: true, label: true });
+  // Render task checkboxes read-only (`disabled`): the preview reflects the source
+  // and is not an editing surface, so a click that flipped only the rendered box
+  // would silently diverge from the `- [ ]` / `- [x]` in the source. Editing a task
+  // goes through the source editor. `label: true` still wraps the item text so the
+  // whole line is styled as a task.
+  md.use(taskLists, { enabled: false, label: true });
   md.use(texmath, {
     engine: katex,
     delimiters: ['dollars', 'brackets'],
