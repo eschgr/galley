@@ -88,9 +88,17 @@ describe('GFM rendering', () => {
 
   it('renders task-list checkboxes, checked and unchecked', () => {
     const html = renderMarkdown('- [x] done\n- [ ] todo');
-    const boxes = html.match(/<input[^>]*type="checkbox"/g) ?? [];
+    const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
     expect(boxes.length).toBe(2);
     expect(html).toContain('checked'); // the [x] item
+  });
+
+  it('renders task-list checkboxes read-only (preview is not an editing surface)', () => {
+    const html = renderMarkdown('- [x] done\n- [ ] todo');
+    const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
+    expect(boxes.length).toBe(2);
+    // Every rendered box is disabled — a click can't diverge the preview from the source.
+    expect(boxes.every((b) => /\bdisabled\b/.test(b))).toBe(true);
   });
 
   it('renders strikethrough', () => {
