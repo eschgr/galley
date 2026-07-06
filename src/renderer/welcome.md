@@ -1,65 +1,75 @@
 # Welcome to Galley
 
-Galley is an app for viewing and editing Markdown files. It's intended to be used
-in conjunction with LLM tools, to make communication between people and the LLMs
-easier. Its specific purpose is to intentionally avoid the challenges of setting
-up a build environment. Think of it like a simple text editor that can show what
-the file actually looks like.
+**Galley is a Markdown viewer and editor built to sit between you and your LLM tools.**
+When an assistant hands you a `.md` file — notes, a plan, a spec, a draft — Galley shows it
+the way it's meant to be read: headings, tables, math, and code rendered cleanly, with no
+build step, no dev server, and nothing to configure. Open a file and read it; edit it and
+watch the rendered view keep up as you type.
 
-## Try it out!
+Think of it as a plain-text editor that also shows you what the file *actually looks like* —
+the two side by side, always in sync.
 
-This is a sandbox for trying the editor and seeing how Galley renders Markdown.
-Nothing here is saved — experiment freely. Opening a file replaces this screen.
+## Try it out
 
-You're looking at the **rendered view**. Click **Show Source** (top-right) to
-open the Markdown editor alongside it: edits update the view as you type, and
-scrolling one pane keeps the other aligned.
+This is a scratch document — nothing here is saved, so experiment freely. Opening a real file
+replaces this screen.
 
-1. Click **Show Source**, then type in the editor and watch this update live.
-2. Select a word and press **Ctrl/Cmd+B** for **bold**, **Ctrl/Cmd+I** for _italic_.
-3. Press **Ctrl/Cmd+K** to add a [link](https://commonmark.org/) from a little dialog.
-4. Press **Ctrl/Cmd+1** through **6** to turn a line into a heading.
-5. Drag the divider in the middle to resize the panes.
-6. Press **Ctrl/Cmd+F** in the editor to search.
+You're looking at the **rendered view**. Here's the quick tour:
 
-## What it renders
+1. Click **Show Source** (top-right) to open the editor beside the preview, then type — the
+   view updates live.
+2. Select a word and press **Ctrl/Cmd+B** for **bold** or **Ctrl/Cmd+I** for _italic_.
+3. Press **Ctrl/Cmd+K** to insert a [link](https://commonmark.org/) from a small dialog.
+4. Turn a line into a heading with **Ctrl/Cmd+1** through **Ctrl/Cmd+6**.
+5. Drag the divider in the middle to resize the two panes.
+6. Press **Ctrl/Cmd+F** while reading to **search the rendered page** — every match
+   highlights, and **Enter** / **Shift+Enter** jump between them. (In the source editor the
+   same key opens find & replace.)
+7. Open more files to get **tabs** — drag files onto the window, or launch Galley with them —
+   and switch between them with **Ctrl+Tab**.
 
-GitHub Flavored Markdown, LaTeX math, and syntax-highlighted code.
+## What Galley renders
 
-- **Bold**, _italic_, ~~strikethrough~~, `inline code`
-- Links open in your browser: [the CommonMark spec](https://spec.commonmark.org/)
-- Nested lists — press **Tab** on a list line to nest it:
-  - second level
-    - third level
+Galley renders **GitHub Flavored Markdown**, **LaTeX math**, and **syntax-highlighted code**.
 
-### Task list
+**Text styles** — **bold**, _italic_, ~~strikethrough~~, and `inline code`. Links open in your
+system browser: [the CommonMark spec](https://spec.commonmark.org/). A link to another local
+Markdown file opens it as a new tab.
 
-- [x] Render Markdown
-- [x] Live preview
-- [x] Formatting shortcuts
-- [ ] Tabs
+> Blockquotes render too — handy for quoting a passage or calling something out.
 
-### A table
+**Nested lists** — press **Tab** on a list line to nest it:
 
-| Feature        | Status | Notes                       |
-|----------------|--------|-----------------------------|
-| Split view     | done   | resizable divider           |
-| Live preview   | done   | updates as you type         |
-| Scroll sync    | done   | anchored by source line     |
-| Find / replace | done   | `Ctrl/Cmd+F` in the editor  |
+- Groceries
+  - Fruit
+    - Apples
+    - Pears
+  - Bread
 
-### Math
+**Task lists:**
 
-Inline: the area of a circle is $A = \pi r^2$, and Euler's identity is
-$e^{i\pi} + 1 = 0$. Backslash style works too: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\).
+- [x] Skim the document
+- [x] Fix a typo in the source
+- [ ] Send it back with notes
 
-Block:
+**Tables:**
+
+| Shortcut             | What it does           |
+|----------------------|------------------------|
+| `Ctrl/Cmd+B` / `+I`  | Bold / italic          |
+| `Ctrl/Cmd+K`         | Insert or edit a link  |
+| `Ctrl/Cmd+1`–`6`     | Heading level 1–6      |
+| `Ctrl/Cmd+F`         | Find in the page       |
+| `Ctrl+Tab`           | Next tab               |
+
+**Math**, inline and block. The area of a circle is $A = \pi r^2$, and Euler's identity is
+$e^{i\pi} + 1 = 0$. Bracket delimiters work as well: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\).
 
 $$
 \int_{0}^{1} x^2 \, dx = \frac{1}{3}
 $$
 
-### Code
+**Code**, highlighted by language:
 
 ```typescript
 function greet(name: string): string {
@@ -79,21 +89,11 @@ def fib(n: int) -> int:
 
 ---
 
-## A little more, so there's something to scroll
+## Reading long documents
 
-Because the two panes are anchored by source line, jumping to a heading on one
-side lands you near the same place on the other.
+The preview and the source editor are anchored line for line, so jumping to a heading — or
+scrolling one pane — brings the other along with it. You can read a long document on the left
+while keeping the exact source in view on the right, without losing your place in either.
 
-### Section A
-
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent commodo cursus
-magna, vel scelerisque nisl consectetur et. Donec id elit non mi porta gravida.
-
-### Section B
-
-Vestibulum id ligula porta felis euismod semper. Cras mattis consectetur purus
-sit amet fermentum. Maecenas faucibus mollis interdum.
-
-### The end
-
-Scroll back up — the other pane should have followed you all the way down.
+When you're ready, open one of your own files and Galley will pick up right where this left
+off.
