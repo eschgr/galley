@@ -36,7 +36,7 @@ The view also tracks **what it is showing as an explicit state**, not as a null-
 - Keep preview links safe: web/mail links open in the system browser, with no in-app navigation.
 - Edit the markdown source directly, with the rendered preview updating as the user types.
 - Keep the editor clearly *source* — color-only highlighting, uniform monospace — never a second rendered view.
-- Provide undo/redo and find & replace.
+- Provide undo/redo, find & replace in the source, and find in the rendered preview.
 - Apply markdown formatting via keyboard shortcuts (toggle plus smart selection handling) so the user never types the syntax.
 - Model document state explicitly rather than inferring it from a missing file path.
 
@@ -73,6 +73,7 @@ The view also tracks **what it is showing as an explicit state**, not as a null-
 - **R10.** **Syntax highlighting** in the editor — **color only**. The source pane stays uniform monospace (no bold/italic/enlarged-heading rendering); color conveys structure the way a code editor highlights syntax, keeping the editor clearly *source* rather than a second rendered view.
 - **R11.** **Undo / redo** support. Undo `Ctrl/Cmd+Z`; redo `Ctrl/Cmd+Y` **and** `Ctrl/Cmd+Shift+Z` (both bound).
 - **R12.** **Find and replace** within the current document, via the editor's search panel (opened with `Cmd/Ctrl+F`). The built-in feature set: incremental find with match highlighting, find next / previous, replace and replace-all, and toggles for **case-sensitive**, **whole-word**, and **regular-expression** matching. *(Provided by CodeMirror's search extension out of the box; a frequently used operation, especially in larger files. The toggle set is the component's default — captured here for completeness, not separately required.)*
+- **R12a. Find in the rendered preview.** A find bar searches the **rendered preview** — the document as read, not its source — so a reviewer can locate text in the pane they are actually reading. It opens with `Cmd/Ctrl+F` when the source editor is **not** focused (when the editor is focused, that key opens the editor's own find, R12), and is available whether or not the source pane is shown, since the preview is the default reading surface. Closed with `Esc`. The bar highlights **all** matches in the rendered view, marks the current match distinctly, and shows the active position as **_n_ of _N_**. `Enter` / `Shift+Enter` (or next/previous controls) move between matches with **wraparound**, scrolling the current match into view with context. Matching is **case-insensitive** by default, with a **match-case** toggle. Search is over the rendered *text*, skipping markup and non-content spans (e.g. math internals). Each open tab keeps its **own** find state — query, current match, toggles — mirroring the per-tab kept-mounted views (the tab/instance model is [`PRD-UI-Shell.md`](PRD-UI-Shell.md)'s concern). Highlighting paints over the live preview **without mutating its DOM**, so it never disturbs the `data-source-line` anchor map that scroll sync (R9) and reveal-on-open (R9a) depend on. *(R12 and R12a share the `Cmd/Ctrl+F` key and are disambiguated by which pane holds focus: source editor → R12, otherwise → the preview find.)*
 - **R13.** **Line numbers** — nice-to-have, optional. *(Typically free from the editor component.)*
 
 ### Formatting shortcuts
