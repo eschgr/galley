@@ -55,7 +55,17 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
       items: [
         { keys: k('Mod', 'Z'), action: 'Undo' },
         { keys: `${k('Mod', 'Y')} / ${k('Mod', 'Shift', 'Z')}`, action: 'Redo' },
-        { keys: k('Mod', 'F'), action: 'Find & replace' },
+        { keys: k('Mod', 'F'), action: 'Find & replace in source' },
+      ],
+    },
+    {
+      title: 'Reading',
+      items: [
+        // Same chord as the source find, routed by focus: the editor's own find
+        // wins when the source pane is focused, otherwise the preview find opens.
+        { keys: k('Mod', 'F'), action: 'Find in preview' },
+        { keys: 'Enter / Shift+Enter', action: 'Next / previous match' },
+        { keys: 'Esc', action: 'Close find' },
       ],
     },
     {

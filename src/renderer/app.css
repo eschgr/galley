@@ -158,9 +158,72 @@
   overflow: hidden;
 }
 /* Editor is the right pane; the divider provides the separator. Preview (left)
-   flexes to fill the remaining width. */
+   flexes to fill the remaining width. `position: relative` anchors the find bar
+   (#57), which is absolutely positioned over the top-right of this pane. */
 .pane-preview {
   flex: 1 1 0;
+  position: relative;
+}
+
+/* Find-in-preview bar (#57): floats over the top-right of the preview pane. */
+.preview-find {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(31, 35, 40, 0.15);
+  font-size: 13px;
+}
+.preview-find-input {
+  width: 200px;
+  padding: 3px 6px;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  outline: none;
+}
+.preview-find-input:focus {
+  border-color: #0969da;
+}
+.preview-find-count {
+  min-width: 56px;
+  text-align: center;
+  color: #57606a;
+  font-variant-numeric: tabular-nums;
+}
+.preview-find button {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #24292f;
+  cursor: pointer;
+}
+.preview-find button:hover:not(:disabled) {
+  background: #eaeef2;
+}
+.preview-find button:disabled {
+  color: #8c959f;
+  cursor: default;
+}
+.preview-find-case.is-active {
+  background: #ddf4ff;
+  border-color: #54aeff;
+}
+
+/* CSS Custom Highlight API paint (#57): all matches vs. the active one. */
+::highlight(preview-find-all) {
+  background-color: #fff3a3;
+}
+::highlight(preview-find-current) {
+  background-color: #ff9632;
+  color: #1f2328;
 }
 
 .editor-host {

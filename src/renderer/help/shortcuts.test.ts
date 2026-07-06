@@ -29,6 +29,7 @@ describe('shortcut groups (Help window)', () => {
       'File',
       'Tabs',
       'Editing',
+      'Reading',
       'Formatting',
       'Lists',
     ]);
