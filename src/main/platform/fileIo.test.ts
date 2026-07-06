@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, splitLineSuffix, writeFile } from './fileIo';
@@ -204,5 +204,21 @@ describe('readFile / writeFile round-trip', () => {
     const read = await readFile(file);
     expect(read.content).toBe(content);
     expect(read.hash).toBe(written.hash);
+  });
+
+  it('overwrites an existing file and leaves no temp file behind (atomic replace)', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'galley-'));
+    dirs.push(dir);
+    const file = path.join(dir, 'doc.md');
+
+    await writeFile(file, 'first\n');
+    // Same byte-length as the previous content — the case that used to let a
+    // rapid burst surface a torn read; the atomic replace makes it a non-issue.
+    await writeFile(file, 'secnd\n');
+
+    expect((await readFile(file)).content).toBe('secnd\n');
+    // The sibling temp (`doc.md.<pid>.<n>.tmp`) must be renamed away, never left.
+    const leftovers = (await readdir(dir)).filter((n) => n.includes('.tmp'));
+    expect(leftovers).toEqual([]);
   });
 });
