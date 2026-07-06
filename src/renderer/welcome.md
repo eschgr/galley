@@ -37,9 +37,7 @@ rendered page, jumping between matches with **Enter** / **Shift+Enter**.
 ## Try it out
 
 This document is a scratch pad — nothing here is saved, so experiment freely. Opening a real
-file replaces this screen.
-
-You're looking at the rendered view. Give the editor a spin:
+file replaces this screen. You're looking at the rendered view, so give the editor a spin:
 
 1. Click **Show Source**, then type — the view updates live.
 2. Select a word and press **Ctrl/Cmd+B** for **bold** or **Ctrl/Cmd+I** for _italic_.
