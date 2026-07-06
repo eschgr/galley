@@ -129,16 +129,17 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
     },
   }));
 
-  // Ctrl/Cmd+F opens THIS tab's preview find bar — but only for the active tab, and
-  // only when the source editor isn't focused (there CodeMirror's own find owns the
-  // key). Registered once; the hidden/focus guards decide whether to act, so the
-  // inactive tabs' listeners stay dormant.
+  // On the reading surface, Ctrl/Cmd+F opens THIS tab's preview find bar: the preview
+  // is focused, or the source is hidden (reading mode). The source editor keeps the
+  // key for its own find while the editor is focused, so defer to it then. Registered
+  // once, and only the active tab acts — the hidden/focus guards keep the inactive
+  // tabs' listeners dormant.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (hiddenRef.current) return;
       const isFind = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F');
       if (!isFind) return;
-      if (document.activeElement?.closest('.pane-editor')) return; // editor find wins
+      if (document.activeElement?.closest('.pane-editor')) return; // source editor keeps Ctrl+F for its own find
       e.preventDefault();
       findRef.current?.open();
     };
