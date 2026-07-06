@@ -42,12 +42,16 @@ You're looking at the rendered view. Give the editor a spin:
 
 Galley renders **GitHub Flavored Markdown**, **LaTeX math**, and **syntax-highlighted code**.
 
-**Text styles** — **bold**, _italic_, ~~strikethrough~~, and `inline code`. Links open in your
-system browser: [the CommonMark spec](https://spec.commonmark.org/).
+### Text styles
+
+**bold**, _italic_, ~~strikethrough~~, and `inline code`. Links open in your system browser:
+[the CommonMark spec](https://spec.commonmark.org/).
 
 > Blockquotes render too — handy for quoting a passage or calling something out.
 
-**Nested lists** — press **Tab** on a list line to nest it:
+### Nested lists
+
+Press **Tab** on a list line to nest it:
 
 - Groceries
   - Fruit
@@ -55,14 +59,14 @@ system browser: [the CommonMark spec](https://spec.commonmark.org/).
     - Pears
   - Bread
 
-**Task lists:**
+### Task lists
 
 - [x] Reply to the release thread
 - [x] Merge the docs PR
 - [ ] Write next week's plan
 - [ ] Book the team offsite
 
-**Tables:**
+### Tables
 
 | Shortcut             | What it does           |
 |----------------------|------------------------|
@@ -72,14 +76,18 @@ system browser: [the CommonMark spec](https://spec.commonmark.org/).
 | `Ctrl/Cmd+F`         | Find in the page       |
 | `Ctrl+Tab`           | Next tab               |
 
-**Math**, inline and block. The area of a circle is $A = \pi r^2$, and Euler's identity is
+### Math
+
+Inline and block. The area of a circle is $A = \pi r^2$, and Euler's identity is
 $e^{i\pi} + 1 = 0$. Bracket delimiters work as well: \(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\).
 
 $$
 \int_{0}^{1} x^2 \, dx = \frac{1}{3}
 $$
 
-**Code**, highlighted by language:
+## Code
+
+Highlighted by language:
 
 ```typescript
 function greet(name: string): string {
