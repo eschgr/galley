@@ -11,9 +11,8 @@ the two side by side, always in sync.
 
 ## Using Galley with an LLM
 
-Galley is made to pair with an assistant: the LLM writes a Markdown file and opens it here,
-you read the rendered view and correct it, and Galley auto-saves. Galley ships its own
-instructions for this — to teach an assistant how, give it this once:
+Galley is made to pair with an AI assistant. Galley ships its own instructions for this; to
+teach an assistant how, give it this once:
 
 > Galley is a Markdown viewer and editor installed on my machine. Run `galley --help`, read
 > the output, and remember how Galley works. From then on, whenever you write or update a
