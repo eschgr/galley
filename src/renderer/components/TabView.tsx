@@ -31,6 +31,7 @@ import {
 } from 'react';
 import { Editor, type EditorHandle } from './Editor';
 import { Preview, type PreviewHandle } from './Preview';
+import { PreviewFind, type PreviewFindHandle } from './PreviewFind';
 import { blendedFollowerTop } from './scrollSync';
 import { clampTargetLine } from '../revealLine';
 import type { ViewMode } from './SplitView';
@@ -88,6 +89,12 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
 ) {
   const editorRef = useRef<EditorHandle>(null);
   const previewRef = useRef<PreviewHandle>(null);
+  const previewPaneRef = useRef<HTMLDivElement>(null);
+  const findRef = useRef<PreviewFindHandle>(null);
+  // Mirror `hidden` for the document keydown handler (registered once), so only the
+  // active tab's find bar answers Ctrl/Cmd+F.
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
 
   // The active leader is the pane the pointer is over (covers wheel + scrollbar
   // drag), falling back to the focused pane (keyboard) when the pointer is over
@@ -121,6 +128,24 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
       if (viewMode === 'split') editorRef.current?.scrollToLine(line0);
     },
   }));
+
+  // On the reading surface, Ctrl/Cmd+F opens THIS tab's preview find bar: the preview
+  // is focused, or the source is hidden (reading mode). The source editor keeps the
+  // key for its own find while the editor is focused, so defer to it then. Registered
+  // once, and only the active tab acts — the hidden/focus guards keep the inactive
+  // tabs' listeners dormant.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (hiddenRef.current) return;
+      const isFind = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F');
+      if (!isFind) return;
+      if (document.activeElement?.closest('.pane-editor')) return; // source editor keeps Ctrl+F for its own find
+      e.preventDefault();
+      findRef.current?.open();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Reload from disk (Ctrl+R / external refresh / keep-mine): App bumped
   // docVersion, so re-seed the editor with the new text and best-effort restore
@@ -261,6 +286,7 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
     >
       <div
         className="pane pane-preview"
+        ref={previewPaneRef}
         onPointerEnter={() => (pointerPane.current = 'preview')}
         onPointerLeave={() => { if (pointerPane.current === 'preview') pointerPane.current = null; }}
         onFocusCapture={() => (focusedPane.current = 'preview')}
@@ -272,6 +298,7 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
           onLayout={onPreviewLayout}
           onOpenLocal={onOpenLocal}
         />
+        <PreviewFind ref={findRef} hostRef={previewPaneRef} contentVersion={text} hidden={hidden} />
       </div>
       <div
         className="split-divider"
