@@ -34,10 +34,10 @@ switch between them with **Ctrl+Tab**. A link to another local Markdown file ope
 tab; web links open in your system browser. Press **Ctrl/Cmd+F** while reading to search the
 rendered page, jumping between matches with **Enter** / **Shift+Enter**.
 
+## Try it out
+
 This document is a scratch pad — nothing here is saved, so experiment freely. Opening a real
 file replaces this screen.
-
-## Try it out
 
 You're looking at the rendered view. Give the editor a spin:
 
