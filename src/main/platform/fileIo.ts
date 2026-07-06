@@ -4,7 +4,7 @@
  * thin fs wrappers, kept separate from the bridge factory so they're unit-
  * testable. All OS access for files lives here.
  */
-import { readFile as fsReadFile, writeFile as fsWriteFile } from 'node:fs/promises';
+import { readFile as fsReadFile, writeFile as fsWriteFile, rename as fsRename, unlink as fsUnlink } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,12 +129,32 @@ export async function readFile(absPath: string): Promise<FileSnapshot> {
   return { path: absPath, content, hash: hashContent(content) };
 }
 
+// Distinguishes concurrent temp files for the atomic write below (pid + a
+// monotonic counter), so two writes never collide on one temp name.
+let tmpSeq = 0;
+
 /**
  * Write UTF-8 content and return the new snapshot (its hash becomes the new
  * baseline). The disk-vs-baseline guard is the caller's responsibility and
  * is added with the watcher in a later phase.
+ *
+ * The write is **atomic**: content goes to a sibling temp file which is then
+ * renamed over the target (a same-directory rename is an atomic replace on every
+ * supported OS). So any concurrent reader — our own file watcher, or an external
+ * editor — only ever sees the complete old or the complete new file, never a
+ * half-written or truncated state. This is what makes the watcher's self-write
+ * detection reliable: every observed on-disk read hashes to a full content we
+ * recorded, so a rapid burst of saves can't surface a torn read that looks like a
+ * spurious external change. It also means a crash mid-save can't corrupt the file.
  */
 export async function writeFile(absPath: string, content: string): Promise<FileSnapshot> {
-  await fsWriteFile(absPath, content, 'utf8');
+  const tmp = `${absPath}.${process.pid}.${tmpSeq++}.tmp`; // sibling → same filesystem, so rename is atomic
+  await fsWriteFile(tmp, content, 'utf8');
+  try {
+    await fsRename(tmp, absPath);
+  } catch (err) {
+    await fsUnlink(tmp).catch(() => {}); // don't leave the temp behind if the replace failed
+    throw err;
+  }
   return { path: absPath, content, hash: hashContent(content) };
 }
