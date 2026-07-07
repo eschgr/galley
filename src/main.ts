@@ -62,6 +62,16 @@ const platform = createPlatformBridge({
   projectsHome: () => path.join(app.getPath('userData'), 'projects'),
 });
 
+// Keep Galley's data (the projects tree, session, window state) in a visible,
+// real-disk folder — `<home>/.galley` by default — instead of the platform's
+// hidden per-user app-data (which an app sandbox may also redirect out of view).
+// `--data-dir <path>` overrides it; an explicit Electron `--user-data-dir` is left
+// untouched (resolveUserDataDir returns null then). Must run before `ready` and
+// before any project op reads userData — the projectsHome thunk above is lazy, so
+// setting it here takes effect for the app's whole life.
+const dataDir = platform.resolveUserDataDir(process.argv, app.isPackaged, app.getPath('home'));
+if (dataDir) app.setPath('userData', dataDir);
+
 // Files passed on the command line are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the
 // renderer has registered its listener. `galley a.md b.md` opens both; each may

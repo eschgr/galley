@@ -94,6 +94,13 @@ export interface PlatformBridge {
   parseCliOperation(argv: readonly string[], packaged: boolean): LauncherOp;
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
+  /**
+   * Where to store Galley's data (its Electron userData home). Defaults to
+   * `<home>/.galley` — a visible, real-disk location off the platform's hidden
+   * app-data folder — overridable with `--data-dir <path>`; null means an explicit
+   * Electron `--user-data-dir` was passed and should be left untouched.
+   */
+  resolveUserDataDir(argv: readonly string[], packaged: boolean, homeDir: string): string | null;
 
   /**
    * Resolve a local-file link clicked in the preview (preview link handling) to an absolute path,
@@ -258,6 +265,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
     parseCliOperation: fileIo.parseCliOperation,
     resolveLocalLink: fileIo.resolveLocalLink,
     parseCliProjectArg: fileIo.parseCliProjectArg,
+    resolveUserDataDir: fileIo.resolveUserDataDir,
 
     async readFile(absPath) {
       const snapshot = await fileIo.readFile(absPath);

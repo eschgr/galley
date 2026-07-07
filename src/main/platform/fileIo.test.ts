@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, splitLineSuffix, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, resolveUserDataDir, splitLineSuffix, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -164,6 +164,13 @@ describe('parseCliOperation (manage the tab set — open / --close / --set)', ()
     expect(parseCliOperation(['galley.exe', '--set'], true)).toEqual({ kind: 'set', files: [] });
   });
 
+  it('skips the --data-dir value so it is not opened as a file', () => {
+    expect(parseCliOperation(['galley.exe', '--data-dir', 'D:\\gdata', 'notes.md'], true)).toEqual({
+      kind: 'open',
+      files: [{ path: path.resolve('notes.md') }],
+    });
+  });
+
   it('parseCliFileArgs is the open-verb files (back-compat)', () => {
     expect(parseCliFileArgs(['galley.exe', 'a.md'], true)).toEqual([{ path: path.resolve('a.md') }]);
   });
@@ -182,6 +189,42 @@ describe('parseCliProjectArg', () => {
   it('returns null when no project is passed', () => {
     expect(parseCliProjectArg(['galley.exe', 'notes.md'], true)).toBeNull();
     expect(parseCliProjectArg(['galley.exe', '--project'], true)).toBeNull(); // no value
+  });
+});
+
+describe('resolveUserDataDir (Galley data home)', () => {
+  const home = path.join(path.sep, 'home', 'greg');
+
+  it('defaults to <home>/.galley with no override', () => {
+    expect(resolveUserDataDir(['galley.exe'], true, home)).toBe(path.join(home, '.galley'));
+    expect(resolveUserDataDir(['galley.exe', 'notes.md'], true, home)).toBe(path.join(home, '.galley'));
+  });
+
+  it('honors --data-dir <path>, made absolute', () => {
+    expect(resolveUserDataDir(['galley.exe', '--data-dir', 'gdata'], true, home)).toBe(path.resolve('gdata'));
+    expect(resolveUserDataDir(['galley.exe', '--data-dir', path.join(path.sep, 'abs', 'dir')], true, home)).toBe(
+      path.resolve(path.join(path.sep, 'abs', 'dir')),
+    );
+  });
+
+  it('honors the --data-dir=<path> form', () => {
+    expect(resolveUserDataDir(['galley.exe', '--data-dir=gdata', 'notes.md'], true, home)).toBe(path.resolve('gdata'));
+  });
+
+  it('skips the app-path argv[1] in a dev launch', () => {
+    expect(resolveUserDataDir(['electron.exe', '.', '--data-dir', 'gdata'], false, home)).toBe(path.resolve('gdata'));
+    expect(resolveUserDataDir(['electron.exe', '.'], false, home)).toBe(path.join(home, '.galley'));
+  });
+
+  it('returns null when Electron\'s own --user-data-dir is passed (leave it be)', () => {
+    expect(resolveUserDataDir(['galley.exe', '--user-data-dir=/x/y'], true, home)).toBeNull();
+    expect(resolveUserDataDir(['galley.exe', '--user-data-dir', '/x/y'], true, home)).toBeNull();
+  });
+
+  it('prefers --data-dir over Electron\'s --user-data-dir', () => {
+    expect(resolveUserDataDir(['galley.exe', '--user-data-dir=/x', '--data-dir', 'gdata'], true, home)).toBe(
+      path.resolve('gdata'),
+    );
   });
 });
 

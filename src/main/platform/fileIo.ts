@@ -72,7 +72,7 @@ export function parseCliOperation(argv: readonly string[], packaged: boolean): L
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
-      if (arg === '--project') i++; // skip its name value
+      if (arg === '--project' || arg === '--data-dir') i++; // skip the value that follows
       else if (arg === '--close') kind = 'close';
       else if (arg === '--set') kind = 'set';
       continue; // other flags ignored
@@ -123,6 +123,35 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
   return null;
 }
 
+/**
+ * Where Galley keeps its data — the Electron "userData" home (the projects tree,
+ * session, window state). Resolved from argv so it can be applied before the app
+ * opens anything:
+ *
+ *  - `--data-dir <path>` (or `--data-dir=<path>`) → that path, made absolute.
+ *  - else, if Electron's own `--user-data-dir` switch is present → `null`, so the
+ *    caller leaves Electron's value in place.
+ *  - else → `<home>/.galley` — a visible, real-disk default rather than the
+ *    platform's hidden per-user app-data folder (which an app sandbox may also
+ *    redirect out of view). The override is rarely needed; the default just works.
+ *
+ * `homeDir` is injected (the caller passes `app.getPath('home')`) so this stays
+ * Electron-free and unit-testable like the other CLI parsers here.
+ */
+export function resolveUserDataDir(
+  argv: readonly string[],
+  packaged: boolean,
+  homeDir: string,
+): string | null {
+  const rest = argv.slice(packaged ? 1 : 2);
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--data-dir' && rest[i + 1] !== undefined) return path.resolve(rest[i + 1]);
+    if (rest[i].startsWith('--data-dir=')) return path.resolve(rest[i].slice('--data-dir='.length));
+  }
+  if (argv.some((a) => a === '--user-data-dir' || a.startsWith('--user-data-dir='))) return null;
+  return path.join(homeDir, '.galley');
+}
+
 /** Read a file as UTF-8 and capture its baseline hash. */
 export async function readFile(absPath: string): Promise<FileSnapshot> {
   const content = await fsReadFile(absPath, 'utf8');
@@ -153,7 +182,7 @@ export async function writeFile(absPath: string, content: string): Promise<FileS
   try {
     await fsRename(tmp, absPath);
   } catch (err) {
-    await fsUnlink(tmp).catch(() => {}); // don't leave the temp behind if the replace failed
+    await fsUnlink(tmp).catch(() => undefined); // don't leave the temp behind if the replace failed
     throw err;
   }
   return { path: absPath, content, hash: hashContent(content) };
