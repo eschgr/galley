@@ -358,6 +358,12 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkR
     EditorState.allowMultipleSelections.of(true),
     indentUnit.of('  '),
     EditorView.lineWrapping,
+    // Native browser spell-checking on the source text: red squiggles under
+    // misspellings plus the OS right-click "suggestions" menu (#119). CM6 leaves
+    // this off by default; the source is prose, so it helps while writing docs.
+    // (Text inside fenced code blocks is checked too — an accepted trade-off
+    // against a much heavier markdown-aware decoration checker.)
+    EditorView.contentAttributes.of({ spellcheck: 'true' }),
     syntaxHighlighting(sourceHighlightStyle),
     markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
