@@ -17,18 +17,17 @@ USAGE
   galley --project <name> --set <file ...>
                                        Make the window show EXACTLY those files
                                          (open the missing, close the rest).
-  galley --data-dir <path>             Store Galley's data (the projects tree,
-                                         session, window state) under <path>
-                                         instead of the default. Rarely needed.
   galley --devtools                    Open developer tools on launch.
   galley --help, -h                    Print this help and exit.
 
   Paths may be absolute or relative (relative resolves against the current
   directory). Passing several files opens several tabs; the first is focused.
 
-  Galley stores its data in ~/.galley (a visible folder in your home directory)
-  by default; --data-dir overrides that for a single launch. A project's window
-  and any launch that sends it files must use the SAME data dir to find each other.
+  Galley keeps its system directory (per-project coordination, session, caches —
+  not your documents) in ~/.galley by default. Override it by setting the
+  GALLEY_HOME environment variable. It is an environment setting, NOT a flag,
+  because a window and any launch that sends it files must resolve the SAME
+  location to find each other — so every launch on the machine must agree on it.
 
   Note: "galley" above stands for however the Galley executable is launched on
   this machine — the installed Galley.exe / Galley.app, or `npm start --` in a

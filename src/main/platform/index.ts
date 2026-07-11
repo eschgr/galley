@@ -95,12 +95,14 @@ export interface PlatformBridge {
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
   /**
-   * Where to store Galley's data (its Electron userData home). Defaults to
-   * `<home>/.galley` — a visible, real-disk location off the platform's hidden
-   * app-data folder — overridable with `--data-dir <path>`; null means an explicit
-   * Electron `--user-data-dir` was passed and should be left untouched.
+   * Galley's system home (its Electron userData dir — the per-project coordination
+   * layer, session, and caches; no user documents). Defaults to `<home>/.galley` —
+   * a visible, real-disk location off the platform's hidden app-data folder —
+   * overridable GLOBALLY via the `GALLEY_HOME` env var. It must be identical across
+   * every launch (the coordination path is discovered by convention), so it is an
+   * environment setting, never a per-launch flag.
    */
-  resolveUserDataDir(argv: readonly string[], packaged: boolean, homeDir: string): string | null;
+  resolveUserDataDir(env: Record<string, string | undefined>, homeDir: string): string;
 
   /**
    * Resolve a local-file link clicked in the preview (preview link handling) to an absolute path,

@@ -72,7 +72,7 @@ export function parseCliOperation(argv: readonly string[], packaged: boolean): L
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg.startsWith('-')) {
-      if (arg === '--project' || arg === '--data-dir') i++; // skip the value that follows
+      if (arg === '--project') i++; // skip its name value
       else if (arg === '--close') kind = 'close';
       else if (arg === '--set') kind = 'set';
       continue; // other flags ignored
@@ -124,32 +124,30 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
 }
 
 /**
- * Where Galley keeps its data — the Electron "userData" home (the projects tree,
- * session, window state). Resolved from argv so it can be applied before the app
- * opens anything:
+ * Where Galley keeps its **system home** — the Electron "userData" directory. It
+ * holds the per-project *coordination* layer (`projects/<name>/runtime/owner.json`
+ * liveness + the file-drop channel), the crash-restore session, and Electron's own
+ * profile/caches. It holds NO user documents; those live wherever the user keeps
+ * them and are only referenced by path.
  *
- *  - `--data-dir <path>` (or `--data-dir=<path>`) → that path, made absolute.
- *  - else, if Electron's own `--user-data-dir` switch is present → `null`, so the
- *    caller leaves Electron's value in place.
- *  - else → `<home>/.galley` — a visible, real-disk default rather than the
- *    platform's hidden per-user app-data folder (which an app sandbox may also
- *    redirect out of view). The override is rarely needed; the default just works.
+ * Because the coordination layer is discovered by CONVENTION at a fixed path — a
+ * running window and every later `--project` sender must resolve the SAME
+ * `<home>/projects/<name>/runtime/` to find each other — this location must be
+ * identical across every instantiation (and it is the shared root under which all
+ * projects live). So it is a GLOBAL setting, taken from the `GALLEY_HOME`
+ * environment variable, never a per-launch flag: a command-line flag is
+ * per-instantiation by design, so a window and a sender could disagree and
+ * silently break the hand-off. An env var is inherited uniformly by every launch.
  *
- * `homeDir` is injected (the caller passes `app.getPath('home')`) so this stays
- * Electron-free and unit-testable like the other CLI parsers here.
+ * Default: `<home>/.galley` — a visible, real-disk folder, not the platform's
+ * hidden per-user app-data (which an app sandbox may also redirect out of view).
+ *
+ * `env` and `homeDir` are injected (the caller passes `process.env` and
+ * `app.getPath('home')`) so this stays Electron-free and unit-testable.
  */
-export function resolveUserDataDir(
-  argv: readonly string[],
-  packaged: boolean,
-  homeDir: string,
-): string | null {
-  const rest = argv.slice(packaged ? 1 : 2);
-  for (let i = 0; i < rest.length; i++) {
-    if (rest[i] === '--data-dir' && rest[i + 1] !== undefined) return path.resolve(rest[i + 1]);
-    if (rest[i].startsWith('--data-dir=')) return path.resolve(rest[i].slice('--data-dir='.length));
-  }
-  if (argv.some((a) => a === '--user-data-dir' || a.startsWith('--user-data-dir='))) return null;
-  return path.join(homeDir, '.galley');
+export function resolveUserDataDir(env: Record<string, string | undefined>, homeDir: string): string {
+  const override = env.GALLEY_HOME?.trim();
+  return override ? path.resolve(override) : path.join(homeDir, '.galley');
 }
 
 /** Read a file as UTF-8 and capture its baseline hash. */
