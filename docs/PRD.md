@@ -126,6 +126,10 @@ A GitHub Actions workflow (`.github/workflows/release.yml`) implements the above
 - Unsigned apps trigger OS warnings for *other* users (Gatekeeper on macOS, SmartScreen on Windows). Not required to run your own builds.
 - If/when distributing to others: **Apple Developer Program (~$99/year)** for Mac notarization; **Windows code-signing certificate (~$100–400/year)** for SmartScreen. These are OS-vendor costs, not Electron costs. Treated as a later, optional concern — not a v1 blocker.
 
+### Update notification
+
+On startup and once a day, a **packaged** build checks GitHub for a newer published Release and, if one exists, shows a non-intrusive notification ("A new version of Galley is available") so users on an old build learn a new version is out. **Notify-only** — no download or install (true self-update would need the code signing deferred above). The check runs in the **main process**, compares the latest release tag against `app.getVersion()`, fails silently (offline / rate-limited), and runs in **packaged builds only** — dev builds are intentionally short-lived.
+
 ---
 
 ## 9. Footprint & migration path
