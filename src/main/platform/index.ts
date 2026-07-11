@@ -44,6 +44,8 @@ import {
 
 export type { ClaimResult } from './project';
 export type { LauncherOp } from './fileIo';
+// Pure bootstrap helper (needed before the bridge exists, to derive projectsHome).
+export { resolveGalleyHome } from './fileIo';
 
 /**
  * A file to open plus an optional 1-based line to reveal on open (open at a
@@ -202,7 +204,7 @@ export interface PlatformBridge {
  */
 export interface PlatformBridgeOptions {
   /**
-   * The projects-home root — `<userData>/projects` — resolved LAZILY (a thunk,
+   * The projects-home root — `<Galley home>/projects` — resolved LAZILY (a thunk,
    * not a value) so it can be read after `app` is ready without pulling Electron
    * into this seam. Every project op runs post-`ready`, so first-use resolution
    * is safe. Tests inject a temp dir here.

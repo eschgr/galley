@@ -16,7 +16,7 @@
  *
  * Deliberately Electron-free (like the rest of the seam): the projects-home
  * `baseDir` is passed in, never resolved from `app.getPath` here. `index.ts`
- * supplies it (lazily, from `userData/projects`); tests inject a temp dir.
+ * supplies it (lazily, from `<Galley home>/projects`); tests inject a temp dir.
  */
 import fs from 'node:fs';
 import path from 'node:path';

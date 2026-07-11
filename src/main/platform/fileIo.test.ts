@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, splitLineSuffix, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, resolveGalleyHome, splitLineSuffix, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -182,6 +182,27 @@ describe('parseCliProjectArg', () => {
   it('returns null when no project is passed', () => {
     expect(parseCliProjectArg(['galley.exe', 'notes.md'], true)).toBeNull();
     expect(parseCliProjectArg(['galley.exe', '--project'], true)).toBeNull(); // no value
+  });
+});
+
+describe('resolveGalleyHome (Galley system home)', () => {
+  const home = path.join(path.sep, 'home', 'greg');
+
+  it('defaults to <home>/.galley when GALLEY_HOME is unset', () => {
+    expect(resolveGalleyHome({}, home)).toBe(path.join(home, '.galley'));
+    expect(resolveGalleyHome({ PATH: '/usr/bin' }, home)).toBe(path.join(home, '.galley'));
+  });
+
+  it('uses GALLEY_HOME when set, made absolute', () => {
+    expect(resolveGalleyHome({ GALLEY_HOME: path.join(path.sep, 'srv', 'galley') }, home)).toBe(
+      path.resolve(path.join(path.sep, 'srv', 'galley')),
+    );
+    expect(resolveGalleyHome({ GALLEY_HOME: 'rel/dir' }, home)).toBe(path.resolve('rel/dir'));
+  });
+
+  it('ignores a blank/whitespace GALLEY_HOME and falls back to the default', () => {
+    expect(resolveGalleyHome({ GALLEY_HOME: '' }, home)).toBe(path.join(home, '.galley'));
+    expect(resolveGalleyHome({ GALLEY_HOME: '   ' }, home)).toBe(path.join(home, '.galley'));
   });
 });
 

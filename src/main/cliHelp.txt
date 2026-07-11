@@ -23,6 +23,9 @@ USAGE
   Paths may be absolute or relative (relative resolves against the current
   directory). Passing several files opens several tabs; the first is focused.
 
+  Galley keeps its own per-project state (window coordination and session) in
+  ~/.galley by default; set the GALLEY_HOME environment variable to change it.
+
   Note: "galley" above stands for however the Galley executable is launched on
   this machine — the installed Galley.exe / Galley.app, or `npm start --` in a
   dev checkout. There is not necessarily a command named "galley" on your PATH.

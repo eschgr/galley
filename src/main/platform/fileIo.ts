@@ -123,6 +123,24 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
   return null;
 }
 
+/**
+ * Resolve Galley's system home — the directory that holds the projects tree
+ * (per-project coordination + crash-restore session), distinct from where the
+ * user's documents live. `GALLEY_HOME` overrides it (a relative value is made
+ * absolute); the default is `<homeDir>/.galley`.
+ *
+ * `env` and `homeDir` are injected (the caller passes `process.env` and
+ * `app.getPath('home')`) so this stays Electron-free and unit-testable.
+ *
+ * The design rationale — a visible home, why it's kept separate from Electron's
+ * userData, and why the override is an environment variable rather than a
+ * per-launch flag — lives in the projects design doc (docs/PRD-Projects.md §8.4).
+ */
+export function resolveGalleyHome(env: Record<string, string | undefined>, homeDir: string): string {
+  const override = env.GALLEY_HOME?.trim();
+  return override ? path.resolve(override) : path.join(homeDir, '.galley');
+}
+
 /** Read a file as UTF-8 and capture its baseline hash. */
 export async function readFile(absPath: string): Promise<FileSnapshot> {
   const content = await fsReadFile(absPath, 'utf8');

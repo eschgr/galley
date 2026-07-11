@@ -12,7 +12,7 @@ import { projectPaths, readSession, SESSION_FILE } from './projectStore';
 // createPlatformBridge — claimProject → writeSession → markCleanExit — which
 // wire the retained claimed-project home into the session record and stamp the
 // cleanExit flag. Hermetic: a fresh temp dir per test as the injected
-// projectsHome, cleaned up; nothing touches the real userData.
+// projectsHome, cleaned up; nothing touches the real Galley home.
 const roots: string[] = [];
 function freshProjectsHome(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-bridge-'));

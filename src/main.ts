@@ -7,7 +7,7 @@ import { defaultPdfPath } from './main/pdfName';
 import { writeAndOpenPdf } from './main/exportPdf';
 import { registerAppVersionIpc } from './main/appVersion';
 import { buildCliHelp, wantsHelp } from './main/cliHelp';
-import { createPlatformBridge, type SaveResult, type FileSnapshot, type OpenRequest } from './main/platform';
+import { createPlatformBridge, resolveGalleyHome, type SaveResult, type FileSnapshot, type OpenRequest } from './main/platform';
 import { readStartupFiles } from './main/startupFiles';
 import { decideStartupAction } from './main/startup';
 import { installCliShim, removeCliShim } from './main/cliShim';
@@ -54,12 +54,17 @@ if (wantsHelp(process.argv)) {
   app.exit(0);
 }
 
-// All OS-touching file work goes through the platform seam. The
-// projects-home root (`userData/projects`) is passed as a LAZY thunk: the seam
-// stays Electron-free, and `app.getPath` is only read once a project op runs
-// (always post-`ready`), never at module load.
+// Galley's system home — `~/.galley` by default, `GALLEY_HOME` to override. We do
+// NOT relocate Electron's userData; only our own projects tree lives under this
+// home. (Rationale — visible home, separation from userData, env-not-flag — is in
+// docs/PRD-Projects.md §8.4.) Resolved eagerly: home + env are set at module load.
+const galleyHome = resolveGalleyHome(process.env, app.getPath('home'));
+
+// All OS-touching file work goes through the platform seam. The projects-home root
+// (`<galleyHome>/projects`) is a LAZY thunk so the seam stays Electron-free — read
+// only once a project op runs (post-`ready`).
 const platform = createPlatformBridge({
-  projectsHome: () => path.join(app.getPath('userData'), 'projects'),
+  projectsHome: () => path.join(galleyHome, 'projects'),
 });
 
 // Files passed on the command line are held here and pulled by the renderer
