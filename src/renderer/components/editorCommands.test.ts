@@ -224,4 +224,21 @@ describe('listContinueEdit (list continuation on Enter — Enter continues a lis
   it('returns null off a list line (plain newline)', () => {
     expect(listContinueEdit('a paragraph', 4)).toBeNull();
   });
+
+  it('does not continue when the caret is before the content — a plain newline instead (#118)', () => {
+    // Caret at the very start of the list line: Enter should open a line above, not
+    // duplicate the marker into "1. 1. hello".
+    expect(listContinueEdit('1. hello', 0)).toBeNull();
+    expect(listContinueEdit('- item', 0)).toBeNull();
+    // Anywhere inside the prefix (indent / marker / trailing spaces) counts as
+    // "before the content" too.
+    expect(listContinueEdit('1.  spaced', 1)).toBeNull(); // between "1" and "."
+    expect(listContinueEdit('   1. nested', 2)).toBeNull(); // in the indent
+  });
+
+  it('still continues once the caret reaches the content (after the marker)', () => {
+    // At the first content column and beyond, continuation still applies.
+    expect(cont('1. hello', 0)).toBe('1. hello\n1. '); // caret at end of line 0
+    expect(listContinueEdit('1. hello', 3)).not.toBeNull(); // caret right before "hello"
+  });
 });
