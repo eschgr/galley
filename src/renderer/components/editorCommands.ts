@@ -227,6 +227,13 @@ export function listContinueEdit(doc: string, pos: number): EditResult | null {
   if (!m) return null;
 
   const [, indent, marker, spaces, content] = m;
+  // The caret sits in the line's prefix — its indent, marker, or the spaces after
+  // the marker — before any content (e.g. at the very start of "1. hello"). Pressing
+  // Enter there means "open a line above", not "continue the list": fall back to a
+  // plain newline so the item simply moves down, instead of gaining a duplicate
+  // marker ("1. 1. hello") or being cleared.
+  const contentStart = lineStart + indent.length + marker.length + spaces.length;
+  if (pos < contentStart) return null;
   // Empty item → exit the list: clear the line to blank.
   if (content.length === 0) {
     return { from: lineStart, to: lineEnd, insert: '', select: [lineStart, lineStart] };
