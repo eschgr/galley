@@ -141,11 +141,17 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
  * per-instantiation by design, so a window and a sender could disagree and
  * silently break the hand-off. An env var is inherited uniformly by every launch.
  *
- * Default: `<home>/.galley` — a visible, real-disk folder, not the platform's
- * hidden per-user app-data (which an app sandbox may also redirect out of view).
+ * Default: `<home>/.galley`, where `<home>` is the OS user/home directory (`~/`).
+ * It therefore NESTS inside the same user directory that typically also holds the
+ * user's own Markdown documents — physical neighbours, but conceptually distinct:
+ * this holds Galley's system state, never user documents. Chosen over the
+ * platform's hidden per-user app-data (which an app sandbox may also redirect out
+ * of view).
  *
- * `env` and `homeDir` are injected (the caller passes `process.env` and
- * `app.getPath('home')`) so this stays Electron-free and unit-testable.
+ * `env` and `homeDir` — the latter being the OS user/home directory (`~/`),
+ * distinct from the Galley home this returns — are injected (the caller passes
+ * `process.env` and `app.getPath('home')`) so this stays Electron-free and
+ * unit-testable.
  */
 export function resolveGalleyHome(env: Record<string, string | undefined>, homeDir: string): string {
   const override = env.GALLEY_HOME?.trim();
