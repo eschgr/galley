@@ -124,37 +124,17 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
 }
 
 /**
- * Galley's **system home** — a machine-local directory of Galley's own meaningful
- * state, not user documents. It holds the per-project *coordination* layer
- * (`projects/<name>/runtime/owner.json` liveness + the file-drop channel) and the
- * crash-restore session. User documents live wherever the user keeps them and are
- * only referenced by path.
+ * Resolve Galley's system home — the directory that holds the projects tree
+ * (per-project coordination + crash-restore session), distinct from where the
+ * user's documents live. `GALLEY_HOME` overrides it (a relative value is made
+ * absolute); the default is `<homeDir>/.galley`.
  *
- * This is DISTINCT from Electron's `userData` directory: we deliberately leave
- * `userData` at the platform default so Electron's ephemeral profile/caches stay
- * there (hidden, disposable) rather than cluttering this home — only the projects
- * tree lives here.
+ * `env` and `homeDir` are injected (the caller passes `process.env` and
+ * `app.getPath('home')`) so this stays Electron-free and unit-testable.
  *
- * Because the coordination layer is discovered by CONVENTION at a fixed path — a
- * running window and every later `--project` sender must resolve the SAME
- * `<home>/projects/<name>/runtime/` to find each other — this location must be
- * identical across every instantiation (and it is the shared root under which all
- * projects live). So it is a GLOBAL setting, taken from the `GALLEY_HOME`
- * environment variable, never a per-launch flag: a command-line flag is
- * per-instantiation by design, so a window and a sender could disagree and
- * silently break the hand-off. An env var is inherited uniformly by every launch.
- *
- * Default: `<home>/.galley`, where `<home>` is the OS user/home directory (`~/`).
- * It therefore NESTS inside the same user directory that typically also holds the
- * user's own Markdown documents — physical neighbours, but conceptually distinct:
- * this holds Galley's system state, never user documents. Chosen over the
- * platform's hidden per-user app-data (which an app sandbox may also redirect out
- * of view).
- *
- * `env` and `homeDir` — the latter being the OS user/home directory (`~/`),
- * distinct from the Galley home this returns — are injected (the caller passes
- * `process.env` and `app.getPath('home')`) so this stays Electron-free and
- * unit-testable.
+ * The design rationale — a visible home, why it's kept separate from Electron's
+ * userData, and why the override is an environment variable rather than a
+ * per-launch flag — lives in the projects design doc (docs/PRD-Projects.md §8.4).
  */
 export function resolveGalleyHome(env: Record<string, string | undefined>, homeDir: string): string {
   const override = env.GALLEY_HOME?.trim();
@@ -191,7 +171,7 @@ export async function writeFile(absPath: string, content: string): Promise<FileS
   try {
     await fsRename(tmp, absPath);
   } catch (err) {
-    await fsUnlink(tmp).catch(() => undefined); // don't leave the temp behind if the replace failed
+    await fsUnlink(tmp).catch(() => {}); // don't leave the temp behind if the replace failed
     throw err;
   }
   return { path: absPath, content, hash: hashContent(content) };

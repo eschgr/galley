@@ -155,7 +155,7 @@ Why the current code did not already do this: **Node has no built-in, cross-plat
 
 ### 8.2 Robustness of the home (PF8) — [#60](https://github.com/eschgr/mdtool/issues/60)
 
-[#60](https://github.com/eschgr/mdtool/issues/60)'s actual trigger is **OS temp-dir cleanup** reaping the scratch dir. Moving the durable home to `userData` (section 8.4) **eliminates that trigger** — `userData` is not temp-swept. Combined with **non-destructive release** (release deletes `runtime/` and nothing else, correcting today's whole-directory `rmSync`), the durable data is safe.
+[#60](https://github.com/eschgr/mdtool/issues/60)'s actual trigger is **OS temp-dir cleanup** reaping the scratch dir. Moving the durable home out of the temp dir to the Galley home (section 8.4) **eliminates that trigger** — the home is not temp-swept. Combined with **non-destructive release** (release deletes `runtime/` and nothing else, correcting today's whole-directory `rmSync`), the durable data is safe.
 
 Re-assertion then covers only the rare residual case: an external deletion of the home or `runtime/` while the app runs (a manual delete, a disk cleaner, AV quarantine). Its job is narrow — recreate the discoverable named artifacts so a later launch can *find* the owner; the lock's liveness is inherent to the process, not the file. Detected via the channel watcher's `unlinkDir`/`unlink` events, no polling.
 
@@ -172,10 +172,18 @@ The one thing worth stating plainly: this design makes "two Galley windows editi
 
 ### 8.4 How the home is determined (root determination)
 
-The project home is **never a location the user picks** — Galley derives it deterministically from the project `name`, under the app's `userData` directory:
+The project home is **never a location the user picks** — Galley derives it deterministically from the project `name`, under **Galley's system home**:
 
-- Windows: `%APPDATA%/Galley/projects/<derived>/`
-- macOS: `~/Library/Application Support/Galley/projects/<derived>/`
+    <galley-home>/projects/<derived>/
+
+The system home defaults to **`~/.galley`** — a *visible* folder in the user's home directory — and is overridable, globally, via the **`GALLEY_HOME`** environment variable.
+
+**It is Galley's own state, not user data.** The home holds only Galley's per-project bookkeeping — the durable record, the runtime coordination (section 7), and the crash-restore session — never the user's documents (those live wherever the user keeps them). Two deliberate choices behind it:
+
+- **Visible, not hidden.** A plain `~/.galley` folder the user can see and reach — not the platform's hidden per-user app-data, which is *also* redirected out of view when Galley runs inside an app sandbox, hiding the project data entirely.
+- **Separate from the UI framework's data directory** (Electron's `userData`). We do not relocate that; its disposable profile/caches stay there and never clutter the Galley home, which holds just `projects/`.
+
+**An environment variable, not a per-launch flag.** The runtime coordination is discovered by *convention* at a fixed path under the home, so a running window and every later `--project` sender must resolve the *same* location to find each other — the home must be identical across every launch on the machine. A flag is per-instantiation by design (a window and a sender could disagree and silently break the hand-off); an environment variable is inherited uniformly by every launch. Hence `GALLEY_HOME`, set once and globally.
 
 This fits both workflows: on macOS, where content lives under a projects parent dir, and on Windows, where Claude Code sessions drop files wherever — because the home is Galley's own bookkeeping, decoupled from where the `.md` files sit. The `name` (supplied by the launcher) is the sole determinant; nothing about the content's disk location is needed, which is why v1 carries no `diskLocation`.
 
@@ -241,7 +249,7 @@ Phases 2–4 are independent slices with no fixed order; they are sequenced duri
 
 All design decisions are resolved as of Draft v6.
 
-- **D1 — Physical home location.** App-managed under `userData/projects/<derived>/`, derived from the name (section 8.4). In-tree rejected on principle.
+- **D1 — Physical home location.** App-managed under `<Galley home>/projects/<derived>/` — the Galley home defaults to `~/.galley` (overridable via `GALLEY_HOME`), derived from the name (section 8.4). In-tree rejected on principle.
 - **D2 — Crash policy (PF21).** Prompt-on-restore, triggered only by a dirty/unclean shutdown (section 8.6); a clean shutdown starts fresh; projectless windows do not restore.
 - **D3 — "Forget project" operation.** None. Removing a stale project's home is out-of-band (manual, or via Claude); no in-app operation and no cross-project management UI (section 8.5).
 - **D4 — Phase priority.** Not fixed. Phases 2–4 are independent slices, sequenced during implementation.

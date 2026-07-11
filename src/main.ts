@@ -54,22 +54,15 @@ if (wantsHelp(process.argv)) {
   app.exit(0);
 }
 
-// Galley's system home — a visible, real-disk directory for Galley's OWN state
-// (the per-project coordination layer + crash-restore session): `<home>/.galley`
-// by default, or `GALLEY_HOME` if set. Deliberately SEPARATE from Electron's
-// userData: we do NOT relocate that, so Electron's ephemeral profile/caches stay
-// in the platform default (hidden, disposable) and never clutter our home. It is
-// an ENV setting, not a flag: the coordination path is discovered by convention, so
-// a window and a later `--project` sender must resolve the SAME location — every
-// launch on the machine has to agree, which a per-instantiation flag couldn't
-// guarantee. `app.getPath('home')` + `process.env` are available at module load,
-// so resolve it eagerly.
+// Galley's system home — `~/.galley` by default, `GALLEY_HOME` to override. We do
+// NOT relocate Electron's userData; only our own projects tree lives under this
+// home. (Rationale — visible home, separation from userData, env-not-flag — is in
+// docs/PRD-Projects.md §8.4.) Resolved eagerly: home + env are set at module load.
 const galleyHome = resolveGalleyHome(process.env, app.getPath('home'));
 
 // All OS-touching file work goes through the platform seam. The projects-home root
-// (`<galleyHome>/projects`) is a LAZY thunk so the seam stays Electron-free; it is
-// read only once a project op runs (post-`ready`). Electron's own userData is left
-// untouched — only OUR data lives under the Galley home.
+// (`<galleyHome>/projects`) is a LAZY thunk so the seam stays Electron-free — read
+// only once a project op runs (post-`ready`).
 const platform = createPlatformBridge({
   projectsHome: () => path.join(galleyHome, 'projects'),
 });
