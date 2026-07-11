@@ -54,23 +54,25 @@ if (wantsHelp(process.argv)) {
   app.exit(0);
 }
 
-// All OS-touching file work goes through the platform seam. The
-// projects-home root (`userData/projects`) is passed as a LAZY thunk: the seam
-// stays Electron-free, and `app.getPath` is only read once a project op runs
-// (always post-`ready`), never at module load.
+// All OS-touching file work goes through the platform seam. The projects-home
+// root (`<Galley home>/projects`) is passed as a LAZY thunk: the seam stays
+// Electron-free, and `app.getPath` is only read once a project op runs (always
+// post-`ready`), never at module load. (`'userData'` is Electron's key for that
+// home directory — see the setPath below; we don't adopt the name.)
 const platform = createPlatformBridge({
   projectsHome: () => path.join(app.getPath('userData'), 'projects'),
 });
 
 // Point Galley's system home (the per-project coordination dir, session, and
-// caches) at a visible, real-disk folder — `<home>/.galley` by default, or
-// `GALLEY_HOME` if set — instead of the platform's hidden per-user app-data (which
-// an app sandbox may also redirect out of view). It is an ENV setting, not a flag:
-// the coordination path must be identical across every launch or a window and a
-// later `--project` sender can't find each other. Must run before `ready` and
-// before any project op reads userData — the projectsHome thunk above is lazy, so
-// setting it here takes effect for the app's whole life.
-app.setPath('userData', platform.resolveUserDataDir(process.env, app.getPath('home')));
+// caches — no user documents) at a visible, real-disk folder — `<home>/.galley` by
+// default, or `GALLEY_HOME` if set — instead of the platform's hidden per-user
+// app-data (which an app sandbox may also redirect out of view). It is an ENV
+// setting, not a flag: the coordination path must be identical across every launch
+// or a window and a later `--project` sender can't find each other. Must run before
+// `ready` and before any project op reads the home — the projectsHome thunk above
+// is lazy, so setting it here takes effect for the app's whole life. ('userData' is
+// just Electron's name for this directory; our concept is the Galley system home.)
+app.setPath('userData', platform.resolveGalleyHome(process.env, app.getPath('home')));
 
 // Files passed on the command line are held here and pulled by the renderer
 // on mount via 'file:getStartup' — pulling avoids a race with pushing before the

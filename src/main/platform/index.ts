@@ -95,14 +95,14 @@ export interface PlatformBridge {
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
   /**
-   * Galley's system home (its Electron userData dir — the per-project coordination
-   * layer, session, and caches; no user documents). Defaults to `<home>/.galley` —
-   * a visible, real-disk location off the platform's hidden app-data folder —
-   * overridable GLOBALLY via the `GALLEY_HOME` env var. It must be identical across
-   * every launch (the coordination path is discovered by convention), so it is an
-   * environment setting, never a per-launch flag.
+   * Galley's system home — the machine-local directory of Galley's own state (the
+   * per-project coordination layer, session, and caches; no user documents).
+   * Defaults to `<home>/.galley` — a visible, real-disk location off the platform's
+   * hidden app-data folder — overridable GLOBALLY via the `GALLEY_HOME` env var. It
+   * must be identical across every launch (the coordination path is discovered by
+   * convention), so it is an environment setting, never a per-launch flag.
    */
-  resolveUserDataDir(env: Record<string, string | undefined>, homeDir: string): string;
+  resolveGalleyHome(env: Record<string, string | undefined>, homeDir: string): string;
 
   /**
    * Resolve a local-file link clicked in the preview (preview link handling) to an absolute path,
@@ -211,7 +211,7 @@ export interface PlatformBridge {
  */
 export interface PlatformBridgeOptions {
   /**
-   * The projects-home root — `<userData>/projects` — resolved LAZILY (a thunk,
+   * The projects-home root — `<Galley home>/projects` — resolved LAZILY (a thunk,
    * not a value) so it can be read after `app` is ready without pulling Electron
    * into this seam. Every project op runs post-`ready`, so first-use resolution
    * is safe. Tests inject a temp dir here.
@@ -267,7 +267,7 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
     parseCliOperation: fileIo.parseCliOperation,
     resolveLocalLink: fileIo.resolveLocalLink,
     parseCliProjectArg: fileIo.parseCliProjectArg,
-    resolveUserDataDir: fileIo.resolveUserDataDir,
+    resolveGalleyHome: fileIo.resolveGalleyHome,
 
     async readFile(absPath) {
       const snapshot = await fileIo.readFile(absPath);

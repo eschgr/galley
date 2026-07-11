@@ -20,7 +20,7 @@ import {
 
 // Ownership + liveness now operate on a plain `runtime/` dir (derived by
 // projectStore from the durable home). Each test mints a hermetic temp dir under
-// os.tmpdir() and cleans it up — nothing touches the real userData.
+// os.tmpdir() and cleans it up — nothing touches the real Galley home.
 const roots: string[] = [];
 function freshRuntimeDir(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-proj-'));

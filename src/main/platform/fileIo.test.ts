@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, resolveUserDataDir, splitLineSuffix, writeFile } from './fileIo';
+import { hashContent, parseCliFileArgs, parseCliOperation, parseCliProjectArg, readFile, resolveLocalLink, resolveGalleyHome, splitLineSuffix, writeFile } from './fileIo';
 
 describe('resolveLocalLink (preview local links)', () => {
   const from = path.resolve('docs', 'index.md');
@@ -185,24 +185,24 @@ describe('parseCliProjectArg', () => {
   });
 });
 
-describe('resolveUserDataDir (Galley system home)', () => {
+describe('resolveGalleyHome (Galley system home)', () => {
   const home = path.join(path.sep, 'home', 'greg');
 
   it('defaults to <home>/.galley when GALLEY_HOME is unset', () => {
-    expect(resolveUserDataDir({}, home)).toBe(path.join(home, '.galley'));
-    expect(resolveUserDataDir({ PATH: '/usr/bin' }, home)).toBe(path.join(home, '.galley'));
+    expect(resolveGalleyHome({}, home)).toBe(path.join(home, '.galley'));
+    expect(resolveGalleyHome({ PATH: '/usr/bin' }, home)).toBe(path.join(home, '.galley'));
   });
 
   it('uses GALLEY_HOME when set, made absolute', () => {
-    expect(resolveUserDataDir({ GALLEY_HOME: path.join(path.sep, 'srv', 'galley') }, home)).toBe(
+    expect(resolveGalleyHome({ GALLEY_HOME: path.join(path.sep, 'srv', 'galley') }, home)).toBe(
       path.resolve(path.join(path.sep, 'srv', 'galley')),
     );
-    expect(resolveUserDataDir({ GALLEY_HOME: 'rel/dir' }, home)).toBe(path.resolve('rel/dir'));
+    expect(resolveGalleyHome({ GALLEY_HOME: 'rel/dir' }, home)).toBe(path.resolve('rel/dir'));
   });
 
   it('ignores a blank/whitespace GALLEY_HOME and falls back to the default', () => {
-    expect(resolveUserDataDir({ GALLEY_HOME: '' }, home)).toBe(path.join(home, '.galley'));
-    expect(resolveUserDataDir({ GALLEY_HOME: '   ' }, home)).toBe(path.join(home, '.galley'));
+    expect(resolveGalleyHome({ GALLEY_HOME: '' }, home)).toBe(path.join(home, '.galley'));
+    expect(resolveGalleyHome({ GALLEY_HOME: '   ' }, home)).toBe(path.join(home, '.galley'));
   });
 });
 

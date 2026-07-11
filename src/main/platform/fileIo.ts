@@ -124,11 +124,13 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
 }
 
 /**
- * Where Galley keeps its **system home** — the Electron "userData" directory. It
- * holds the per-project *coordination* layer (`projects/<name>/runtime/owner.json`
- * liveness + the file-drop channel), the crash-restore session, and Electron's own
- * profile/caches. It holds NO user documents; those live wherever the user keeps
- * them and are only referenced by path.
+ * Galley's **system home** — a machine-local directory of Galley's own state, not
+ * user documents. It holds the per-project *coordination* layer
+ * (`projects/<name>/runtime/owner.json` liveness + the file-drop channel), the
+ * crash-restore session, and the app's profile/caches. User documents live
+ * wherever the user keeps them and are only referenced by path. (Electron happens
+ * to call this same directory its "userData" path — a name we don't adopt, since
+ * nothing user-scoped or user-authored lives here.)
  *
  * Because the coordination layer is discovered by CONVENTION at a fixed path — a
  * running window and every later `--project` sender must resolve the SAME
@@ -145,7 +147,7 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
  * `env` and `homeDir` are injected (the caller passes `process.env` and
  * `app.getPath('home')`) so this stays Electron-free and unit-testable.
  */
-export function resolveUserDataDir(env: Record<string, string | undefined>, homeDir: string): string {
+export function resolveGalleyHome(env: Record<string, string | undefined>, homeDir: string): string {
   const override = env.GALLEY_HOME?.trim();
   return override ? path.resolve(override) : path.join(homeDir, '.galley');
 }

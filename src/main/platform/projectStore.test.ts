@@ -23,7 +23,7 @@ import {
 
 // projectStore owns home-path derivation, the layout, and the durable
 // project.json record. Hermetic: a temp baseDir per test, cleaned up; nothing
-// touches the real userData.
+// touches the real Galley home.
 const roots: string[] = [];
 function freshBaseDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'galley-store-'));
