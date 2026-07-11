@@ -74,6 +74,14 @@ test('Show Source reveals the editor on the right, view on the left', async ({ p
   expect(Math.round(pv!.x + pv!.width)).toBeLessThanOrEqual(Math.round(ed!.x) + 8);
 });
 
+test('the source editor has native spell-checking enabled (#119)', async ({ page }) => {
+  await toggle(page).click();
+  await expect(editorPane(page)).toBeVisible();
+  // CodeMirror's editable surface carries spellcheck="true" so the browser paints
+  // squiggles under misspellings and offers its right-click suggestions.
+  await expect(page.locator('.pane-editor .cm-content')).toHaveAttribute('spellcheck', 'true');
+});
+
 test('Hide Source returns to full-window reading', async ({ page }) => {
   await toggle(page).click();
   await expect(editorPane(page)).toBeVisible();
