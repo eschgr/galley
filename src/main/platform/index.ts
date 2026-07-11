@@ -44,6 +44,8 @@ import {
 
 export type { ClaimResult } from './project';
 export type { LauncherOp } from './fileIo';
+// Pure bootstrap helper (needed before the bridge exists, to derive projectsHome).
+export { resolveGalleyHome } from './fileIo';
 
 /**
  * A file to open plus an optional 1-based line to reveal on open (open at a
@@ -94,15 +96,6 @@ export interface PlatformBridge {
   parseCliOperation(argv: readonly string[], packaged: boolean): LauncherOp;
   /** The `--project <name>` value passed at launch, if any (self-arbitrate per project; keyed by a stable name). */
   parseCliProjectArg(argv: readonly string[], packaged: boolean): string | null;
-  /**
-   * Galley's system home — the machine-local directory of Galley's own state (the
-   * per-project coordination layer, session, and caches; no user documents).
-   * Defaults to `<home>/.galley` — a visible, real-disk location off the platform's
-   * hidden app-data folder — overridable GLOBALLY via the `GALLEY_HOME` env var. It
-   * must be identical across every launch (the coordination path is discovered by
-   * convention), so it is an environment setting, never a per-launch flag.
-   */
-  resolveGalleyHome(env: Record<string, string | undefined>, homeDir: string): string;
 
   /**
    * Resolve a local-file link clicked in the preview (preview link handling) to an absolute path,
@@ -267,7 +260,6 @@ export function createPlatformBridge(options: PlatformBridgeOptions): PlatformBr
     parseCliOperation: fileIo.parseCliOperation,
     resolveLocalLink: fileIo.resolveLocalLink,
     parseCliProjectArg: fileIo.parseCliProjectArg,
-    resolveGalleyHome: fileIo.resolveGalleyHome,
 
     async readFile(absPath) {
       const snapshot = await fileIo.readFile(absPath);

@@ -124,13 +124,16 @@ export function parseCliProjectArg(argv: readonly string[], packaged: boolean): 
 }
 
 /**
- * Galley's **system home** — a machine-local directory of Galley's own state, not
- * user documents. It holds the per-project *coordination* layer
- * (`projects/<name>/runtime/owner.json` liveness + the file-drop channel), the
- * crash-restore session, and the app's profile/caches. User documents live
- * wherever the user keeps them and are only referenced by path. (Electron happens
- * to call this same directory its "userData" path — a name we don't adopt, since
- * nothing user-scoped or user-authored lives here.)
+ * Galley's **system home** — a machine-local directory of Galley's own meaningful
+ * state, not user documents. It holds the per-project *coordination* layer
+ * (`projects/<name>/runtime/owner.json` liveness + the file-drop channel) and the
+ * crash-restore session. User documents live wherever the user keeps them and are
+ * only referenced by path.
+ *
+ * This is DISTINCT from Electron's `userData` directory: we deliberately leave
+ * `userData` at the platform default so Electron's ephemeral profile/caches stay
+ * there (hidden, disposable) rather than cluttering this home — only the projects
+ * tree lives here.
  *
  * Because the coordination layer is discovered by CONVENTION at a fixed path — a
  * running window and every later `--project` sender must resolve the SAME
