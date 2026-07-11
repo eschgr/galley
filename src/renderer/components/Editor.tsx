@@ -54,6 +54,7 @@ import { tags as t } from '@lezer/highlight';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
+import { wordAutocomplete } from './wordComplete';
 import {
   wrapEdit,
   unwrapSpan,
@@ -368,6 +369,11 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkR
     markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
     search({ top: true }),
+    // Word autocomplete (#120): doc words + a bundled SCOWL dictionary. Placed
+    // BEFORE the formatting keymap so its Tab-to-accept (also highest precedence)
+    // is tried first — but it only claims Tab while the popup is open, otherwise it
+    // falls through to the list-indent Tab below.
+    wordAutocomplete(),
     formattingKeymap(onLinkRef), // formatting shortcuts + list keys + link dialog, highest precedence so it wins
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
     theme,
