@@ -128,7 +128,7 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
 
 ### Writing aids
 
-- **R22. Spell-checking.** The source editor enables the browser's native spell-checker, so misspelled words get the usual red underline and the OS right-click **suggestions / add-to-dictionary** menu. *(Prose-oriented; text inside fenced code blocks is checked too — an accepted trade-off vs. a much heavier Markdown-aware checker.)*
+- **R22. Spell-checking.** The source editor enables the browser's native spell-checker: misspelled words get the usual red underline, and **right-clicking one opens a context menu of spelling suggestions plus Add to Dictionary** (persistent). *(The squiggles are native; the suggestion/add menu is built by a main-process context-menu handler over the native checker, since the browser leaves building that menu to the app. Prose-oriented — text inside fenced code blocks is checked too, an accepted trade-off vs. a much heavier Markdown-aware checker. Only a permanent add-to-dictionary is offered, not a session-only "ignore" — the native checker doesn't support one. Squiggles cover the on-screen text; the editor virtualizes off-screen lines.)*
 - **R23. Word autocomplete.** As the user types (after a few characters), the editor offers word completions — the document's own words first (contextual), then a bundled common-English dictionary ranked by frequency. It is **offline and heuristic** — no model, no network. Accept with `Tab` (or click); `Enter` stays a newline; `Esc` dismisses; `Cmd/Ctrl+Space` triggers manually. *(A larger, LLM-backed completion is a possible future direction, out of scope here.)*
 
 ### Document states
