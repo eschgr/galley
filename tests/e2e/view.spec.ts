@@ -82,6 +82,28 @@ test('the source editor has native spell-checking enabled (#119)', async ({ page
   await expect(page.locator('.pane-editor .cm-content')).toHaveAttribute('spellcheck', 'true');
 });
 
+test('word autocomplete: typing pops suggestions and Tab accepts (#120)', async ({ page }) => {
+  await toggle(page).click();
+  await expect(editorPane(page)).toBeVisible();
+  const content = page.locator('.pane-editor .cm-content');
+  await content.click();
+  await page.keyboard.press('Control+End'); // to the end of the document
+  await page.keyboard.type('\ndocu'); // 4 chars — past the 3-char trigger
+
+  // The autocomplete popup appears with a selected suggestion.
+  const popup = page.locator('.cm-tooltip-autocomplete');
+  await expect(popup).toBeVisible();
+  await expect(popup.locator('li[aria-selected="true"]')).toBeVisible();
+  await page.waitForTimeout(150); // let CM mark the completion acceptable
+
+  // Tab accepts the selected suggestion, completing "docu" into a longer word.
+  await page.keyboard.press('Tab');
+  await expect(popup).toBeHidden();
+  await expect
+    .poll(async () => /docu\w{2,}/i.test((await content.textContent()) ?? ''))
+    .toBe(true);
+});
+
 test('Hide Source returns to full-window reading', async ({ page }) => {
   await toggle(page).click();
   await expect(editorPane(page)).toBeVisible();
