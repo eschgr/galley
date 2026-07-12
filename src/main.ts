@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, screen, dialog } from 'electron';
+import { app, BrowserWindow, Menu, shell, ipcMain, screen, dialog } from 'electron';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -16,6 +16,7 @@ import { decideCrashReload, materializeRestore } from './main/crashReload';
 import { mapInputToCommand } from './main/keyCommand';
 import { computeSourceVisibleBounds } from './main/sourceVisibleBounds';
 import { PendingQueue } from './main/pendingQueue';
+import { spellMenuTemplate } from './main/spellContextMenu';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
 // that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync.
@@ -534,6 +535,26 @@ const createWindow = (project: string | null = null, files: OpenRequest[] = [], 
         shell.openExternal(url);
       }
     }
+  });
+
+  // Right-click in the source editor → a context menu with spelling suggestions and
+  // Add to Dictionary for a misspelled word, plus the standard edit actions, built
+  // over the native spellchecker (#119 follow-up). The template is the pure,
+  // unit-tested spellMenuTemplate; here we just build and pop it. It is empty outside
+  // an editable field, so the preview's right-click behavior is unchanged.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const template = spellMenuTemplate(
+      {
+        isEditable: params.isEditable,
+        misspelledWord: params.misspelledWord,
+        dictionarySuggestions: params.dictionarySuggestions,
+      },
+      {
+        replace: (suggestion) => mainWindow.webContents.replaceMisspelling(suggestion),
+        addToDictionary: (word) => mainWindow.webContents.session.addWordToSpellCheckerDictionary(word),
+      },
+    );
+    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window: mainWindow });
   });
 
   // Ctrl/Cmd+W must close the active TAB, not the window, and Ctrl+Tab /
