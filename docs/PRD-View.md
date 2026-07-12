@@ -57,7 +57,7 @@ The view also tracks **what it is showing as an explicit state**, not as a null-
   - **In-page anchor links** (`#heading`) scroll the preview to that heading. Headings are given GitHub-style id slugs so the LLM's cross-reference links resolve.
   - **Local-file links** (relative or absolute paths, or `file://`) open the target as a tab, resolved against the current document's folder, so cross-document links between an LLM's files navigate in-app. A `#fragment` on such a link (`other.md#section`) scrolls the opened tab to that heading.
   - **Bare filenames in prose** (e.g. `architecture.md`) are left as plain text, **not** autolinked — many extensions are also TLDs, so fuzzy autolinking would wrongly make filenames clickable. Autolinking applies only to text carrying an explicit scheme; use `[label](architecture.md)` for an explicit, clickable file link.
-- **R4a. Rendered task-list checkboxes are read-only.** GFM `- [ ]` / `- [x]` checkboxes in the preview render **disabled**. The preview reflects the source and is not an editing surface, so clicking a box can't diverge it from the `- [ ]` / `- [x]` in the source; a task is toggled by editing the source in the editor.
+- **R4a. The preview is a read-only reflection of the source.** The rendered preview is **never an editing surface** — it always reflects the current source and can never diverge from it; every change is made by editing the source. Interactive markdown that would otherwise capture edits in place (e.g. GFM `- [ ]` / `- [x]` task-list checkboxes) is therefore **not editable** in the preview; a task is toggled by editing its `- [ ]` / `- [x]` in the source.
 
 ### Rendering de-risking spike (pre-build)
 
@@ -109,7 +109,7 @@ Keyboard shortcuts that apply markdown formatting to the editor selection, so th
   - On any **other line**, `Tab` inserts indentation at the cursor and `Shift+Tab` outdents the line. `Tab` never moves focus out of the editor.
   - Indentation uses **spaces, not hard tab characters**, at the width set in R21.
 - **R18. Lazy ordered-list numbering.** Galley never renumbers ordered lists; markers are left exactly as authored. The convention is **`1.` on every item**: because re-nesting or reordering never forces a renumber and the renderer shows the correct sequence, editing stays cheap.
-- **R19. List continuation.** `Enter` on a non-empty list item starts a new item on the next line with the same indentation and marker — **ordered markers as `1.`** (per R18), bullets unchanged. `Enter` on an **empty** item ends the list (clears the marker). Off a list line, `Enter` is an ordinary newline. **When the caret sits before the content** (in the line's indent, marker, or trailing spaces — e.g. at the very start of `1. hello`), `Enter` opens a blank line above, moving the item down, rather than duplicating the marker (`1. 1. hello`).
+- **R19. List continuation.** `Enter` on a non-empty list item starts a new item on the next line with the same indentation and marker — **ordered markers as `1.`** (per R18), bullets unchanged. `Enter` on an **empty** item ends the list (clears the marker). Off a list line, `Enter` is an ordinary newline. **Pressing `Enter` at the start of an item**, before its content, inserts a blank line above and moves the item down rather than starting a new, duplicate item.
 
 - **R20. Link dialog.** `Cmd/Ctrl+K` opens a small dialog rather than inserting raw syntax, so the user never has to remember `[text](url)` ordering. Behavior:
   - **Two labeled fields:** **Text** and **URL**. Focus starts in the **URL** field.

@@ -128,7 +128,7 @@ A GitHub Actions workflow (`.github/workflows/release.yml`) implements the above
 
 ### Update notification
 
-On startup and once a day, a **packaged** build checks GitHub for a newer published Release and, if one exists, shows a non-intrusive notification ("A new version of Galley is available") so users on an old build learn a new version is out. **Notify-only** — no download or install (true self-update would need the code signing deferred above). The check runs in the **main process**, compares the latest release tag against `app.getVersion()`, fails silently (offline / rate-limited), and runs in **packaged builds only** — dev builds are intentionally short-lived.
+Galley **regularly checks whether a newer version is available** and, when one is, shows a **non-intrusive** notice ("A new version of Galley is available") so someone on an old build learns an update is out. It is **notify-only** — Galley does not download or install the update (a true self-updater would require the code signing deferred above); the user updates manually. The check is **best-effort**: it never interrupts, and it stays silent when it cannot reach the update source.
 
 ---
 
