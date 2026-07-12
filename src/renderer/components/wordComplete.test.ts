@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { rankWordMatches, type DictEntry } from './wordComplete';
 
-// Covers every SCOWL band the app actually bundles (10/20/35/40/50), with two
-// words sharing band 20 so the intra-band alphabetical tiebreak is exercised too.
+// Ranking is purely by SCOWL band (ascending), then alphabetical within a band.
+// The fixture spans the bundled bands (the app ships 10/20/35/40/50) — with two
+// words in band 20 to exercise the intra-band alphabetical tiebreak — plus words
+// in bands OUTSIDE the bundled set (55, 70): a word rarer than anything shipped
+// must still sort after the common ones, purely by number, so the ranking makes no
+// assumption that a band sits within the shipped range.
 const dict: DictEntry[] = [
   { word: 'them', band: 10 },
   { word: 'theater', band: 20 },
@@ -10,13 +14,16 @@ const dict: DictEntry[] = [
   { word: 'therefore', band: 35 },
   { word: 'theory', band: 40 },
   { word: 'theremin', band: 50 },
+  { word: 'theorem', band: 55 }, // out of the bundled bands…
+  { word: 'thespian', band: 70 }, // …rarer still — must sort after every bundled band
   { word: 'the', band: 10 },
 ];
 
 describe('rankWordMatches (word autocomplete ranking)', () => {
   it('returns dictionary matches ranked by band (common first)', () => {
-    // "the" itself is excluded (same length); the rest ranked by band (10 → 50),
-    // alphabetical within a band ("theater" before "there", both band 20).
+    // "the" itself is excluded (same length); the rest ranked by band ascending
+    // (bundled 10→50, then out-of-band 55, 70), alphabetical within a band
+    // ("theater" before "there", both band 20).
     expect(rankWordMatches('the', [], dict)).toEqual([
       'them',
       'theater',
@@ -24,6 +31,8 @@ describe('rankWordMatches (word autocomplete ranking)', () => {
       'therefore',
       'theory',
       'theremin',
+      'theorem',
+      'thespian',
     ]);
   });
 
@@ -40,6 +49,8 @@ describe('rankWordMatches (word autocomplete ranking)', () => {
       'therefore',
       'theory',
       'theremin',
+      'theorem',
+      'thespian',
     ]);
   });
 
@@ -52,6 +63,8 @@ describe('rankWordMatches (word autocomplete ranking)', () => {
       'therefore',
       'theory',
       'theremin',
+      'theorem',
+      'thespian',
     ]);
   });
 
@@ -63,6 +76,8 @@ describe('rankWordMatches (word autocomplete ranking)', () => {
       'Therefore',
       'Theory',
       'Theremin',
+      'Theorem',
+      'Thespian',
     ]);
   });
 
