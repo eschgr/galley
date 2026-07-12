@@ -103,6 +103,13 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
   const pointerPane = useRef<'editor' | 'preview' | null>(null);
   const focusedPane = useRef<'editor' | 'preview' | null>(null);
   const activeLeader = () => pointerPane.current ?? focusedPane.current;
+  // True only while we programmatically restore editor focus (focusEditor, e.g. on a
+  // tab switch / Show Source). Such a focus must NOT claim scroll-sync leadership —
+  // it carries no scroll intent, and letting it lead would let the editor's own
+  // programmatic scrolls (a reveal, a reload re-seed) hijack the preview. Genuine
+  // user focus (click / Tab into the pane) still sets the leader. Cleared on the next
+  // microtask, after the synchronous focus event it suppresses has fired.
+  const programmaticFocus = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -118,7 +125,11 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
     requestLink: () => editorRef.current?.requestLink() ?? null,
     applyLink: (t, u) => editorRef.current?.applyLink(t, u),
     removeLink: () => editorRef.current?.removeLink(),
-    focusEditor: () => editorRef.current?.focus(),
+    focusEditor: () => {
+      programmaticFocus.current = true;
+      editorRef.current?.focus();
+      queueMicrotask(() => (programmaticFocus.current = false));
+    },
     jumpToFragment: (id) => previewRef.current?.scrollToAnchor(id) ?? false,
     scrollPreviewTop: () => previewRef.current?.setScrollTop(0),
     revealLine: (line) => {
@@ -317,7 +328,7 @@ export const TabView = forwardRef<TabViewHandle, TabViewProps>(function TabView(
         }}
         onPointerEnter={() => (pointerPane.current = 'editor')}
         onPointerLeave={() => { if (pointerPane.current === 'editor') pointerPane.current = null; }}
-        onFocusCapture={() => (focusedPane.current = 'editor')}
+        onFocusCapture={() => { if (!programmaticFocus.current) focusedPane.current = 'editor'; }}
       >
         <Editor
           ref={editorRef}
