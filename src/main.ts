@@ -17,6 +17,7 @@ import { mapInputToCommand } from './main/keyCommand';
 import { computeSourceVisibleBounds } from './main/sourceVisibleBounds';
 import { PendingQueue } from './main/pendingQueue';
 import { spellMenuTemplate } from './main/spellContextMenu';
+import { checkForUpdate, fetchLatestReleaseTag, CHECK_INTERVAL_MS } from './main/updateCheck';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
 // that `electron-squirrel-startup` handles, keep the `galley` PATH shim in sync.
@@ -464,6 +465,28 @@ ipcMain.handle('window:setSourceVisible', (event, visible: unknown) => {
   win.setBounds(bounds);
 });
 
+// Update-availability check (#126): notify once at startup and once a day if a
+// newer GitHub release exists. Packaged builds only; scheduled once. The check
+// itself is dependency-injected and silent on failure (see ./main/updateCheck).
+let updateChecksScheduled = false;
+function scheduleUpdateChecks(): void {
+  if (!app.isPackaged || updateChecksScheduled) return;
+  updateChecksScheduled = true;
+  const run = () =>
+    void checkForUpdate({
+      currentVersion: app.getVersion(),
+      packaged: app.isPackaged,
+      fetchLatestTag: () => fetchLatestReleaseTag(),
+      notify: () => {
+        const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+        const opts = { type: 'info' as const, message: 'A new version of Galley is available', buttons: ['Okay'] };
+        void (win ? dialog.showMessageBox(win, opts) : dialog.showMessageBox(opts));
+      },
+    });
+  run(); // at startup
+  setInterval(run, CHECK_INTERVAL_MS).unref?.(); // once a day; don't keep the app alive
+}
+
 const createWindow = (project: string | null = null, files: OpenRequest[] = [], channelId: string | null = null) => {
   const mainWindow = new BrowserWindow({
     // Portrait-ish by default — most documents read better tall than wide.
@@ -730,6 +753,7 @@ app.on('ready', async () => {
         return;
       }
       createWindow(project, initialFiles, claim.owner.id); // we own it — listen on our own channel
+      scheduleUpdateChecks();
     } catch (err) {
       // An unsafe/invalid --project value (e.g. "..", "a/b", an embedded control
       // char) is rejected by the derivation's safe-name guard, which throws here.
@@ -744,6 +768,7 @@ app.on('ready', async () => {
     return;
   }
   createWindow(project, initialFiles);
+  scheduleUpdateChecks();
 });
 
 // Empty-state / welcome screen: closing the last tab keeps the app open.
