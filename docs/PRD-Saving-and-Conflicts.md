@@ -46,6 +46,7 @@ A related case is the file **disappearing** — moved or deleted on disk while a
 
 - **R1.** **Auto-save**, debounced: save **5 seconds after the last keystroke**.
 - **R2.** **Force-save** via `Ctrl/Cmd+S`, which saves immediately and bypasses the debounce. *(Auto-save makes this usually a no-op; it is retained intentionally as an explicit, reassuring user action.)*
+- **R2a. Atomic saves.** A save is **all-or-nothing**: any concurrent reader — the file watcher or an external editor — only ever sees the complete previous file or the complete new file, never a half-written or truncated state, and a crash mid-save must not corrupt the document. *(This is also what keeps self-write detection (R5) reliable — every on-disk read the watcher sees is a full, recorded content, never a torn one that looks like an external change.)*
 - **R3. Manual reload (`Ctrl/Cmd+R`).** File → Reload File re-reads the open file from disk and loads it fresh, **keeping the current view layout** (split/preview mode, window size, etc.). It reloads only the *document*, never the app. *(The webContents reload / force-reload menu roles are removed and renderer HMR is disabled, so code changes are picked up only by restarting the app — keeping "the file changed" and "the software changed" unambiguously distinct.)*
 
 ### Auto-refresh & conflict handling

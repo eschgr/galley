@@ -559,6 +559,13 @@ export function App() {
   // first renders, so a new file reveals its line here. The active TabView keeps
   // its own reading position when nothing is pending, so there is nothing else to
   // restore on a switch.
+  //
+  // With the source editor visible, this is also where keyboard focus lands back in
+  // the active tab's editor — on a tab switch, a fresh open, or the moment Show
+  // Source reveals the editor — so you can keep typing without a click. The editor
+  // keeps its own cursor/scroll (it stays mounted); only DOM focus was lost while it
+  // was display:none. A clicked cross-file link is preview-oriented, so a pending
+  // #fragment takes the early return and leaves focus in the preview.
   useEffect(() => {
     const frag = pendingFragment.current;
     pendingFragment.current = null;
@@ -570,7 +577,9 @@ export function App() {
     // Apply the now-active tab's own pending reveal (if any). Keyed per-tab, so the
     // line applied is always the one addressed to THIS file.
     if (activeId) applyReveal(activeId);
-  }, [activeId]);
+    if (showingSource) activeView()?.focusEditor();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, showingSource]);
 
   // Report the open-tab set to main so it can persist the session as a crash
   // safety net. Fires on open/close/switch/reorder — anything that

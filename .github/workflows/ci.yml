@@ -2,10 +2,11 @@ name: CI
 
 # Run the test suites on every pull request (and on pushes to main) so a
 # regression is caught mechanically before merge — independent of whether
-# someone remembered to run them locally. Two jobs run in parallel:
+# someone remembered to run them locally. Three jobs run in parallel:
 #   * Unit tests (Vitest)      — npm test
 #   * E2E tests (Playwright)   — headless Chromium against `npm run devapp`
-# Mark both as required status checks on `main` to gate merges on a green run.
+#   * Build                    — tsc --noEmit + a real electron-forge package
+# Mark all three as required status checks on `main` to gate merges on a green run.
 on:
   pull_request:
   push:
@@ -56,3 +57,29 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Prove the change actually type-checks and builds. Vitest and Vite both
+  # transpile with esbuild, which STRIPS types without checking them, so a type
+  # error (or a change that breaks the real build) otherwise sails through every
+  # other job and only fails when someone tries to package a release. This job
+  # closes that gap. Its packaged output is deliberately NOT uploaded as an
+  # artifact — it exists only to prove the build succeeds and is thrown away with
+  # the runner.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Whole-project type-check — the cheapest catch for an unvalidated change.
+      - name: Type-check
+        run: npx tsc --noEmit
+      # Build + package exactly as a release does (Vite builds main/preload/renderer,
+      # then @electron/packager). On Linux this packages a Linux app; the target
+      # platform is irrelevant — we only need the build+bundle+package to succeed.
+      - name: Build (package; output discarded)
+        run: npm run package
