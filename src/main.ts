@@ -16,7 +16,7 @@ import { decideCrashReload, materializeRestore } from './main/crashReload';
 import { mapInputToCommand } from './main/keyCommand';
 import { computeSourceVisibleBounds } from './main/sourceVisibleBounds';
 import { PendingQueue } from './main/pendingQueue';
-import { spellMenuTemplate } from './main/spellContextMenu';
+import { editorContextMenuTemplate } from './main/editorContextMenu';
 import { checkForUpdate, fetchLatestReleaseTag, CHECK_INTERVAL_MS } from './main/updateCheck';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
@@ -560,13 +560,14 @@ const createWindow = (project: string | null = null, files: OpenRequest[] = [], 
     }
   });
 
-  // Right-click in the source editor → a context menu with spelling suggestions and
-  // Add to Dictionary for a misspelled word, plus the standard edit actions, built
-  // over the native spellchecker (#119 follow-up). The template is the pure,
-  // unit-tested spellMenuTemplate; here we just build and pop it. It is empty outside
-  // an editable field, so the preview's right-click behavior is unchanged.
+  // Right-click in the source editor → the editor's context menu: the standard edit
+  // actions (Cut / Copy / Paste / Select All) and, on a misspelled word, its spelling
+  // suggestions and Add to Dictionary above them (the spell section is built over the
+  // native spellchecker — #119 follow-up). The template is the pure, unit-tested
+  // editorContextMenuTemplate; here we just build and pop it. It is empty outside an
+  // editable field, so the preview's right-click behavior is unchanged.
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    const template = spellMenuTemplate(
+    const template = editorContextMenuTemplate(
       {
         isEditable: params.isEditable,
         misspelledWord: params.misspelledWord,

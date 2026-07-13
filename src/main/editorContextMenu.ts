@@ -1,20 +1,23 @@
 /**
- * Editor context menu (follow-up to the #119 spell-check). Right-clicking a
- * misspelled word in the source editor offers **spelling suggestions** and **Add to
- * Dictionary**, built over the native spellchecker Electron already runs. Without
- * this handler the squiggles show but the right-click menu has no suggestions
- * (Chromium leaves building that menu to the app).
+ * The source editor's right-click **context menu**. In the editor it always offers
+ * the standard edit actions — Cut / Copy / Paste / Select All — and, when the click
+ * landed on a **misspelled word**, prepends that word's **spelling suggestions** and
+ * **Add to Dictionary** above them. Outside an editable field it returns nothing, so
+ * the preview's right-click behavior is left untouched.
  *
- * The menu *template* is pure so it's unit-tested without Electron; main.ts turns
- * it into a real menu and pops it.
+ * The spell section is built over the **native** spellchecker Electron already runs:
+ * #119 turned on the squiggles, but Chromium leaves building the menu to the app, so
+ * without this a right-click gave no suggestions and no way to add a word. The native
+ * checker only supports **persistent add-to-dictionary**, not a session-only
+ * "ignore", so that is the option offered.
  *
- * Note: the native checker only supports **persistent add-to-dictionary**, not a
- * session-only "ignore" — so that is the option offered.
+ * The menu *template* is a pure function, so it's unit-tested without Electron;
+ * main.ts turns it into a real menu and pops it.
  */
 import type { MenuItemConstructorOptions } from 'electron';
 
 /** The subset of Electron's context-menu params this menu reads. */
-export interface SpellMenuParams {
+export interface EditorContextMenuParams {
   /** True when the right-click landed in an editable field (the source editor). */
   readonly isEditable: boolean;
   /** The misspelled word under the cursor, or '' if none. */
@@ -23,7 +26,7 @@ export interface SpellMenuParams {
   readonly dictionarySuggestions: readonly string[];
 }
 
-export interface SpellMenuActions {
+export interface EditorContextMenuActions {
   /** Replace the misspelled word with the chosen suggestion. */
   readonly replace: (suggestion: string) => void;
   /** Add the word to the persistent spellcheck dictionary. */
@@ -32,14 +35,13 @@ export interface SpellMenuActions {
 
 /**
  * Build the editor context-menu template. Returns `[]` (show nothing) outside an
- * editable field, preserving today's no-menu behavior in the preview. In the
- * editor it always offers the standard edit actions; when the click landed on a
- * misspelled word, spelling suggestions and **Add to Dictionary** are listed above
- * them.
+ * editable field, preserving the preview's no-menu behavior. In the editor it always
+ * offers the standard edit actions; when the click landed on a misspelled word,
+ * spelling suggestions and **Add to Dictionary** are listed above them.
  */
-export function spellMenuTemplate(
-  params: SpellMenuParams,
-  actions: SpellMenuActions,
+export function editorContextMenuTemplate(
+  params: EditorContextMenuParams,
+  actions: EditorContextMenuActions,
 ): MenuItemConstructorOptions[] {
   if (!params.isEditable) return [];
   const items: MenuItemConstructorOptions[] = [];
