@@ -16,7 +16,7 @@ import { decideCrashReload, materializeRestore } from './main/crashReload';
 import { mapInputToCommand } from './main/keyCommand';
 import { computeSourceVisibleBounds } from './main/sourceVisibleBounds';
 import { PendingQueue } from './main/pendingQueue';
-import { editorContextMenuTemplate } from './main/editorContextMenu';
+import { handleEditorContextMenu } from './main/editorContextMenu';
 import { checkForUpdate, fetchLatestReleaseTag, CHECK_INTERVAL_MS } from './main/updateCheck';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
@@ -563,22 +563,23 @@ const createWindow = (project: string | null = null, files: OpenRequest[] = [], 
   // Right-click in the source editor → the editor's context menu: the standard edit
   // actions (Cut / Copy / Paste / Select All) and, on a misspelled word, its spelling
   // suggestions and Add to Dictionary above them (the spell section is built over the
-  // native spellchecker — #119 follow-up). The template is the pure, unit-tested
-  // editorContextMenuTemplate; here we just build and pop it. It is empty outside an
-  // editable field, so the preview's right-click behavior is unchanged.
+  // native spellchecker — #119 follow-up). All the logic — param mapping, the
+  // don't-show-an-empty-menu gating, the action wiring — lives in the unit-tested
+  // handleEditorContextMenu; this is the humble wrapper binding it to the real
+  // webContents / session / Menu.
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    const template = editorContextMenuTemplate(
+    handleEditorContextMenu(
       {
         isEditable: params.isEditable,
         misspelledWord: params.misspelledWord,
         dictionarySuggestions: params.dictionarySuggestions,
       },
       {
-        replace: (suggestion) => mainWindow.webContents.replaceMisspelling(suggestion),
-        addToDictionary: (word) => mainWindow.webContents.session.addWordToSpellCheckerDictionary(word),
+        replaceMisspelling: (suggestion) => mainWindow.webContents.replaceMisspelling(suggestion),
+        addWordToDictionary: (word) => mainWindow.webContents.session.addWordToSpellCheckerDictionary(word),
+        showMenu: (template) => Menu.buildFromTemplate(template).popup({ window: mainWindow }),
       },
     );
-    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window: mainWindow });
   });
 
   // Ctrl/Cmd+W must close the active TAB, not the window, and Ctrl+Tab /

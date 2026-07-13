@@ -11,8 +11,9 @@
  * checker only supports **persistent add-to-dictionary**, not a session-only
  * "ignore", so that is the option offered.
  *
- * The menu *template* is a pure function, so it's unit-tested without Electron;
- * main.ts turns it into a real menu and pops it.
+ * The template *and* the right-click handler (`handleEditorContextMenu`) are pure
+ * over an injected host, so both are unit-tested without Electron; main.ts is the
+ * humble wrapper that binds the host to the real webContents / session / Menu.
  */
 import type { MenuItemConstructorOptions } from 'electron';
 
@@ -70,4 +71,34 @@ export function editorContextMenuTemplate(
     { role: 'selectAll' },
   );
   return items;
+}
+
+/**
+ * A minimal view of the Electron capabilities the right-click handler needs. main.ts
+ * supplies the real `webContents.replaceMisspelling`, `session.addWordToSpellChecker-
+ * Dictionary`, and `Menu.buildFromTemplate(...).popup(...)`; tests supply fakes. This
+ * is what keeps `handleEditorContextMenu` a pure, testable Humble Object.
+ */
+export interface ContextMenuHost {
+  /** Replace the misspelled word under the cursor with `suggestion`. */
+  replaceMisspelling(suggestion: string): void;
+  /** Add `word` to the persistent spellcheck dictionary. */
+  addWordToDictionary(word: string): void;
+  /** Build and show the menu from a (non-empty) template. */
+  showMenu(template: MenuItemConstructorOptions[]): void;
+}
+
+/**
+ * Handle a right-click in the editor: build the template from the event params and
+ * show it only when it is non-empty — so a right-click outside an editable field (an
+ * empty template) never pops a menu. All Electron access is behind `host`, so the
+ * param mapping, the empty-menu gating, and the action wiring are exercised by unit
+ * tests; main.ts is the humble wrapper that binds `host` to the real Electron calls.
+ */
+export function handleEditorContextMenu(params: EditorContextMenuParams, host: ContextMenuHost): void {
+  const template = editorContextMenuTemplate(params, {
+    replace: (suggestion) => host.replaceMisspelling(suggestion),
+    addToDictionary: (word) => host.addWordToDictionary(word),
+  });
+  if (template.length > 0) host.showMenu(template);
 }

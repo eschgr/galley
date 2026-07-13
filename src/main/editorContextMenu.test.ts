@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { editorContextMenuTemplate, type EditorContextMenuActions } from './editorContextMenu';
+import { editorContextMenuTemplate, handleEditorContextMenu, type EditorContextMenuActions } from './editorContextMenu';
 
 const actions = (): EditorContextMenuActions & { replace: ReturnType<typeof vi.fn>; addToDictionary: ReturnType<typeof vi.fn> } => ({
   replace: vi.fn(),
@@ -41,5 +41,35 @@ describe('editorContextMenuTemplate', () => {
     expect(a.replace).toHaveBeenCalledWith('the');
     (t.find((i) => i.label === 'Add to Dictionary')!.click as () => void)();
     expect(a.addToDictionary).toHaveBeenCalledWith('teh');
+  });
+});
+
+describe('handleEditorContextMenu (the main.ts glue, via a fake host)', () => {
+  const host = () => ({ replaceMisspelling: vi.fn(), addWordToDictionary: vi.fn(), showMenu: vi.fn() });
+
+  it('does not pop a menu outside an editable field (empty template → no popup)', () => {
+    const h = host();
+    handleEditorContextMenu({ isEditable: false, misspelledWord: 'teh', dictionarySuggestions: ['the'] }, h);
+    expect(h.showMenu).not.toHaveBeenCalled();
+  });
+
+  it('pops the editor menu with just the edit actions when nothing is misspelled', () => {
+    const h = host();
+    handleEditorContextMenu({ isEditable: true, misspelledWord: '', dictionarySuggestions: [] }, h);
+    expect(h.showMenu).toHaveBeenCalledTimes(1);
+    expect(labels(h.showMenu.mock.calls[0][0])).toEqual(['cut', 'copy', 'paste', '---', 'selectAll']);
+  });
+
+  it('maps the params and wires the actions to the host on a misspelled word', () => {
+    const h = host();
+    handleEditorContextMenu({ isEditable: true, misspelledWord: 'teh', dictionarySuggestions: ['the', 'tech'] }, h);
+    expect(h.showMenu).toHaveBeenCalledTimes(1);
+    const template = h.showMenu.mock.calls[0][0];
+    expect(labels(template)).toEqual(['the', 'tech', '---', 'Add to Dictionary', '---', 'cut', 'copy', 'paste', '---', 'selectAll']);
+    const click = (label: string) => (template.find((i: { label?: string }) => i.label === label)!.click as () => void)();
+    click('the');
+    expect(h.replaceMisspelling).toHaveBeenCalledWith('the');
+    click('Add to Dictionary');
+    expect(h.addWordToDictionary).toHaveBeenCalledWith('teh');
   });
 });
