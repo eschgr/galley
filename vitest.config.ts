@@ -21,6 +21,8 @@ export default defineConfig({
       include: [
         'src/renderer/markdown/pipeline.ts',
         'src/renderer/components/scrollSync.ts',
+        'src/renderer/components/spellRanges.ts',
+        'src/renderer/components/spellEngine.ts',
         // Pure, Electron-free main-process helpers, each with a sibling *.test.ts.
         'src/main/keyCommand.ts',
         'src/main/sourceVisibleBounds.ts',
