@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import type { GalleyApi } from '../../src/shared/api';
+import type { EditorMenuParams, GalleyApi } from '../../src/shared/api';
 
 // The ONE mock main-process bridge shared across the renderer e2e specs. The real
 // file IO (read/write/hash, CLI parse) is unit-tested (src/main/platform), and
@@ -47,6 +47,13 @@ type Harness = {
   // What getRestore() returns on mount (#61 slice B). Null = no restore (default);
   // a spec arms it via installMockBridge's `restore` arg or setRestore() below.
   restore: { files: MockFile[]; activeIndex: number } | null;
+  // Spell-check (#132): the params each showEditorContextMenu() call was given,
+  // the words getDictionaryWords() returns (seed), and the menu-action callback
+  // slots the editor subscribes, fired by fireSpellReplace / fireDictionaryWordAdded.
+  spellMenuCalls: EditorMenuParams[];
+  dictionaryWords: string[];
+  spellReplaceCb: ((suggestion: string) => void) | null;
+  wordAddedCb: ((word: string) => void) | null;
 };
 
 /**
@@ -67,8 +74,12 @@ export async function installMockBridge(
   // for the window's lifetime; null (default) is projectless mode (PF27). Threaded
   // like startup/restore so a spec can arm a named project for the title tests.
   projectName: string | null = null,
+  // The persistent custom-dictionary words getDictionaryWords() returns (#132).
+  // Threaded like startup/restore so it's armed BEFORE the app loads, since the
+  // editor seeds the engine from it as soon as its tab mounts.
+  dictionaryWords: string[] = [],
 ): Promise<void> {
-  await page.addInitScript(({ startupArg, restoreArg, projectNameArg }) => {
+  await page.addInitScript(({ startupArg, restoreArg, projectNameArg, dictionaryWordsArg }) => {
     const startupFiles = Array.isArray(startupArg) ? startupArg : startupArg ? [startupArg] : [];
     const harness: Harness = {
       openCb: null, saveCb: null, extCb: null, removedCb: null, reloadCb: null, closeTabCb: null, helpCb: null,
@@ -77,6 +88,7 @@ export async function installMockBridge(
       saveCalls: [], saveAsCalls: [], closed: [], dropped: [], openExternalCalls: [], openLocalCalls: [],
       nextSaveConflict: null, nextSaveAs: null, nextRead: null,
       restore: restoreArg,
+      spellMenuCalls: [], dictionaryWords: dictionaryWordsArg, spellReplaceCb: null, wordAddedCb: null,
     };
     (window as unknown as { __mock: typeof harness }).__mock = harness;
     (window as unknown as { galley: unknown }).galley = {
@@ -172,11 +184,23 @@ export async function installMockBridge(
         harness.removedCb = cb;
         return () => (harness.removedCb = null);
       },
+      // Spell-check (#132): record the menu params the editor computes, hand back
+      // the seed words, and store the menu-action callbacks for the specs to fire.
+      showEditorContextMenu: (params: EditorMenuParams) => harness.spellMenuCalls.push(params),
+      getDictionaryWords: async () => harness.dictionaryWords,
+      onSpellReplace: (cb: (suggestion: string) => void) => {
+        harness.spellReplaceCb = cb;
+        return () => (harness.spellReplaceCb = null);
+      },
+      onDictionaryWordAdded: (cb: (word: string) => void) => {
+        harness.wordAddedCb = cb;
+        return () => (harness.wordAddedCb = null);
+      },
       // `satisfies` makes a missing/renamed bridge method a COMPILE error here,
       // instead of a runtime "X is not a function" crash that only surfaces in a
       // clean-server e2e run (how setActiveDocPath/onNextTab slipped through).
     } satisfies GalleyApi;
-  }, { startupArg: startup, restoreArg: restore, projectNameArg: projectName });
+  }, { startupArg: startup, restoreArg: restore, projectNameArg: projectName, dictionaryWordsArg: dictionaryWords });
 }
 
 /**
@@ -260,6 +284,39 @@ export async function fireNextTab(page: Page): Promise<void> {
 export async function firePrevTab(page: Page): Promise<void> {
   await page.evaluate(() =>
     (window as unknown as { __mock: { prevTabCb: () => void } }).__mock.prevTabCb(),
+  );
+}
+
+/** Arm the words getDictionaryWords() returns (the persistent custom dictionary),
+ *  so the editor seeds the offline engine with them on mount (#132). Set before
+ *  the editor is shown. */
+export async function setDictionaryWords(page: Page, words: string[]): Promise<void> {
+  await page.evaluate(
+    (w) => ((window as unknown as { __mock: { dictionaryWords: string[] } }).__mock.dictionaryWords = w),
+    words,
+  );
+}
+
+/** The params of each showEditorContextMenu() call the editor made (#132). */
+export async function getSpellMenuCalls(page: Page): Promise<EditorMenuParams[]> {
+  return page.evaluate(
+    () => (window as unknown as { __mock: { spellMenuCalls: EditorMenuParams[] } }).__mock.spellMenuCalls,
+  );
+}
+
+/** Fire the menu's "replace with suggestion" action back to the editor (#132). */
+export async function fireSpellReplace(page: Page, suggestion: string): Promise<void> {
+  await page.evaluate(
+    (s) => (window as unknown as { __mock: { spellReplaceCb: ((x: string) => void) | null } }).__mock.spellReplaceCb?.(s),
+    suggestion,
+  );
+}
+
+/** Fire the menu's "add to dictionary" notification back to the editor (#132). */
+export async function fireDictionaryWordAdded(page: Page, word: string): Promise<void> {
+  await page.evaluate(
+    (w) => (window as unknown as { __mock: { wordAddedCb: ((x: string) => void) | null } }).__mock.wordAddedCb?.(w),
+    word,
   );
 }
 

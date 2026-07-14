@@ -74,12 +74,14 @@ test('Show Source reveals the editor on the right, view on the left', async ({ p
   expect(Math.round(pv!.x + pv!.width)).toBeLessThanOrEqual(Math.round(ed!.x) + 8);
 });
 
-test('the source editor has native spell-checking enabled (#119)', async ({ page }) => {
+test('the source editor turns OFF native spell-check in favour of the custom checker (#132)', async ({ page }) => {
   await toggle(page).click();
   await expect(editorPane(page)).toBeVisible();
-  // CodeMirror's editable surface carries spellcheck="true" so the browser paints
-  // squiggles under misspellings and offers its right-click suggestions.
-  await expect(page.locator('.pane-editor .cm-content')).toHaveAttribute('spellcheck', 'true');
+  // Native contenteditable spellcheck only flagged caret-local words and never
+  // scanned untouched/off-screen lines (#132), so it's disabled; our decoration
+  // checker paints the squiggles across the whole viewport instead. Full-coverage
+  // behaviour is exercised in spellcheck.spec.ts.
+  await expect(page.locator('.pane-editor .cm-content')).toHaveAttribute('spellcheck', 'false');
 });
 
 test('word autocomplete: typing pops suggestions and Tab accepts (#120)', async ({ page }) => {

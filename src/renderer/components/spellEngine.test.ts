@@ -58,4 +58,21 @@ describe('createSpellEngine (bundled en_US asset)', () => {
     expect(engine.correct('teh')).toBe(false);
     expect(engine.suggest('teh')).toContain('the');
   });
+
+  it('ranks common-typo fixes near the top via the REP table (gen-spelldict)', () => {
+    // Without the appended REP rules nspell buries "the" ~8th for "teh"; the rules
+    // lift each common typo's fix into the leading suggestions.
+    for (const [typo, fix] of [
+      ['teh', 'the'],
+      ['adn', 'and'],
+      ['taht', 'that'],
+      ['thier', 'their'],
+      ['peice', 'piece'],
+      ['tounge', 'tongue'],
+      ['arent', "aren't"],
+      ['basicly', 'basically'],
+    ] as const) {
+      expect(engine.suggest(typo).slice(0, 3)).toContain(fix);
+    }
+  });
 });
