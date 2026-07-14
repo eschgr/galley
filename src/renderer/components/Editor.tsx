@@ -55,6 +55,8 @@ import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/sea
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { wordAutocomplete } from './wordComplete';
+import { spellcheck, forceRecheck, spellSkipRanges } from './spellcheckExtension';
+import { loadSpellEngine, type SpellEngine } from './spellEngine';
 import {
   wrapEdit,
   unwrapSpan,
@@ -309,6 +311,23 @@ const continueListCmd: Command = (view) => {
 
 const LINK_RE = /^\[([^\]]*)\]\(([^)]*)\)$/;
 
+// The word token (letters + internal apostrophes, matching the spell tokenizer)
+// under document position `pos`, or null if the click wasn't on a word. Used to
+// source the right-click spell menu (#132) from the offline engine.
+const CLICK_WORD_RE = /[A-Za-z]+(?:'[A-Za-z]+)*/g;
+function wordAt(view: EditorView, pos: number): { from: number; to: number; text: string } | null {
+  const line = view.state.doc.lineAt(pos);
+  const rel = pos - line.from;
+  CLICK_WORD_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CLICK_WORD_RE.exec(line.text))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (rel >= start && rel <= end) return { from: line.from + start, to: line.from + end, text: m[0] };
+  }
+  return null;
+}
+
 type CbRef<T> = { current: T | undefined };
 
 function formattingKeymap(onLinkRef: CbRef<() => void>): Extension {
@@ -359,12 +378,13 @@ function buildExtensions(onChangeRef: ChangeRef, onScrollRef: ScrollRef, onLinkR
     EditorState.allowMultipleSelections.of(true),
     indentUnit.of('  '),
     EditorView.lineWrapping,
-    // Native browser spell-checking on the source text: red squiggles under
-    // misspellings plus the OS right-click "suggestions" menu (#119). CM6 leaves
-    // this off by default; the source is prose, so it helps while writing docs.
-    // (Text inside fenced code blocks is checked too — an accepted trade-off
-    // against a much heavier markdown-aware decoration checker.)
-    EditorView.contentAttributes.of({ spellcheck: 'true' }),
+    // Spell-checking is done by our own CodeMirror decoration checker (#132), not
+    // Chromium's native contenteditable checker — which only flagged caret-local
+    // words and never scanned untouched/off-screen lines. Turn the native one OFF
+    // so its (partial) squiggles don't double up with ours; `spellcheck()` paints
+    // the real ones across the whole viewport and re-checks on scroll/edit.
+    EditorView.contentAttributes.of({ spellcheck: 'false' }),
+    spellcheck(),
     syntaxHighlighting(sourceHighlightStyle),
     markdown({ extensions: GFM }), // parse GFM (strikethrough/tables/tasklists) so the tree matches the preview
     highlightSelectionMatches(),
@@ -408,6 +428,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   const viewRef = useRef<EditorView | null>(null);
   // The link span requestLink() captured, applied by applyLink/removeLink.
   const linkTargetRef = useRef<{ from: number; to: number } | null>(null);
+  // The offline spell engine (once loaded) and the misspelled-word range the last
+  // right-click targeted, applied when a suggestion is chosen (#132).
+  const engineRef = useRef<SpellEngine | null>(null);
+  const spellTargetRef = useRef<{ from: number; to: number } | null>(null);
   // Keep latest callbacks without re-creating the editor.
   const onChangeRef = useRef(onChange);
   const onScrollRef = useRef(onScroll);
@@ -506,7 +530,64 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       }),
     });
     viewRef.current = view;
+
+    // Right-click → the editor's spell/edit menu (#132). Compute the misspelled
+    // word + suggestions HERE from the offline engine (the native checker no
+    // longer drives the menu) and hand them to main to pop the native menu. Skip
+    // words in code/links so the menu matches what we actually squiggle.
+    const onContextMenu = (e: MouseEvent) => {
+      // Suppress the browser's own menu; the native menu is popped by main from the
+      // params we send (a no-op suppression in Electron, which shows no default menu).
+      e.preventDefault();
+      spellTargetRef.current = null;
+      let misspelledWord = '';
+      let dictionarySuggestions: string[] = [];
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+      const engine = engineRef.current;
+      if (pos != null && engine) {
+        const word = wordAt(view, pos);
+        if (word && spellSkipRanges(view.state, word.from, word.to).length === 0 && !engine.correct(word.text)) {
+          misspelledWord = word.text;
+          dictionarySuggestions = engine.suggest(word.text).slice(0, 8);
+          spellTargetRef.current = { from: word.from, to: word.to };
+        }
+      }
+      window.galley?.showEditorContextMenu({ misspelledWord, dictionarySuggestions });
+    };
+    view.contentDOM.addEventListener('contextmenu', onContextMenu);
+
+    // Seed the engine with the persistent custom words, then re-check; and wire
+    // the menu actions back: replace edits the remembered range, add-to-dictionary
+    // teaches the engine and re-checks. Guarded so this stays inert without the
+    // bridge (browser dev / tests).
+    const g = window.galley;
+    void loadSpellEngine().then((engine) => {
+      engineRef.current = engine;
+      return g?.getDictionaryWords?.().then((words) => {
+        engine.addPersonal(words ?? []);
+        forceRecheck(viewRef.current);
+      });
+    });
+    const unsubReplace = g?.onSpellReplace?.((suggestion) => {
+      const tgt = spellTargetRef.current;
+      if (!view.hasFocus || !tgt) return; // only the tab whose menu is open acts
+      view.dispatch({
+        changes: { from: tgt.from, to: tgt.to, insert: suggestion },
+        selection: { anchor: tgt.from + suggestion.length },
+        userEvent: 'input.spell',
+      });
+      spellTargetRef.current = null;
+      view.focus();
+    });
+    const unsubAdded = g?.onDictionaryWordAdded?.((word) => {
+      engineRef.current?.add(word);
+      forceRecheck(viewRef.current);
+    });
+
     return () => {
+      view.contentDOM.removeEventListener('contextmenu', onContextMenu);
+      unsubReplace?.();
+      unsubAdded?.();
       view.destroy();
       viewRef.current = null;
     };

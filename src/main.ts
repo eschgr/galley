@@ -17,6 +17,7 @@ import { mapInputToCommand } from './main/keyCommand';
 import { computeSourceVisibleBounds } from './main/sourceVisibleBounds';
 import { PendingQueue } from './main/pendingQueue';
 import { handleEditorContextMenu } from './main/editorContextMenu';
+import type { EditorMenuParams } from './shared/api';
 import { checkForUpdate, fetchLatestReleaseTag, CHECK_INTERVAL_MS } from './main/updateCheck';
 
 // Squirrel install/update/uninstall (Windows): besides the Start Menu shortcuts
@@ -562,25 +563,40 @@ const createWindow = (project: string | null = null, files: OpenRequest[] = [], 
 
   // Right-click in the source editor → the editor's context menu: the standard edit
   // actions (Cut / Copy / Paste / Select All) and, on a misspelled word, its spelling
-  // suggestions and Add to Dictionary above them (the spell section is built over the
-  // native spellchecker — #119 follow-up). All the logic — param mapping, the
-  // don't-show-an-empty-menu gating, the action wiring — lives in the unit-tested
-  // handleEditorContextMenu; this is the humble wrapper binding it to the real
-  // webContents / session / Menu.
-  mainWindow.webContents.on('context-menu', (_event, params) => {
+  // suggestions and Add to Dictionary above them. Detection now lives in the renderer's
+  // offline spell checker (#132) — not Chromium's native contenteditable checker, which
+  // only flagged caret-local words — so the renderer computes the misspelled word + its
+  // suggestions and sends them here; this builds and pops the native menu and routes the
+  // actions back. The param mapping, empty-menu gating, and action wiring stay in the
+  // unit-tested handleEditorContextMenu; this is the humble wrapper.
+  //
+  // replace → the renderer edits the word range in CodeMirror (no native
+  // replaceMisspelling to lean on); Add to Dictionary persists to Chromium's custom
+  // dictionary (still the store, verified to work with native squiggles off) AND tells
+  // the renderer to learn the word and re-check.
+  ipcMain.handle('spell:showContextMenu', (_event, params: EditorMenuParams) => {
     handleEditorContextMenu(
       {
-        isEditable: params.isEditable,
+        isEditable: true,
         misspelledWord: params.misspelledWord,
         dictionarySuggestions: params.dictionarySuggestions,
       },
       {
-        replaceMisspelling: (suggestion) => mainWindow.webContents.replaceMisspelling(suggestion),
-        addWordToDictionary: (word) => mainWindow.webContents.session.addWordToSpellCheckerDictionary(word),
+        replaceMisspelling: (suggestion) => mainWindow.webContents.send('spell:replace', suggestion),
+        addWordToDictionary: (word) => {
+          mainWindow.webContents.session.addWordToSpellCheckerDictionary(word);
+          mainWindow.webContents.send('spell:wordAdded', word);
+        },
         showMenu: (template) => Menu.buildFromTemplate(template).popup({ window: mainWindow }),
       },
     );
   });
+
+  // The persistent custom-dictionary words, so the renderer can seed the offline engine
+  // on load (previously added words stay unflagged).
+  ipcMain.handle('spell:getDictionaryWords', () =>
+    mainWindow.webContents.session.listWordsInSpellCheckerDictionary(),
+  );
 
   // Ctrl/Cmd+W must close the active TAB, not the window, and Ctrl+Tab /
   // Ctrl+Shift+Tab must cycle tabs — a menu accelerator doesn't

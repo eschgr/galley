@@ -5,7 +5,7 @@
 // It exposes a single frozen object, `window.galley`, typed by GalleyApi. The
 // renderer never sees `require`, `ipcRenderer`, or the Node globals directly.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { GalleyApi, OpenedFile, OpenTarget } from './shared/api';
+import type { EditorMenuParams, GalleyApi, OpenedFile, OpenTarget } from './shared/api';
 import { parseProjectArg } from './main/projectArg';
 
 // The claimed project name is a PER-WINDOW static — unlike the app-global
@@ -105,6 +105,20 @@ const api: GalleyApi = {
     const listener = (_event: unknown, path: string) => callback(path);
     ipcRenderer.on('file:removed', listener);
     return () => ipcRenderer.removeListener('file:removed', listener);
+  },
+  showEditorContextMenu: (params: EditorMenuParams) => {
+    void ipcRenderer.invoke('spell:showContextMenu', params);
+  },
+  getDictionaryWords: () => ipcRenderer.invoke('spell:getDictionaryWords'),
+  onSpellReplace: (callback: (suggestion: string) => void) => {
+    const listener = (_event: unknown, suggestion: string) => callback(suggestion);
+    ipcRenderer.on('spell:replace', listener);
+    return () => ipcRenderer.removeListener('spell:replace', listener);
+  },
+  onDictionaryWordAdded: (callback: (word: string) => void) => {
+    const listener = (_event: unknown, word: string) => callback(word);
+    ipcRenderer.on('spell:wordAdded', listener);
+    return () => ipcRenderer.removeListener('spell:wordAdded', listener);
   },
 };
 

@@ -29,6 +29,17 @@ export type SaveOutcome =
   | { readonly conflict: false; readonly file: OpenedFile }
   | { readonly conflict: true; readonly disk: OpenedFile };
 
+/**
+ * The spell fields for the source editor's right-click menu (#132). Since the
+ * offline spell checker — not Chromium's native checker — now owns detection,
+ * these are computed in the renderer and sent to main to build the native menu:
+ * the misspelled word under the click ('' if none) and its engine suggestions.
+ */
+export interface EditorMenuParams {
+  readonly misspelledWord: string;
+  readonly dictionarySuggestions: readonly string[];
+}
+
 export interface GalleyApi {
   /** Host platform, surfaced for platform-conditional UI (shortcut labels, etc.). */
   readonly platform: NodeJS.Platform;
@@ -163,6 +174,29 @@ export interface GalleyApi {
    * renderer marks that tab orphaned. Returns an unsubscribe function.
    */
   onFileRemoved(callback: (path: string) => void): () => void;
+
+  /**
+   * Pop the source editor's native right-click menu with renderer-computed spell
+   * params (offline-engine suggestions + Add to Dictionary, #132). Called only
+   * from within the editor, so the menu always includes the standard edit roles.
+   */
+  showEditorContextMenu(params: EditorMenuParams): void;
+  /**
+   * The persistent custom-dictionary words (everything ever added via Add to
+   * Dictionary), used to seed the offline spell engine on load so previously
+   * added words aren't re-flagged.
+   */
+  getDictionaryWords(): Promise<string[]>;
+  /**
+   * Subscribe to "replace the word under the last right-click with this
+   * suggestion" (the user picked a suggestion from the menu). Returns unsubscribe.
+   */
+  onSpellReplace(callback: (suggestion: string) => void): () => void;
+  /**
+   * Subscribe to "a word was added to the dictionary" (from the menu), so the
+   * engine can learn it and the editor can re-check. Returns unsubscribe.
+   */
+  onDictionaryWordAdded(callback: (word: string) => void): () => void;
 }
 
 declare global {
