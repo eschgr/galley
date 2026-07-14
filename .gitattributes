@@ -1,0 +1,5 @@
+# The bundled Hunspell dictionary is data, not source: keep it LF on every
+# platform so line endings never leak into word entries and it doesn't churn on
+# checkout under core.autocrlf.
+src/renderer/assets/en.aff text eol=lf
+src/renderer/assets/en.dic text eol=lf
