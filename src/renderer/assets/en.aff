@@ -112,7 +112,7 @@ SFX B   e     able       [^aeiou]e
 SFX L Y 1
 SFX L   0     ment       .
 
-REP 102
+REP 108
 REP teh the
 REP adn and
 REP nad and
@@ -125,6 +125,12 @@ REP becuase because
 REP occured occurred
 REP freind friend
 REP beleive believe
+REP basicly basically
+REP peice piece
+REP tounge tongue
+REP arent aren't
+REP thats that's
+REP dont don't
 REP a ei
 REP ei a
 REP a ey

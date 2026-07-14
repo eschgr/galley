@@ -30,10 +30,15 @@ const outDir = path.join(root, 'src', 'renderer', 'assets');
 // the menu. Entries are unanchored `wrong right` pairs (nspell ignores ^/$
 // anchors); REP only suggests when the substitution produces a real word, so
 // short distinctive keys like these don't misfire on longer words.
+// Only transpositions / 2-edit typos belong here: single-letter slips (recieve,
+// seperate, accomodate…) already rank first by edit distance, so REP does nothing
+// for them. These are the ones measured to bury their fix (rank >2 or missing).
 const COMMON_TYPOS = [
   ['teh', 'the'], ['adn', 'and'], ['nad', 'and'], ['hte', 'the'],
   ['taht', 'that'], ['tehm', 'them'], ['thier', 'their'], ['wich', 'which'],
   ['becuase', 'because'], ['occured', 'occurred'], ['freind', 'friend'], ['beleive', 'believe'],
+  ['basicly', 'basically'], ['peice', 'piece'], ['tounge', 'tongue'],
+  ['arent', "aren't"], ['thats', "that's"], ['dont', "don't"],
 ];
 
 /** Append the COMMON_TYPOS pairs to the affix file's REP table, bumping its count. */

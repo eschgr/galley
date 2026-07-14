@@ -67,6 +67,10 @@ describe('createSpellEngine (bundled en_US asset)', () => {
       ['adn', 'and'],
       ['taht', 'that'],
       ['thier', 'their'],
+      ['peice', 'piece'],
+      ['tounge', 'tongue'],
+      ['arent', "aren't"],
+      ['basicly', 'basically'],
     ] as const) {
       expect(engine.suggest(typo).slice(0, 3)).toContain(fix);
     }
